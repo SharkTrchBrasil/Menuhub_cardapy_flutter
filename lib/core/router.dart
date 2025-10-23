@@ -11,6 +11,7 @@ import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page.dart';
 import '../models/cart.dart';
+import '../models/cart_item.dart';
 import '../models/cart_product.dart';
 import '../models/coupon.dart';
 import '../models/order.dart';

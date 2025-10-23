@@ -4,6 +4,8 @@ import 'package:totem/models/cart_variant_option.dart';
 import 'package:totem/models/product_variant_link.dart';
 import 'package:totem/models/variant_option.dart';
 
+import '../helpers/enums/displaymode.dart';
+
 class CartVariant {
   // --- Propriedades permanecem as mesmas ---
   final int id;

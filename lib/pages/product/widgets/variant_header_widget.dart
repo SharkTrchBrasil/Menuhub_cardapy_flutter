@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:totem/models/cart_variant.dart';
 
+import '../../../helpers/enums/displaymode.dart';
 import '../../../models/variant_option.dart';
 
 class VariantHeaderWidget extends StatelessWidget {

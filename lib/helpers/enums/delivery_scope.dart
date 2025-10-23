@@ -1,0 +1,4 @@
+enum DeliveryScope {
+  city,
+  neighborhood,
+}

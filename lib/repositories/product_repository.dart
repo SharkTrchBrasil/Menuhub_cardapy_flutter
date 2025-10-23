@@ -3,7 +3,9 @@
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:flutter/foundation.dart';
-import 'package:totem_pro_admin/core/di.dart'; // Supondo que o getIt esteja aqui
+
+import '../core/di.dart';
+
 
 class ProductRepository {
   final Dio _dio;
@@ -23,7 +25,7 @@ class ProductRepository {
       // Faz a chamada POST para o endpoint que criamos no backend.
       // Não precisamos enviar um corpo (data), e esperamos uma resposta 204 (No Content).
       await _dio.post(
-        '/products/$store_id/$productId/view',
+        '/products/$storeId/$productId/view',
       );
 
       // Se a chamada não lançar uma exceção, consideramos sucesso.

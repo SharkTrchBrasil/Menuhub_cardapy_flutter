@@ -1,7 +1,7 @@
 // Em: lib/pages/product/product_page_cubit.dart
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:totem/helpers/enums.dart';
+
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/pages/product/product_page_state.dart';
 import 'package:totem/models/page_status.dart';
@@ -9,6 +9,7 @@ import 'package:totem/models/product.dart';
 import 'package:totem/models/cart.dart';
 import 'package:totem/models/cart_variant.dart';
 import 'package:totem/models/cart_variant_option.dart';
+import '../../models/cart_item.dart';
 import '../../models/category.dart';
 
 import '../../repositories/storee_repository.dart';

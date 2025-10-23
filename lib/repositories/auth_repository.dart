@@ -61,40 +61,51 @@ class AuthRepository {
   }
 
 
+// lib/repositories/auth_repository.dart
+
   Future<Either<void, TotemAuth>> getToken(String storeSlug) async {
     try {
+      final token = await getTotemToken(); // Gera ou recupera token único
+
       final response = await _dio.post(
         '/auth/subdomain',
-
-          data: {
-                  'store_url': storeSlug,
-                  'totem_token': await getTotemToken(),
-                },
-          );
-
+        data: {
+          'store_url': storeSlug,
+          'totem_token': token,
+        },
+      );
 
       final TotemAuth totemAuth = TotemAuth.fromJson(response.data);
 
+      // ✅ Salva o token no storage seguro
       await _secureStorage.write(key: 'totem_token', value: totemAuth.token);
 
       return Right(totemAuth);
     } catch (e) {
-      print('Erro ao buscar token do subdomínio: $e');
+      print('❌ Erro ao buscar token: $e');
       return Left(null);
     }
   }
 
-
-
   Future<String> getTotemToken() async {
-
     String? token = await _secureStorage.read(key: 'totem_token');
-    if (token != null && token.isNotEmpty) return token;
 
+    if (token != null && token.isNotEmpty) {
+      print('✅ Token existente encontrado');
+      return token;
+    }
+
+    // Gera novo token único
     token = const Uuid().v4();
     await _secureStorage.write(key: 'totem_token', value: token);
+    print('🆕 Novo token gerado: $token');
+
     return token;
   }
+
+
+
+
 
 
 

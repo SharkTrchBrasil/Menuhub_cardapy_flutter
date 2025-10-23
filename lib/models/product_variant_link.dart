@@ -1,9 +1,8 @@
 import 'package:totem/models/variant.dart';
 import 'package:totem/models/variant_option.dart';
 
-// ✅ CORREÇÃO: O enum UIDisplayMode deve ser importado ou definido aqui.
-// Supondo que esteja em 'enums.dart'
-import '../helpers/enums.dart';
+import '../helpers/enums/displaymode.dart';
+
 
 
 class ProductVariantLink {

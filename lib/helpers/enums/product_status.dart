@@ -1,13 +1,3 @@
-enum DeliveryScope {
-  city,
-  neighborhood,
-}
-
-
-// ✅ ENUM PARA DIFERENCIAR PRODUTOS NORMAIS DE KITS
-enum ProductType { INDIVIDUAL, KIT, UNKNOWN }
-
-
 
 enum ProductStatus {
   active,

@@ -1,4 +1,4 @@
-// lib/models/image_model.dart
+// lib/models/product_image.dart
 
 class ProductImage {
   final int id;
@@ -14,9 +14,17 @@ class ProductImage {
   factory ProductImage.fromJson(Map<String, dynamic> json) {
     return ProductImage(
       id: json['id'] ?? 0,
-      // O backend já envia a URL completa no campo 'image_url'
+      // ✅ O backend envia a URL completa no campo 'image_url'
       imageUrl: json['image_url'] ?? '',
       displayOrder: json['display_order'] ?? 0,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'image_url': imageUrl,
+      'display_order': displayOrder,
+    };
   }
 }

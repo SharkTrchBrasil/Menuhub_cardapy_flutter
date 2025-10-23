@@ -21,6 +21,7 @@ import 'package:totem/themes/ds_theme_switcher.dart';
 import '../pages/address/cubits/address_cubit.dart';
 import '../pages/address/cubits/delivery_fee_cubit.dart';
 import '../pages/checkout/checkout_cubit.dart';
+import '../repositories/order_repository.dart';
 import '../repositories/storee_repository.dart';
 
 final getIt = GetIt.instance;
@@ -66,6 +67,10 @@ void configureDependencies() {
         () => CartCubit(getIt<RealtimeRepository>()),
   );
 
+
+  getIt.registerLazySingleton<OrderRepository>(
+        () => OrderRepository(getIt()),
+  );
 
   getIt.registerLazySingleton<AuthCubit>(
         () => AuthCubit(

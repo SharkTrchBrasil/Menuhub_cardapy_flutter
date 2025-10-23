@@ -58,7 +58,8 @@ dependencies:
   mobile_scanner:
   flutter_dotenv: ^5.1.0
   shimmer:
-
+  smooth_page_indicator: ^1.2.0+3  # ✅ ADICIONAR
+  video_player: ^2.8.2
 
 
 

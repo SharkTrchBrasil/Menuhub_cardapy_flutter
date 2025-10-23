@@ -3,6 +3,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:totem/models/product.dart';
 
+import 'cart_item.dart';
+
 
 class CartItemVariantOption extends Equatable {
   final int variantOptionId;
@@ -66,60 +68,9 @@ class CartItemVariant extends Equatable {
   List<Object> get props => [variantId, options];
 }
 
-class CartItem extends Equatable {
-  final int id;
-  final Product product;
-  final int quantity;
-  final String? note;
-  final List<CartItemVariant> variants;
-
-  // Campos calculados pelo backend
-  final int unitPrice;
-  final int totalPrice;
-
-  const CartItem({
-    required this.id,
-    required this.product,
-    required this.quantity,
-    this.note,
-    required this.variants,
-    required this.unitPrice,
-    required this.totalPrice,
-  });
-
-  factory CartItem.fromJson(Map<String, dynamic> json) {
-    return CartItem(
-      id: json['id'],
-      product: Product.fromJson(json['product']),
-      quantity: json['quantity'],
-      note: json['note'],
-      variants: (json['variants'] as List)
-          .map((variantJson) => CartItemVariant.fromJson(variantJson))
-          .toList(),
-      unitPrice: json['unit_price'],
-      totalPrice: json['total_price'],
-    );
-  }
 
 
-  // ✅ CORREÇÃO: O MÉTODO QUE FALTAVA.
-  /// Converte este item do carrinho para o formato JSON esperado pelo backend na criação do pedido.
-  Map<String, dynamic> toJsonForOrder() {
-    return {
-      'product_id': product.id,
-      'quantity': quantity,
-      'note': note,
-      'price': unitPrice, // Enviamos o preço unitário para validação no backend
-      'variants': variants.map((variant) => variant.toJson()).toList(),
-    };
-  }
 
-
-  @override
-  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice];
-}
-
-// --- Modelo Principal do Carrinho ---
 
 class Cart extends Equatable {
   final int id;

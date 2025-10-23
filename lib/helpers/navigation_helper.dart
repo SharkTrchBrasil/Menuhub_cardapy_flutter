@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/core/extensions.dart';
 
 import '../models/cart.dart';
+import '../models/cart_item.dart';
 import '../models/cart_product.dart';
 import '../models/coupon.dart';
 import '../models/product.dart';

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/core/extensions.dart';
 
+import '../../../helpers/enums/displaymode.dart';
 import '../../../models/cart_variant.dart';
 import '../../../models/cart_variant_option.dart';
 import '../../../models/variant_option.dart';

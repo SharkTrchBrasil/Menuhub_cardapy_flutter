@@ -6,7 +6,7 @@ import 'package:totem/models/cart_variant.dart'; // Nosso CartVariant corrigido
 import 'package:totem/models/coupon.dart';
 import 'package:totem/models/product.dart';
 
-import '../helpers/enums.dart';
+
 import 'cart_variant_option.dart';
 
 class CartProduct {

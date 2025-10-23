@@ -42,166 +42,79 @@ class RealtimeRepository {
   final BehaviorSubject<Order> orderController = BehaviorSubject<Order>(); // Changed to BehaviorSubject
 
 
+// lib/repositories/realtime_repository.dart
+
   Future<void> initialize(String totemToken) async {
-    // Usamos um Completer para controlar a conclusão do Future
     final completer = Completer<void>();
 
-
     final apiUrl = dotenv.env['API_URL'];
-    // ✅ CORREÇÃO: Montamos a URL de conexão com o token diretamente.
+
+    // ✅ CONEXÃO CORRETA: Token como query parameter
     final uri = '$apiUrl?totem_token=$totemToken';
 
-    print("🔌 RealtimeRepository: Preparando para inicializar com o token.");
-    print('🛠️ Conectando a: $uri');
+    print("🔌 RealtimeRepository: Conectando ao servidor...");
+    print('🛠️ URL: $uri');
 
     _socket = IO.io(
-      uri, // Usa a URL completa com o token
+      uri,
       IO.OptionBuilder()
           .setTransports(<String>['websocket'])
           .disableAutoConnect()
-      // ❌ REMOVEMOS o .setAuth(), pois o token já está na URL.
+          .setReconnectionAttempts(5)
+          .setReconnectionDelay(2000)
           .build(),
     );
 
+    // ✅ LISTENERS ESSENCIAIS
+    _socket!.on('connect', (_) {
+      print('✅ Socket.IO: Conectado com sucesso!');
+      if (!completer.isCompleted) completer.complete();
+    });
 
-
-    // Remove listeners antigos para evitar duplicação em caso de reconexão manual
-    _socket.clearListeners();
-
-
-
-    print("📝 RealtimeRepository: Registrando listeners de eventos...");
-
-    _socket.onConnect((_) {
-      print("✅ [Socket.IO] Conectado com sucesso ao servidor!");
-      // ✅ A conexão foi um sucesso, então completamos o Future.
-
+    _socket!.on('connect_error', (error) {
+      print('❌ Socket.IO: Erro de conexão: $error');
       if (!completer.isCompleted) {
-        completer.complete();
+        completer.completeError('Erro ao conectar: $error');
       }
     });
 
-    _socket.onDisconnect((_) {
-      print("🔌 [Socket.IO] Desconectado do servidor.");
+    _socket!.on('disconnect', (_) {
+      print('⚠️ Socket.IO: Desconectado do servidor');
     });
 
-    _socket.onError((error) {
-      print("❌ [Socket.IO] Ocorreu um erro: $error");
-
+    // ✅ EVENTOS DE DADOS DO BACKEND
+    _socket!.on('products_update', (data) {
+      print('📦 Produtos atualizados recebidos');
+      final List<Product> products = (data as List)
+          .map((json) => Product.fromJson(json))
+          .toList();
+      productsController.add(products);
     });
 
-    _socket.on('initial_state_loaded', (data) {
-    //  print('✅ [Socket.IO] Evento "initial_state_loaded" recebido!');
-
-      if (data['store'] != null) {
-        storeController.add(Store.fromJson(data['store']));
-     //   print(data['store']);
-
-      }
-      if (data['products'] != null) {
-        final products = (data['products'] as List).map((e) => Product.fromJson(e)).toList();
-
-        productsController.add(products);
-
-        print(data['products']);
-      }
-      if (data['theme'] != null) {
-        _dsThemeSwitcher.changeTheme(DsTheme.fromJson(data['theme']));
-      }
-      if (data['banners'] != null) {
-        final banners = (data['banners'] as List).map((e) => BannerModel.fromJson(e)).toList();
-        bannersController.add(banners);
-      }
+    _socket!.on('banners_update', (data) {
+      print('🎨 Banners atualizados recebidos');
+      final List<BannerModel> banners = (data as List)
+          .map((json) => BannerModel.fromJson(json))
+          .toList();
+      bannersController.add(banners);
     });
 
-
-    _socket.on('order_updated', (data) {
-      try {
-        final order = Order.fromJson(data);
-        orderController.add(order);
-      } catch (e) {
-        print('Error parsing order: $e');
-      }
+    _socket!.on('order_update', (data) {
+      print('🛒 Atualização de pedido recebida');
+      final Order order = Order.fromJson(data);
+      orderController.add(order);
     });
 
+    _socket!.connect();
 
-    // Em lib/repositories/realtime_repository.dart
-
-// ... dentro da sua função initialize ...
-
-    // ✅ LISTENER CORRIGIDO
-    // Em lib/repositories/realtime_repository.dart, dentro da função initialize
-
-    // ... outros listeners ...
-
-    // ✅ LISTENER CORRIGIDO PARA ESPERAR UMA LISTA
-    _socket.on('products_updated', (data) { // O 'data' recebido aqui é a lista de produtos
-      print('🔄 [Socket.IO] Evento "products_updated" recebido!');
-      try {
-        // 1. A correção principal: verificamos se o dado recebido é diretamente uma LISTA.
-        if (data is List) {
-
-          // 2. Converte a lista de JSON para uma lista de objetos Product
-          final updatedProducts = data
-              .map((e) => Product.fromJson(e as Map<String, dynamic>))
-              .toList();
-
-          // 3. Emite a nova lista para quem estiver escutando
-          productsController.add(updatedProducts);
-          print('✅ Lista de produtos atualizada no cardápio.');
-
-        } else {
-          // Se não for uma lista, o formato está realmente errado.
-          print('⚠️ Payload de "products_updated" não é uma lista como esperado. Formato recebido: ${data.runtimeType}');
-        }
-      } catch (e) {
-        print('❌ Erro ao processar "products_updated": $e');
-      }
-    });
-
-// ... resto da função ...
-
-
-
-
-// ✅ ADICIONE ESTE NOVO LISTENER AQUI
-    _socket.on('store_updated', (data) {
-      print('🔄 [Socket.IO] Evento "store_updated" recebido!');
-      try {
-        // O payload do 'store_updated' geralmente é o próprio objeto da loja
-        if (data != null && data is Map<String, dynamic>) {
-          final updatedStore = Store.fromJson(data);
-
-          // Emite a nova informação da loja para quem estiver escutando
-          storeController.add(updatedStore);
-          print('✅ Dados da loja atualizados no cardápio.');
-        }
-      } catch (e) {
-        print('❌ Erro ao processar "store_updated": $e');
-      }
-    });
-
-
-    _socket.onConnectError((error) {
-      print("❌ [Socket.IO] Erro de conexão: $error");
-      // ✅ A conexão falhou, então completamos o Future com um erro.
-      if (!completer.isCompleted) {
-        completer.completeError(Exception("Falha ao conectar ao servidor: $error"));
-      }
-    });
-
-
-
-
-    print("📡 RealtimeRepository: Tentando conectar ao servidor...");
-    _socket.connect();
-
-
-    await completer.future.timeout(const Duration(seconds: 10), onTimeout: () {
-      throw Exception('Tempo de conexão esgotado.');
-    });
-
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        throw TimeoutException('Timeout ao conectar ao servidor');
+      },
+    );
   }
+
 
   void dispose() {
     storeController.close();
