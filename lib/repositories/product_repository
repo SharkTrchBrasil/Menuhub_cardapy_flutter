@@ -1,0 +1,40 @@
+// lib/repositories/product_repository.dart
+
+import 'package:dio/dio.dart';
+import 'package:either_dart/either.dart';
+import 'package:flutter/foundation.dart';
+import 'package:totem_pro_admin/core/di.dart'; // Supondo que o getIt esteja aqui
+
+class ProductRepository {
+  final Dio _dio;
+
+  ProductRepository(this._dio);
+
+  /// Registra uma visualização para um produto específico.
+  ///
+  /// Este método deve ser chamado no `initState` da sua tela de detalhes do produto
+  /// no app do totem/cardápio.
+  /// Retorna `Right(null)` em caso de sucesso e `Left(null)` em caso de falha.
+  Future<Either<void, void>> recordProductView(int productId, int storeId,) async {
+    try {
+      // Pega a URL/slug da loja, assim como você faz no StoreRepository
+      final storeUrl = getIt<String>(instanceName: 'initialSubdomain');
+
+      // Faz a chamada POST para o endpoint que criamos no backend.
+      // Não precisamos enviar um corpo (data), e esperamos uma resposta 204 (No Content).
+      await _dio.post(
+        '/products/$store_id/$productId/view',
+      );
+
+      // Se a chamada não lançar uma exceção, consideramos sucesso.
+      debugPrint('Visualização registrada para o produto ID: $productId');
+      return const Right(null);
+
+    } catch (e) {
+      // Em caso de erro (ex: sem internet, erro no servidor),
+      // apenas registramos no console e retornamos Left.
+      debugPrint('Erro ao registrar visualização do produto: $e');
+      return const Left(null);
+    }
+  }
+}
