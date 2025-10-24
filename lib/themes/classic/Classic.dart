@@ -13,12 +13,12 @@ import '../../helpers/constants.dart';
 
 
 import '../../pages/cart/cart_cubit.dart';
-import '../../pages/cart/cart_state.dart';
-import '../../pages/home/home_page.dart';
+
 import '../../cubit/store_cubit.dart';
 
 
 
+import '../../pages/cart/cart_state.dart';
 import 'mobile/home_body_mobile.dart';
 
 import '../ds_theme.dart';

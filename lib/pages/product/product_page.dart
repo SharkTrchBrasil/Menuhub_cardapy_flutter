@@ -16,11 +16,14 @@ import 'package:totem/widgets/app_page_status_builder.dart';
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../cubit/auth_cubit.dart';
 import '../../models/cart.dart';
+import '../../models/cart_item.dart';
 import '../../models/update_cart_payload.dart';
 import '../../widgets/dot_loading.dart';
 import '../cart/cart_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../cubit/store_state.dart';
+
+import '../cart/cart_cubit.dart' as CartCubitState;
 import '../cart/cart_state.dart' as CartCubitState;
 import '../signin/signin_page.dart';
 

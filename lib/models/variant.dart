@@ -1,6 +1,15 @@
-
+// lib/models/variant.dart
 
 import 'package:totem/models/variant_option.dart';
+
+// Enum VariantType
+enum VariantType {
+  INGREDIENTS,
+  SPECIFICATIONS,
+  CROSS_SELL,
+  DISPOSABLES,
+  UNKNOWN
+}
 
 class Variant {
   final int? id;
@@ -14,6 +23,26 @@ class Variant {
     required this.type,
     required this.options,
   });
+
+  // ✅ FACTORY EMPTY ADICIONADO
+  factory Variant.empty() {
+    return const Variant(
+      id: null,
+      name: '',
+      type: VariantType.UNKNOWN,
+      options: [],
+    );
+  }
+
+  // ✅ FACTORY PLACEHOLDER (OPCIONAL)
+  factory Variant.placeholder({String? name}) {
+    return Variant(
+      id: 0,
+      name: name ?? 'Carregando...',
+      type: VariantType.UNKNOWN,
+      options: const [],
+    );
+  }
 
   Variant copyWith({
     int? id,
@@ -30,7 +59,7 @@ class Variant {
   }
 
   factory Variant.fromJson(Map<String, dynamic> json) {
-    // ✅ CORRIGIDO: Mapeamento da String da API para o Enum do App
+    // Mapeamento da String da API para o Enum do App
     VariantType typeFromString(String? typeStr) {
       switch (typeStr) {
         case "Ingredientes":
@@ -39,7 +68,7 @@ class Variant {
           return VariantType.SPECIFICATIONS;
         case "Cross-sell":
           return VariantType.CROSS_SELL;
-        case "Descartáveis": // Adicionando o caso que faltava
+        case "Descartáveis":
           return VariantType.DISPOSABLES;
         default:
           return VariantType.UNKNOWN;
@@ -50,8 +79,6 @@ class Variant {
       id: json['id'],
       name: json['name'],
       type: typeFromString(json['type']),
-      // O campo 'options' geralmente vem em uma busca detalhada do Variant,
-      // então mantemos a leitura dele aqui.
       options: (json['options'] as List? ?? [])
           .map((optionJson) => VariantOption.fromJson(optionJson))
           .toList(),
@@ -59,7 +86,7 @@ class Variant {
   }
 
   Map<String, dynamic> toJson() {
-    // ✅ CORRIGIDO: Mapeamento do Enum do App para a String da API
+    // Mapeamento do Enum do App para a String da API
     String typeToString(VariantType type) {
       switch (type) {
         case VariantType.INGREDIENTS:
@@ -69,9 +96,9 @@ class Variant {
         case VariantType.CROSS_SELL:
           return "Cross-sell";
         case VariantType.DISPOSABLES:
-          return "Descartáveis"; // Adicionando o caso que faltava
-        default:
-          return "";
+          return "Descartáveis";
+        case VariantType.UNKNOWN:
+          return "Desconhecido";
       }
     }
 
@@ -79,18 +106,44 @@ class Variant {
       if (id != null) 'id': id,
       'name': name,
       'type': typeToString(type),
-      // ✅ CORRIGIDO: A lista de 'options' foi REMOVIDA daqui.
-      // A API não permite enviar as opções ao criar o "molde" (Variant).
-      // Elas devem ser salvas depois, uma a uma.
+      // Opções são salvas separadamente na API
+      'options': options.map((option) => option.toJson()).toList(),
     };
   }
-}
 
-// Lembre-se de garantir que seu enum VariantType tenha todos os tipos
-enum VariantType {
-  INGREDIENTS,
-  SPECIFICATIONS,
-  CROSS_SELL,
-  DISPOSABLES,
-  UNKNOWN
+  // ✅ HELPER: Pega opção por ID
+  VariantOption? getOptionById(int optionId) {
+    try {
+      return options.firstWhere((option) => option.id == optionId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ✅ HELPER: Lista de opções disponíveis
+  List<VariantOption> get availableOptions {
+    return options.where((option) => option.canBeSelected).toList();
+  }
+
+  // ✅ HELPER: Verifica se tem opções disponíveis
+  bool get hasAvailableOptions {
+    return availableOptions.isNotEmpty;
+  }
+
+  // ✅ HELPER: Verifica se está vazio
+  bool get isEmpty => id == null || id == 0 || name.isEmpty;
+
+  @override
+  String toString() {
+    return 'Variant(id: $id, name: $name, type: ${type.name}, options: ${options.length})';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Variant && other.id == id && other.name == name;
+  }
+
+  @override
+  int get hashCode => id.hashCode ^ name.hashCode;
 }

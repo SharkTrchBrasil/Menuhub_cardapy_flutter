@@ -28,6 +28,21 @@ class CartVariantOption {
     this.quantity = 0,
   });
 
+  /// ✅ FACTORY PARA CRIAR VAZIO
+  factory CartVariantOption.empty() {
+    return CartVariantOption(
+      id: 0,
+      name: '',
+      price: 0,
+      trackInventory: false,
+      stockQuantity: 0,
+      isActuallyAvailable: false,
+      description: null,
+      imageUrl: null,
+      quantity: 0,
+    );
+  }
+
   /// ✅ CONSTRUTOR DE FÁBRICA ATUALIZADO
   /// Cria um item de carrinho a partir do "molde" (VariantOption) vindo da API.
   /// Aceita uma quantidade inicial para a funcionalidade de "opções padrão".
@@ -65,7 +80,8 @@ class CartVariantOption {
       // ✅ LENDO OS NOVOS CAMPOS DO JSON COM VALORES PADRÃO SEGUROS
       trackInventory: json['track_inventory'] ?? false,
       stockQuantity: json['stock_quantity'] ?? 0,
-      isActuallyAvailable: json['is_actually_available'] ?? false, // Por padrão, considera indisponível se a info não vier
+      isActuallyAvailable: json['is_actually_available'] ??
+          false, // Por padrão, considera indisponível se a info não vier
 
       imageUrl: null, // Geralmente não é salvo no JSON do pedido
     );
@@ -97,4 +113,13 @@ class CartVariantOption {
       quantity: quantity ?? this.quantity,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CartVariantOption && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }

@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/models/cart.dart';
 
 import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/cart_state.dart';
+
 import 'package:totem/pages/cart/widgets/cart_bottom_bar.dart';
 import 'package:totem/pages/cart/widgets/cart_itens_section.dart';
 
@@ -19,11 +19,13 @@ import 'package:totem/themes/ds_theme_switcher.dart';
 
 
 import '../../helpers/navigation_helper.dart';
+import '../../models/cart_item.dart';
 import '../../models/cart_product.dart';
 import '../../models/product.dart';
 import '../../models/update_cart_payload.dart';
 import '../../widgets/store_header_card.dart';
 import '../address/cubits/delivery_fee_cubit.dart';
+import 'cart_state.dart';
 
 
 class CartPage extends StatelessWidget {

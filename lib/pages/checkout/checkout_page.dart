@@ -11,7 +11,7 @@ import 'package:totem/models/payment_method.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/cart_state.dart';
+
 import 'package:totem/pages/checkout/checkout_cubit.dart';
 import 'package:totem/pages/checkout/widgets/checkou_summary_card.dart';
 import 'package:totem/pages/checkout/widgets/payment_methods.dart';
@@ -25,6 +25,7 @@ import '../../models/delivery_type.dart';
 import '../../repositories/customer_repository.dart';
 import '../../widgets/ds_primary_button.dart';
 import '../../widgets/store_header_card.dart';
+import '../cart/cart_state.dart';
 
 class CheckoutPage extends StatelessWidget {
   const CheckoutPage({super.key});

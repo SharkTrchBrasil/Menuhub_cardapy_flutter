@@ -42,18 +42,17 @@ class RealtimeRepository {
   final BehaviorSubject<Order> orderController = BehaviorSubject<Order>(); // Changed to BehaviorSubject
 
 
-// lib/repositories/realtime_repository.dart
-
-  Future<void> initialize(String totemToken) async {
+  Future<void> initialize(String connectionToken) async {
     final completer = Completer<void>();
 
     final apiUrl = dotenv.env['API_URL'];
 
-    // ✅ CONEXÃO CORRETA: Token como query parameter
-    final uri = '$apiUrl?totem_token=$totemToken';
+    // --- ✅ 2. MUDANÇA NA CONSTRUÇÃO DA URL ---
+    // O parâmetro da query agora é `connection_token`.
+    final uri = '$apiUrl?connection_token=$connectionToken';
 
     print("🔌 RealtimeRepository: Conectando ao servidor...");
-    print('🛠️ URL: $uri');
+    print('🛠️ URL de conexão: $uri');
 
     _socket = IO.io(
       uri,
@@ -65,47 +64,45 @@ class RealtimeRepository {
           .build(),
     );
 
-    // ✅ LISTENERS ESSENCIAIS
-    _socket!.on('connect', (_) {
+    // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
+    _socket.on('connect', (_) {
       print('✅ Socket.IO: Conectado com sucesso!');
       if (!completer.isCompleted) completer.complete();
     });
 
-    _socket!.on('connect_error', (error) {
+    _socket.on('connect_error', (error) {
       print('❌ Socket.IO: Erro de conexão: $error');
       if (!completer.isCompleted) {
         completer.completeError('Erro ao conectar: $error');
       }
     });
 
-    _socket!.on('disconnect', (_) {
+    _socket.on('disconnect', (_) {
       print('⚠️ Socket.IO: Desconectado do servidor');
     });
 
-    // ✅ EVENTOS DE DADOS DO BACKEND
-    _socket!.on('products_update', (data) {
+    // ✅ EVENTOS DE DADOS DO BACKEND (permanecem iguais)
+    _socket.on('products_update', (data) {
       print('📦 Produtos atualizados recebidos');
-      final List<Product> products = (data as List)
-          .map((json) => Product.fromJson(json))
-          .toList();
+      final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
       productsController.add(products);
     });
 
-    _socket!.on('banners_update', (data) {
+    _socket.on('banners_update', (data) {
       print('🎨 Banners atualizados recebidos');
-      final List<BannerModel> banners = (data as List)
-          .map((json) => BannerModel.fromJson(json))
-          .toList();
+      final List<BannerModel> banners = (data as List).map((json) => BannerModel.fromJson(json)).toList();
       bannersController.add(banners);
     });
 
-    _socket!.on('order_update', (data) {
+    // O evento `initial_state_loaded` agora é manipulado no handler de conexão do backend,
+    // então não precisamos de um listener específico para ele aqui, mas para outros eventos sim.
+    _socket.on('order_update', (data) {
       print('🛒 Atualização de pedido recebida');
       final Order order = Order.fromJson(data);
       orderController.add(order);
     });
 
-    _socket!.connect();
+    _socket.connect();
 
     return completer.future.timeout(
       const Duration(seconds: 10),

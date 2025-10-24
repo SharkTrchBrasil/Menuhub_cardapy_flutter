@@ -1,4 +1,6 @@
-import 'package:totem/models/cart.dart'; // Importe os modelos que acabamos de criar
+import 'package:totem/models/cart.dart';
+
+import 'cart_item.dart'; // Importe os modelos que acabamos de criar
 
 class UpdateCartItemPayload {
   final int? cartItemId;

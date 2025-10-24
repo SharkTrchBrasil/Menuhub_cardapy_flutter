@@ -10,6 +10,7 @@ import 'package:totem/themes/ds_theme.dart';
 
 import '../../../helpers/navigation_helper.dart';
 import '../../../models/cart.dart';
+import '../../../models/cart_item.dart';
 import '../../../models/update_cart_payload.dart';
 import '../../../themes/ds_theme_switcher.dart';
 import '../../../widgets/ds_tag.dart';

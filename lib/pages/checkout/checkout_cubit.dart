@@ -6,7 +6,7 @@ import 'package:equatable/equatable.dart';
 import 'package:totem/models/order.dart';
 
 
-import 'package:totem/pages/cart/cart_state.dart';
+
 import 'package:totem/repositories/realtime_repository.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 
@@ -17,6 +17,8 @@ import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 
 import '../../models/create_order_payload.dart';
 import '../../models/store.dart';
+import '../cart/cart_cubit.dart';
+import '../cart/cart_state.dart';
 
 part 'checkout_state.dart';
 

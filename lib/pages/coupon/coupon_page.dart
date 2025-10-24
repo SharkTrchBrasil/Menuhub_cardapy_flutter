@@ -14,7 +14,7 @@ import 'package:totem/repositories/realtime_repository.dart';
 
 // Cubits e States
 import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/cart_state.dart';
+
 
 // Widgets e Temas
 import 'package:totem/themes/ds_theme.dart';

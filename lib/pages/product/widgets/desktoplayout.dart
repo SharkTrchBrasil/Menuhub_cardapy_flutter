@@ -14,6 +14,7 @@ import 'package:totem/widgets/ds_primary_button.dart';
 
 import '../../../cubit/auth_cubit.dart';
 import '../../../models/cart.dart';
+import '../../../models/cart_item.dart';
 import '../../../models/cart_variant.dart';
 import '../../../models/cart_variant_option.dart';
 import '../../../models/update_cart_payload.dart';

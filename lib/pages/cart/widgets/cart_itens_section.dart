@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/models/cart.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
+import '../../../models/cart_item.dart';
 import 'cart_product_list_item.dart'; // O nosso widget de item corrigido
 
 class CartItemsSection extends StatelessWidget {
