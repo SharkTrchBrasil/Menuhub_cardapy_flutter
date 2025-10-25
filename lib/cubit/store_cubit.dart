@@ -9,28 +9,48 @@ import 'package:totem/repositories/realtime_repository.dart';
 
 import '../models/banners.dart';
 import '../models/store.dart';
-import '../models/rating_summary.dart'; // Importe RatingsSummary
+import '../models/rating_summary.dart';
 
 class StoreCubit extends Cubit<StoreState> {
   StoreCubit(this._realtimeRepository) : super(StoreState()) {
     _subscription = _realtimeRepository.productsController.listen((products) {
+
       emit(state.copyWith(products: products));
 
-      if(state.selectedCategory == null && state.categories.isNotEmpty ||
-          !state.categories.contains(state.selectedCategory)) {
+
+      // ✅ CORREÇÃO: Seleciona categoria padrão baseado nas categorias da loja
+      if (state.selectedCategory == null && state.categories.isNotEmpty) {
+        print('⚙️ Selecionando categoria padrão: ${state.categories.first.name}');
         emit(state.copyWith(selectedCategory: state.categories.first));
       }
     });
 
     _storeSub = _realtimeRepository.storeController.listen((storeData) {
+      print('🏪 StoreCubit: Loja recebida');
+      print('   ├─ Nome: ${storeData.name}');
+      print('   ├─ Categorias: ${storeData.categories.length}');
+      for (var cat in storeData.categories) {
+        print('      └─ ${cat.name} (ID: ${cat.id})');
+      }
+
       emit(state.copyWith(store: storeData));
+
+      print('📊 Estado após atualizar loja:');
+      print('   ├─ state.store != null: ${state.store != null}');
+      print('   ├─ state.categories.length: ${state.categories.length}');
+      print('   └─ state.selectedCategory: ${state.selectedCategory?.name}');
+
+      // ✅ ADICIONE: Quando a loja carregar, seleciona a primeira categoria
+      if (state.selectedCategory == null && storeData.categories.isNotEmpty) {
+        print('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
+        emit(state.copyWith(selectedCategory: storeData.categories.first));
+      }
     });
 
     _bannersSub = _realtimeRepository.bannersController.listen((banners) {
+      print('🎨 StoreCubit: Banners recebidos: ${banners.length}');
       emit(state.copyWith(banners: banners));
     });
-
-
   }
 
   late final StreamSubscription<List<BannerModel>> _bannersSub;

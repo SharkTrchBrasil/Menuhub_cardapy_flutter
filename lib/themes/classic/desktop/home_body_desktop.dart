@@ -3,45 +3,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/themes/classic/desktop/widgets/fetrured_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/product_grid_list.dart';
-// ✅ Adicione o import para o seu modelo de Loja (Store)
-// import 'package:totem/models/store.dart';
 import 'package:totem/themes/classic/widgets/store_card.dart';
-import 'package:totem/themes/ds_theme.dart';
+import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/widgets/footer.dart';
-import '../../../helpers/dimensions.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../../../helpers/store_hours_helper.dart';
 import '../../../models/store.dart';
-import '../../ds_theme_switcher.dart';
 import '../widgets/featured_product.dart';
-import '../widgets/product_item.dart';
 
 class HomeBodyDesktop extends StatefulWidget {
-  // ✅ Adicionado o objeto da loja para popular os dados do cabeçalho
-   final Store? store;
+  final Store? store;
   final List<BannerModel> banners;
   final List<Category> categories;
   final List<Product> products;
   final Category? selectedCategory;
-  final DsCategoryLayout categoryLayout;
-  final DsProductLayout productLayout;
-  final Function(Category) onCategorySelected;
+  final Function(Category?) onCategorySelected;
 
   const HomeBodyDesktop({
     super.key,
-     required this.store,
+    required this.store,
     required this.banners,
     required this.categories,
     required this.products,
     required this.selectedCategory,
-    required this.categoryLayout,
-    required this.productLayout,
     required this.onCategorySelected,
   });
 
@@ -53,44 +42,36 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final Map<int, GlobalKey> _categoryKeys = {};
-  Category? _localSelectedCategory;
   final Map<int, double> _categoryOffsets = {};
   List<Product> _filteredProducts = [];
-  // ✅ 1. Adicione esta variável de estado
   bool _showCategoryFilterInBar = false;
-
   final double _scrollThreshold = 300.0;
 
   @override
   void initState() {
     super.initState();
-    _localSelectedCategory = widget.selectedCategory;
-    _filteredProducts = widget.products;
-    for (var category in widget.categories) {
-   //   _categoryKeys[category.id!] = GlobalKey();
-    }
+    _initializeState();
     _scrollController.addListener(_onScroll);
     _searchController.addListener(_onSearchChanged);
-   // WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
-    _calculateCategoryOffsets();
   }
 
   @override
   void didUpdateWidget(HomeBodyDesktop oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedCategory != oldWidget.selectedCategory) {
-      setState(() => _localSelectedCategory = widget.selectedCategory);
-    }
     if (widget.categories != oldWidget.categories || widget.products != oldWidget.products) {
-      _categoryKeys.clear();
-      for (var category in widget.categories) {
+      _initializeState();
+    }
+  }
+
+  void _initializeState() {
+    _filteredProducts = widget.products;
+    _categoryKeys.clear();
+    for (var category in widget.categories) {
+      if (category.id != null) {
         _categoryKeys[category.id!] = GlobalKey();
       }
-      _onSearchChanged();
-    //  WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
-
-      _calculateCategoryOffsets();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
   }
 
   @override
@@ -112,38 +93,29 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
           return product.name.toLowerCase().contains(query);
         }).toList();
       }
+      WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
     });
   }
 
   void _calculateCategoryOffsets() {
-    // O addPostFrameCallback garante que este código rode após o layout ser construído.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _categoryOffsets.clear();
-      for (var category in widget.categories) {
-        final key = _categoryKeys[category.id];
-
-        if (key?.currentContext != null) {
-          // Buscamos o objeto de renderização, sem forçar o tipo para RenderBox.
-          final renderObject = key!.currentContext!.findRenderObject();
-
-          // Verificamos se o objeto é de fato um RenderSliver.
-          if (renderObject is RenderSliver) {
-
-            final offset = renderObject.constraints.precedingScrollExtent;
-            _categoryOffsets[category.id!] = offset;
-          }
+    _categoryOffsets.clear();
+    for (var entry in _categoryKeys.entries) {
+      final key = entry.value;
+      if (key.currentContext != null) {
+        final renderObject = key.currentContext!.findRenderObject();
+        if (renderObject is RenderSliver) {
+          final offset = renderObject.constraints.precedingScrollExtent;
+          _categoryOffsets[entry.key] = offset;
         }
       }
-
-    });
+    }
   }
 
   void _scrollToCategory(int categoryId) {
     final key = _categoryKeys[categoryId];
-    final context = key?.currentContext;
-    if (context != null) {
+    if (key?.currentContext != null) {
       Scrollable.ensureVisible(
-        context,
+        key!.currentContext!,
         duration: const Duration(milliseconds: 500),
         alignment: 0.1,
         curve: Curves.easeInOutCubic,
@@ -154,13 +126,12 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
   void _onScroll() {
     final currentScrollOffset = _scrollController.offset;
     Category? newSelectedCategory;
-
     const stickyHeaderHeight = 80.0;
     final selectionThreshold = currentScrollOffset + stickyHeaderHeight;
 
     for (var category in widget.categories) {
-      final categoryId = category.id!;
-      if (_categoryOffsets.containsKey(categoryId)) {
+      final categoryId = category.id;
+      if (categoryId != null && _categoryOffsets.containsKey(categoryId)) {
         final categoryOffset = _categoryOffsets[categoryId]!;
         if (selectionThreshold >= categoryOffset) {
           newSelectedCategory = category;
@@ -169,37 +140,29 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
     }
 
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 150) {
-      final lastCategoryWithProducts = widget.categories.lastWhere(
-              (cat) => _filteredProducts.any((p) => p.category.id == cat.id),
-          orElse: () => widget.categories.last
+      final lastCategoryWithProducts = widget.categories.lastWhereOrNull(
+            (cat) => _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == cat.id)),
       );
-      newSelectedCategory = lastCategoryWithProducts;
+      if(lastCategoryWithProducts != null) {
+        newSelectedCategory = lastCategoryWithProducts;
+      }
     }
 
-    if (newSelectedCategory != null && _localSelectedCategory?.id != newSelectedCategory.id) {
-      setState(() => _localSelectedCategory = newSelectedCategory);
+    if (widget.selectedCategory?.id != newSelectedCategory?.id) {
+      widget.onCategorySelected(newSelectedCategory);
     }
 
-
-    // ✅ 3. Adicione esta nova lógica para controlar a visibilidade
     final shouldShow = _scrollController.offset > _scrollThreshold;
     if (shouldShow != _showCategoryFilterInBar) {
-      setState(() {
-        _showCategoryFilterInBar = shouldShow;
-      });
+      setState(() => _showCategoryFilterInBar = shouldShow);
     }
-
-    widget.onCategorySelected(newSelectedCategory!);
   }
 
   @override
   Widget build(BuildContext context) {
-
     final theme = context.watch<DsThemeSwitcher>().theme;
-
     return Scaffold(
       appBar: AppBar(
-        // ✅ Título da AppBar agora usa o nome da loja
         title: Text(widget.store?.name ?? 'Cardápio'),
         centerTitle: false,
         actions: [
@@ -211,92 +174,56 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
         controller: _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // ✅ A estrutura agora segue o layout da imagem: Header, Filtros, Destaques, Categorias
           SliverToBoxAdapter(child: _buildMerchantHeader(widget.store)),
-
           SliverPersistentHeader(
             pinned: true,
-            delegate: _StickyHeaderDelegate(
-              minHeight: 80,
-              maxHeight: 80,
-              child: _buildStickyFilterBar(),
-            ),
+            delegate: _StickyHeaderDelegate(minHeight: 80, maxHeight: 80, child: _buildStickyFilterBar()),
           ),
-
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          SliverToBoxAdapter(child: FeaturedProductList(products: widget.products)),
+          SliverToBoxAdapter(child: FeaturedProductList(products: widget.products, categories: widget.categories,)),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-
-          for (final category in widget.categories)
-            ..._buildCategoryGridSection(context, category),
-
-
-
-
+          for (final category in widget.categories) ..._buildCategoryGridSection(context, category),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
-
-           SliverToBoxAdapter(child: FooterWidget(store: widget.store, theme: theme ,))
-
-
+          SliverToBoxAdapter(child: FooterWidget(store: widget.store, theme: theme)),
         ],
       ),
     );
   }
 
-
-
-
-
-
-
-
-
-  // ✅ NOVO MÉTODO AUXILIAR: Gera os slivers para cada seção de categoria/grid
   List<Widget> _buildCategoryGridSection(BuildContext context, Category category) {
-    final key = _categoryKeys[category.id];
+    if (category.id == null) return [];
+    final key = _categoryKeys[category.id!];
+
+    // ✅ CORREÇÃO APLICADA AQUI
     final productsInCategory = _filteredProducts
-        .where((p) => p.category.id == category.id)
+        .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
         .toList();
 
-    // Se a categoria não tiver produtos, não renderiza nada para ela
-    if (productsInCategory.isEmpty) {
-      return [];
-    }
+    if (productsInCategory.isEmpty) return [];
 
-    // Retorna uma lista contendo o título e o grid de produtos
     return [
-      // 1. Sliver para o TÍTULO da categoria
-      // A 'key' foi movida para cá para que a lógica de scroll continue funcionando
       SliverToBoxAdapter(
         key: key,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(71, 24, 71, 8), // (55 + 16)
+          padding: const EdgeInsets.fromLTRB(71, 24, 71, 8),
           child: Text(
             category.name,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
       ),
-
-      // 2. Sliver para o GRID de produtos com padding
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 55, vertical: 16),
         sliver: SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,         // Define 2 colunas
-            crossAxisSpacing: 16,      // Espaçamento horizontal entre os itens
-            mainAxisSpacing: 16,       // Espaçamento vertical entre os itens
-            mainAxisExtent: 140,    // Ajuste a proporção (largura/altura) do seu item
+            crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, mainAxisExtent: 140,
           ),
           delegate: SliverChildBuilderDelegate(
                 (context, index) {
               final product = productsInCategory[index];
               return ProductItemGrid(
                 product: product,
-                onTap: () => goToProductPage(context, product),
+                onTap: () => goToProductPage(context, product), category: category,
               );
             },
             childCount: productsInCategory.length,
@@ -306,28 +233,11 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
     ];
   }
 
-
-
-
-
-
-
-
-
   Widget _buildMerchantHeader(Store? store) {
-    // Se a loja for nula, mostra um placeholder
-    if (store == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // --- LÓGICA DE STATUS ---
-    // 1. Instancia o nosso helper com os horários da loja
+    if (store == null) return const Center(child: CircularProgressIndicator());
     final statusHelper = StoreStatusHelper(hours: store.hours);
-    // 2. Pega o status atual e a mensagem
-    final bool isStoreOpen = statusHelper.isOpen;
-    final String nextOpeningMessage = statusHelper.statusMessage;
-    // --- FIM DA LÓGICA ---
-
+    final isStoreOpen = statusHelper.isOpen;
+    final nextOpeningMessage = statusHelper.statusMessage;
     final storeName = store.name;
     final rating = store.ratingsSummary?.averageRating ?? 0.0;
     final minOrder = store.store_operation_config?.deliveryMinOrder ?? 0;
@@ -339,55 +249,29 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
         padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 60),
         child: Column(
           children: [
-            // ✅ USAREMOS UM STACK PARA COLOCAR O OVERLAY SOBRE O BANNER
             Stack(
               alignment: Alignment.center,
               children: [
-                // 1º item do Stack: O Banner
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    bannerUrl,
-                    height: 220,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+                  child: Image.network(bannerUrl, height: 220, width: double.infinity, fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
-                      height: 220,
-                      color: Colors.grey.shade300,
+                      height: 220, color: Colors.grey.shade300,
                       child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
                     ),
                   ),
                 ),
-
-                // ✅ 2º item do Stack: O Overlay (só aparece se a loja estiver fechada)
                 if (!isStoreOpen)
                   Positioned.fill(
                     child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6), // Fundo preto transparente
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
                       child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text(
-                              'LOJA FECHADA',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
+                            const Text('LOJA FECHADA', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                             const SizedBox(height: 8),
-                            Text(
-                              nextOpeningMessage, // Ex: "Abre amanhã às 10:00"
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                            ),
+                            Text(nextOpeningMessage, style: const TextStyle(color: Colors.white, fontSize: 16)),
                           ],
                         ),
                       ),
@@ -396,71 +280,39 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
               ],
             ),
             const SizedBox(height: 16),
-            // Row com informações da loja
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Logo da Loja
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundImage: NetworkImage(logoUrl),
-                    backgroundColor: Colors.grey.shade200,
-                  ),
+                  CircleAvatar(radius: 32, backgroundImage: NetworkImage(logoUrl), backgroundColor: Colors.grey.shade200),
                   const SizedBox(width: 16),
-                  // Nome da loja e avaliação
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-
                       children: [
-                        Text(
-                          storeName,
-                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        Text(storeName, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w600)),
                         const SizedBox(width: 12),
                         Padding(
                           padding: const EdgeInsets.only(top: 12.0),
                           child: Row(
                             children: [
-
-
                               const Icon(Icons.star, color: Colors.amber, size: 18),
-
-                              Text(
-                                rating.toStringAsFixed(1),
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.amber,
-                                ),
-                              ),
+                              Text(rating.toStringAsFixed(1), style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.amber)),
                             ],
                           ),
-                        )
-
+                        ),
                       ],
                     ),
                   ),
-
-                  // Botão "Ver mais" e Pedido Mínimo
-                  TextButton(
-                    onPressed: () {},
-                    child: const Text('Ver mais'),
-                  ),
+                  TextButton(onPressed: () {}, child: const Text('Ver mais')),
                   const SizedBox(width: 16),
-                  // Ícone e texto do pedido mínimo
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.monetization_on_outlined, color: Colors.grey.shade600, size: 18),
                       const SizedBox(width: 4),
-                      Text(
-                        'Pedido mínimo R\$ ${minOrder.toStringAsFixed(2)}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
-                      ),
+                      Text('Pedido mínimo R\$ ${minOrder.toStringAsFixed(2)}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700)),
                     ],
                   ),
                 ],
@@ -472,42 +324,19 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
     );
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   Widget _buildStickyFilterBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade300, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 1)),
       ),
       child: Center(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
-          // Uma animação de Fade (esmaecer) é a mais segura para trocas de layout complexas.
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(opacity: animation, child: child);
-          },
+          transitionBuilder: (Widget child, Animation<double> animation) => FadeTransition(opacity: animation, child: child),
           child: !_showCategoryFilterInBar
-              ? // 🔵 ESTADO 1 (Não rolou): Apenas a busca, ocupando todo o espaço.
-          Row(
+              ? Row(
             key: const ValueKey('search_only'),
             children: [
               Expanded(
@@ -520,47 +349,34 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                     filled: true,
                     fillColor: Colors.grey.shade200,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
                 ),
               ),
-              Spacer()
+              const Spacer(),
             ],
           )
-              : // 🟢 ESTADO 2 (Rolou): Busca à esquerda, seletor de categorias à direita.
-          Row(
+              : Row(
             key: const ValueKey('search_and_categories'),
             children: [
-
               Expanded(
                 flex: 1,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<Category>(
-                      value: _localSelectedCategory,
+                      value: widget.selectedCategory,
                       isExpanded: true,
                       icon: const Icon(Icons.keyboard_arrow_down),
                       items: widget.categories.map((Category category) {
                         return DropdownMenuItem<Category>(
                           value: category,
-                          child: Text(
-                            category.name,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: Text(category.name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
                         );
                       }).toList(),
                       onChanged: (Category? newCategory) {
                         if (newCategory != null) {
-                          setState(() => _localSelectedCategory = newCategory);
                           widget.onCategorySelected(newCategory);
                           _scrollToCategory(newCategory.id!);
                         }
@@ -569,7 +385,6 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                   ),
                 ),
               ),
-
               const SizedBox(width: 16),
               Expanded(
                 flex: 1,
@@ -581,10 +396,7 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                     filled: true,
                     fillColor: Colors.grey.shade200,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
                 ),
               ),
@@ -594,9 +406,6 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
       ),
     );
   }
-
-
-
 }
 
 class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
@@ -604,29 +413,21 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final double maxHeight;
   final Widget child;
 
-  const _StickyHeaderDelegate({
-    required this.minHeight,
-    required this.maxHeight,
-    required this.child,
-  });
-
+  const _StickyHeaderDelegate({required this.minHeight, required this.maxHeight, required this.child});
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return SizedBox.expand(child: child);
-  }
-
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
   @override
   double get maxExtent => maxHeight;
-
   @override
   double get minExtent => minHeight;
-
   @override
-  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) {
-    return maxHeight != oldDelegate.maxHeight ||
-        minHeight != oldDelegate.minHeight ||
-        child != oldDelegate.child;
-  }
+  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) =>
+      maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
 }
 
-
+extension on List<Category> {
+  Category? lastWhereOrNull(bool Function(Category) test) {
+    final list = where(test).toList();
+    return list.isEmpty ? null : list.last;
+  }
+}

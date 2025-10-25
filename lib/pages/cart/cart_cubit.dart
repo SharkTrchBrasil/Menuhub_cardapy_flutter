@@ -1,63 +1,51 @@
 // Em: lib/cubits/cart/cart_cubit.dart
 
 import 'dart:async';
-
 import 'package:bloc/bloc.dart';
-import 'package:totem/models/cart.dart'; // ✅ Importa o novo Cart
-import 'package:totem/models/update_cart_payload.dart'; // ✅ Importa o payload
+import 'package:totem/models/cart.dart';
+import 'package:totem/models/update_cart_payload.dart';
 import 'package:totem/repositories/realtime_repository.dart';
 import '../../models/product.dart';
 import 'cart_state.dart';
+
 class CartCubit extends Cubit<CartState> {
   final RealtimeRepository _realtimeRepository;
-  late final StreamSubscription<List<Product>> _productSubscription;
+  StreamSubscription<List<Product>>? _productSubscription;
 
   CartCubit(this._realtimeRepository) : super(CartState.initial()) {
     fetchCart();
+    _listenToProductUpdates();
+  }
 
+  void _listenToProductUpdates() {
+    // Cancela a inscrição anterior para evitar duplicatas
+    _productSubscription?.cancel();
     // Inicia a "escuta" das atualizações de produtos
     _productSubscription = _realtimeRepository.productsController.stream.listen(_onProductsUpdated);
   }
 
-  /// ✅ ESTA É A NOVA LÓGICA DE ATUALIZAÇÃO EM TEMPO REAL
   void _onProductsUpdated(List<Product> updatedProducts) {
-    // Só processa se o carrinho já estiver carregado e não estiver vazio
     if (state.status != CartStatus.success || state.cart.isEmpty) {
       return;
     }
 
-    bool isCartAffected = false;
-    // Pega os IDs de todos os produtos que estão atualmente no carrinho
     final productIdsInCart = state.cart.items.map((item) => item.product.id).toSet();
+    final bool isCartAffected = updatedProducts.any((updatedProduct) => productIdsInCart.contains(updatedProduct.id));
 
-    // Verifica se algum dos produtos atualizados está no nosso carrinho
-    for (final updatedProduct in updatedProducts) {
-      if (productIdsInCart.contains(updatedProduct.id)) {
-        isCartAffected = true;
-        break; // Encontramos uma correspondência, não precisa continuar
-      }
-    }
-
-    // Se o carrinho foi afetado por uma mudança, busca a versão mais recente do backend
     if (isCartAffected) {
       print('🔄 Produtos no carrinho foram atualizados no servidor. Buscando carrinho atualizado...');
       fetchCart();
-      // Opcional: você poderia emitir um estado aqui para mostrar uma notificação
-      // na UI, como "Os preços no seu carrinho foram atualizados".
     }
   }
 
   @override
   Future<void> close() {
-    _productSubscription.cancel(); // Cancela a inscrição para evitar vazamentos de memória
+    _productSubscription?.cancel();
     return super.close();
   }
 
-  /// Busca o estado mais recente do carrinho no servidor.
   Future<void> fetchCart() async {
-    // Evita múltiplas chamadas se já estiver carregando
     if (state.status == CartStatus.loading) return;
-
     emit(state.copyWith(status: CartStatus.loading));
     try {
       final cart = await _realtimeRepository.getOrCreateCart();
@@ -67,42 +55,40 @@ class CartCubit extends Cubit<CartState> {
     }
   }
 
-
   Future<void> updateItem(UpdateCartItemPayload payload) async {
+    // Não emitimos 'loading' para a UI não piscar a cada item adicionado.
     emit(state.copyWith(isUpdating: true));
     try {
-      // Não emitimos 'loading' aqui para a UI não piscar a cada item adicionado.
       final updatedCart = await _realtimeRepository.updateCartItem(payload);
-      // O backend retorna o carrinho inteiro e atualizado. Nós apenas o exibimos.
-      emit(state.copyWith(status: CartStatus.success, cart: updatedCart,  isUpdating: false,));
+      emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
     } catch (e) {
-      // Idealmente, mostre um SnackBar ou Toast com o erro.
       print("Erro ao atualizar item: $e");
+      // Re-busca o carrinho para garantir consistência após um erro.
+      await fetchCart();
+      // Finalmente, remove o estado de 'isUpdating'
       emit(state.copyWith(isUpdating: false));
-      // Você pode querer re-buscar o carrinho para garantir consistência.
-      fetchCart();
+      // Re-lança o erro para a UI poder mostrá-lo (ex: com um SnackBar)
+      throw e;
     }
   }
 
   Future<void> clearCart() async {
+    emit(state.copyWith(isUpdating: true));
     try {
       final updatedCart = await _realtimeRepository.clearCart();
-      emit(state.copyWith(status: CartStatus.success, cart: updatedCart));
+      emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
     } catch (e) {
       print("Erro ao limpar carrinho: $e");
+      emit(state.copyWith(isUpdating: false));
     }
   }
 
-
-
   Future<void> applyCoupon(String code) async {
-    // Poderíamos ter um estado de loading específico para o cupom, se desejado
     try {
       final updatedCart = await _realtimeRepository.applyCoupon(code);
       emit(state.copyWith(cart: updatedCart));
     } catch (e) {
-      // Re-lança o erro para a UI poder pegá-lo e mostrar um SnackBar
-      throw e;
+      rethrow;
     }
   }
 
@@ -111,8 +97,7 @@ class CartCubit extends Cubit<CartState> {
       final updatedCart = await _realtimeRepository.removeCoupon();
       emit(state.copyWith(cart: updatedCart));
     } catch (e) {
-      throw e;
+      rethrow;
     }
   }
-
 }

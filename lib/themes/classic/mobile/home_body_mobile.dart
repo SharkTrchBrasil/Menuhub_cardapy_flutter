@@ -1,14 +1,9 @@
-// Versão profissional com scroll dinâmico, atualização dos offsets e detecção do fim da lista
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/themes/classic/widgets/store_card.dart';
-import 'package:totem/themes/ds_theme.dart';
-import '../../../helpers/dimensions.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
@@ -18,9 +13,7 @@ class HomeBodyMobile extends StatefulWidget {
   final List<Category> categories;
   final List<Product> products;
   final Category? selectedCategory;
-  final DsCategoryLayout categoryLayout;
-  final DsProductLayout productLayout;
-  final Function(Category) onCategorySelected;
+  final Function(Category?) onCategorySelected;
 
   const HomeBodyMobile({
     super.key,
@@ -28,8 +21,6 @@ class HomeBodyMobile extends StatefulWidget {
     required this.categories,
     required this.products,
     required this.selectedCategory,
-    required this.categoryLayout,
-    required this.productLayout,
     required this.onCategorySelected,
   });
 
@@ -40,16 +31,12 @@ class HomeBodyMobile extends StatefulWidget {
 class _HomeBodyMobileState extends State<HomeBodyMobile> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _categoryKeys = {};
-  Category? _localSelectedCategory;
   final Map<int, double> _categoryOffsets = {};
 
   @override
   void initState() {
     super.initState();
-    _localSelectedCategory = widget.selectedCategory;
-    for (var category in widget.categories) {
-      _categoryKeys[category.id!] = GlobalKey();
-    }
+    _initializeKeys();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
   }
@@ -57,15 +44,18 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   @override
   void didUpdateWidget(HomeBodyMobile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedCategory != oldWidget.selectedCategory) {
-      setState(() => _localSelectedCategory = widget.selectedCategory);
+    if (widget.categories != oldWidget.categories) {
+      _initializeKeys();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
     }
-    if (widget.categories != oldWidget.categories || widget.products != oldWidget.products) {
-      _categoryKeys.clear();
-      for (var category in widget.categories) {
+  }
+
+  void _initializeKeys() {
+    _categoryKeys.clear();
+    for (var category in widget.categories) {
+      if (category.id != null) {
         _categoryKeys[category.id!] = GlobalKey();
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
     }
   }
 
@@ -78,69 +68,58 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
 
   void _calculateCategoryOffsets() {
     _categoryOffsets.clear();
-    for (var category in widget.categories) {
-      final key = _categoryKeys[category.id];
-      if (key?.currentContext != null) {
-        final renderBox = key!.currentContext!.findRenderObject() as RenderBox;
-        final offset = renderBox.localToGlobal(Offset.zero).dy +
-            _scrollController.offset -
-            MediaQuery.of(context).padding.top;
-        _categoryOffsets[category.id!] = offset;
+    for (var entry in _categoryKeys.entries) {
+      final key = entry.value;
+      if (key.currentContext != null) {
+        final renderBox = key.currentContext!.findRenderObject() as RenderBox;
+        // Pega a posição do widget em relação ao topo da tela
+        final position = renderBox.localToGlobal(Offset.zero);
+        // Ajusta pela posição atual do scroll e pela altura da appbar/statusbar
+        final offset = position.dy + _scrollController.offset - kToolbarHeight - MediaQuery.of(context).padding.top;
+        _categoryOffsets[entry.key] = offset;
       }
     }
   }
 
   void _scrollToCategory(int categoryId) {
     final key = _categoryKeys[categoryId];
-    final context = key?.currentContext;
-    if (context != null) {
+    if (key?.currentContext != null) {
       Scrollable.ensureVisible(
-        context,
+        key!.currentContext!,
         duration: const Duration(milliseconds: 300),
-        alignment: 0.0,
+        alignment: 0.0, // Alinha ao topo
         curve: Curves.easeInOut,
-      ).then((_) {
-        final category = widget.categories.firstWhere((cat) => cat.id == categoryId);
-        if (_localSelectedCategory?.id != category.id) {
-          setState(() => _localSelectedCategory = category);
-        }
-      });
+      );
     }
   }
 
   void _onScroll() {
-    _calculateCategoryOffsets();
-
+    _calculateCategoryOffsets(); // Recalcula em cada scroll para precisão
     final currentScrollOffset = _scrollController.offset;
     Category? newSelectedCategory;
-    double minDistance = double.infinity;
+
+    // Altura da barra de categorias + um pequeno buffer
+    const stickyHeaderHeight = 70.0;
+    final selectionPoint = currentScrollOffset + stickyHeaderHeight;
 
     for (var category in widget.categories) {
-      final categoryId = category.id!;
-      if (_categoryOffsets.containsKey(categoryId)) {
+      final categoryId = category.id;
+      if (categoryId != null && _categoryOffsets.containsKey(categoryId)) {
         final categoryOffset = _categoryOffsets[categoryId]!;
-        const stickyHeaderHeight = 100.0;
-        final adjustedOffset = currentScrollOffset + stickyHeaderHeight;
-
-        if (adjustedOffset >= categoryOffset) {
-          final distance = (adjustedOffset - categoryOffset).abs();
-          if (distance < minDistance) {
-            minDistance = distance;
-            newSelectedCategory = category;
-          }
+        if (selectionPoint >= categoryOffset) {
+          newSelectedCategory = category;
         }
       }
     }
 
-    // Detecta se chegou ao final da lista
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 100) {
+    // Lógica para o final do scroll
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100) {
       newSelectedCategory = widget.categories.last;
     }
 
-    if (newSelectedCategory != null &&
-        _localSelectedCategory?.id != newSelectedCategory.id) {
-      setState(() => _localSelectedCategory = newSelectedCategory);
+    // Dispara o callback apenas se a categoria mudou
+    if (widget.selectedCategory?.id != newSelectedCategory?.id) {
+      widget.onCategorySelected(newSelectedCategory);
     }
   }
 
@@ -153,7 +132,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
         slivers: [
           const StoreCardData(),
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
-          SliverToBoxAdapter(child: FeaturedProductGrid(products: widget.products)),
+          SliverToBoxAdapter(child: FeaturedProductGrid(products: widget.products, categories:widget.categories)),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
           SliverPersistentHeader(
             pinned: true,
@@ -173,11 +152,14 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                   (context, index) {
                 final category = widget.categories[index];
                 final key = _categoryKeys[category.id];
+
+                // ✅ CORREÇÃO APLICADA AQUI
+                // Filtra os produtos usando a nova estrutura 'categoryLinks'.
                 final productsInCategory = widget.products
-                    .where((p) => p.category.id == category.id)
+                    .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
                     .toList();
 
-                if (productsInCategory.isEmpty) return const SizedBox();
+                if (productsInCategory.isEmpty) return const SizedBox.shrink();
 
                 return Container(
                   key: key,
@@ -196,7 +178,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                       ),
                       ...productsInCategory.map((product) => ProductItem(
                         product: product,
-                        onTap: () => goToProductPage(context, product),
+                        onTap: () => goToProductPage(context, product), category: category,
                       )),
                     ],
                   ),
@@ -217,11 +199,10 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
       itemCount: widget.categories.length,
       itemBuilder: (context, index) {
         final category = widget.categories[index];
-        final isSelected = _localSelectedCategory?.id == category.id;
+        final isSelected = widget.selectedCategory?.id == category.id;
 
         return GestureDetector(
           onTap: () {
-            setState(() => _localSelectedCategory = category);
             widget.onCategorySelected(category);
             _scrollToCategory(category.id!);
           },
@@ -231,7 +212,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  category.name ?? 'Sem nome',
+                  category.name,
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -246,9 +227,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                   height: 3,
                   width: 24,
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? Theme.of(context).primaryColor
-                        : Colors.transparent,
+                    color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -279,14 +258,9 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   double get maxExtent => maxHeight;
-
   @override
   double get minExtent => minHeight;
-
   @override
-  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) {
-    return maxHeight != oldDelegate.maxHeight ||
-        minHeight != oldDelegate.minHeight ||
-        child != oldDelegate.child;
-  }
+  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) =>
+      maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
 }

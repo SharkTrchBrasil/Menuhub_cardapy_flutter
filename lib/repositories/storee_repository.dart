@@ -1,15 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
-
+import 'package:totem/models/category.dart'; // Importando o Category que faltava
 import '../core/di.dart';
 import '../models/banners.dart';
 import '../models/product.dart';
 import '../models/store_city.dart';
 import '../models/store_neig.dart';
-
 
 class StoreRepository {
   StoreRepository(this._dio, this._secureStorage);
@@ -17,70 +15,56 @@ class StoreRepository {
   final Dio _dio;
   final FlutterSecureStorage _secureStorage;
 
-
-
-  // ✅ CORREÇÃO: Método renomeado e com retorno ajustado
-  /// Busca os detalhes completos de um único produto.
-  Future<Product> fetchProductDetails(int productId) async {
+  // ✅ MÉTODO CORRIGIDO: Agora recebe o slug da loja explicitamente.
+  Future<Product> fetchProductDetails({
+    required int productId,
+    required String storeSlug, // Parâmetro adicionado
+  }) async {
     try {
-      final storeUrl = getIt<String>(instanceName: 'initialSubdomain');
+      // Usa o slug fornecido em vez de buscar no GetIt.
       final response = await _dio.get(
-        '/products/$storeUrl/$productId',
+        '/products/$storeSlug/$productId',
         options: Options(headers: {'Accept': 'application/json'}),
       );
-      // Retorna o produto diretamente em caso de sucesso
       return Product.fromJson(response.data);
     } catch (e) {
       debugPrint('Erro ao buscar detalhes do produto: $e');
-      // Lança uma exceção em caso de erro, que será capturada pelo Cubit
       throw Exception('Não foi possível carregar os detalhes do produto.');
     }
   }
 
-  Future<Either<void, Product>> getProduct(int productId) async {
+  // ✅ NOVO MÉTODO: A busca de categoria também precisa do slug da loja.
+  Future<Category> fetchCategoryDetails({
+    required int categoryId,
+    required String storeSlug,
+  }) async {
     try {
-
-      final storeUrl = getIt<String>(instanceName: 'initialSubdomain');
-
-
       final response = await _dio.get(
-        '/products/$storeUrl/$productId',
-        options: Options(
-          headers: {
-            'Accept': 'application/json', // <--- Adicione esta linha
-          },
-        ),
+        '/categories/$storeSlug/$categoryId',
+        options: Options(headers: {'Accept': 'application/json'}),
       );
-
-
-
-      return Right(Product.fromJson(response.data));
+      return Category.fromJson(response.data);
     } catch (e) {
-      debugPrint('$e');
-      return const Left(null);
+      debugPrint('Erro ao buscar detalhes da categoria: $e');
+      throw Exception('Não foi possível carregar os detalhes da categoria.');
     }
   }
 
   Future<Either<void, BannerModel>> getBanners() async {
     try {
       final token = await _secureStorage.read(key: 'totem_token');
-
       final response = await _dio.get(
         '/banners',
         options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
+          headers: {'Authorization': 'Bearer $token'},
         ),
       );
-
       return Right(BannerModel.fromJson(response.data));
     } catch (e) {
       debugPrint('$e');
       return const Left(null);
     }
   }
-
 
   Future<Either<void, List<StoreCity>>> getStoreCities(int storeId) async {
     try {
@@ -107,7 +91,4 @@ class StoreRepository {
       return Left(null);
     }
   }
-
-
-
 }

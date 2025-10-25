@@ -57,6 +57,12 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
     final deliveryEnabled = storeConfig?.deliveryEnabled ?? false;
     final pickupEnabled = storeConfig?.pickupEnabled ?? false;
 
+// Pega o estado completo
+    final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
+
+// Acessa o tipo de entrega diretamente e de forma segura
+    final currentDeliveryType = deliveryFeeState.deliveryType;
+
     // ✅ LÓGICA DE INICIALIZAÇÃO INTELIGENTE
     // Pega o tipo de entrega atual do cubit
     DeliveryType currentType = context.read<DeliveryFeeCubit>().state.deliveryType;

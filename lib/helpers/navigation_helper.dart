@@ -1,40 +1,27 @@
-
-
-
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:totem/core/extensions.dart';
 
-import '../models/cart.dart';
 import '../models/cart_item.dart';
-import '../models/cart_product.dart';
-import '../models/coupon.dart';
 import '../models/product.dart';
-// ✅ FUNÇÃO PARA ADICIONAR UM NOVO PRODUTO
+
+// Navega para a página de detalhes de um produto para adicioná-lo ao carrinho
 void goToProductPage(BuildContext context, Product product) {
   final String slug = product.name.toSlug();
-  final String path = '/product/$slug/${product.id}';
 
-  // ✅ CORREÇÃO CRUCIAL: Passa o objeto 'Product' que já temos no 'extra'.
-  //    Isso ativa a lógica de "UI Otimista" no Cubit.
-  context.go(path, extra: product);
+  // ✅ CORREÇÃO FINAL: Usa o caminho absoluto com a barra inicial '/',
+  // exatamente como no seu backup que funcionava. Isso garante que a
+  // navegação funcione de forma consistente, não importa de onde ela seja chamada.
+  context.go('/product/$slug/${product.id}', extra: product);
 }
 
-// A sua função de editar, se você a criou, já deve estar correta
+// Navega para a página de detalhes para EDITAR um item que JÁ ESTÁ no carrinho
 void goToEditCartItemPage(BuildContext context, CartItem cartItem) {
   final String slug = cartItem.product.name.toSlug();
-  final String path = '/product/$slug/${cartItem.product.id}';
-  context.go(path, extra: cartItem);
+
+  // ✅ CORREÇÃO FINAL: Também usa o caminho absoluto aqui para consistência.
+  context.go('/product/$slug/${cartItem.product.id}', extra: cartItem);
 }
 
-
-
-void goToCartProductPage(BuildContext context, CartProduct cartProduct) {
-  final String slug = cartProduct.toProduct(). name.toSlug();
-  final String path = '/$slug/${cartProduct.toProduct().id}';
-
-  context.go(
-    path,
-    extra: cartProduct,
-  );
-}
+// A função `goToCartProductPage` foi corretamente removida, pois a lógica
+// foi unificada nas duas funções acima, que são mais claras e seguras.

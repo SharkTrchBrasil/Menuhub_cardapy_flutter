@@ -81,6 +81,77 @@ class RealtimeRepository {
       print('⚠️ Socket.IO: Desconectado do servidor');
     });
 
+    _socket.on('initial_state_loaded', (data) {
+      print('🎉 Estado inicial carregado recebido!');
+      print('📊 Tipo de dados recebidos: ${data.runtimeType}');
+
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+
+        print('🔑 Chaves do payload: ${payload.keys.toList()}');
+
+        // Processa a loja
+        if (payload['store'] != null) {
+          print('🏪 Processando dados da loja...');
+          print('   ├─ Store raw data keys: ${(payload['store'] as Map).keys.toList()}');
+
+          final Store store = Store.fromJson(payload['store']);
+          storeController.add(store);
+
+          print('✅ Loja processada:');
+          print('   ├─ Nome: ${store.name}');
+          print('   ├─ ID: ${store.id}');
+          print('   └─ Categorias: ${store.categories.length}');
+
+          for (var cat in store.categories) {
+            print('      └─ ${cat.name} (ID: ${cat.id}, priority: ${cat.priority})');
+          }
+        }
+
+        // Processa produtos
+        if (payload['products'] != null) {
+          print('📦 Processando produtos...');
+          print('   ├─ Tipo: ${payload['products'].runtimeType}');
+          print('   ├─ Quantidade: ${(payload['products'] as List).length}');
+
+          final List<Product> products = (payload['products'] as List)
+              .map((json) {
+            print('      ├─ Processando produto: ${json['name']} (ID: ${json['id']})');
+            return Product.fromJson(json);
+          })
+              .toList();
+
+          productsController.add(products);
+
+          print('✅ Produtos processados:');
+          print('   └─ Total: ${products.length}');
+
+
+          if (products.length > 3) {
+            print('      └─ ... e mais ${products.length - 3} produtos');
+          }
+        } else {
+          print('⚠️ payload["products"] é NULL!');
+        }
+
+        // Processa banners
+        if (payload['banners'] != null) {
+          print('🎨 Processando ${(payload['banners'] as List).length} banners...');
+          final List<BannerModel> banners = (payload['banners'] as List)
+              .map((json) => BannerModel.fromJson(json))
+              .toList();
+          bannersController.add(banners);
+          print('✅ Banners processados');
+        }
+
+        print('🎉 Estado inicial carregado com sucesso!');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar initial_state_loaded: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+
     // ✅ EVENTOS DE DADOS DO BACKEND (permanecem iguais)
     _socket.on('products_update', (data) {
       print('📦 Produtos atualizados recebidos');

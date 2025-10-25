@@ -1,14 +1,19 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/core/extensions.dart';
+import 'package:collection/collection.dart'; // Importar para usar firstWhereOrNull e min
 
 import '../../../../helpers/navigation_helper.dart';
 import '../../../../models/product.dart';
+import '../../../../models/category.dart'; // Precisamos da categoria para o contexto de preço
 
 class FeaturedProductList extends StatelessWidget {
   final List<Product> products;
+  final List<Category> categories; // Adicionado para obter contexto
 
-  const FeaturedProductList({super.key, required this.products});
+  const FeaturedProductList({super.key, required this.products, required this.categories});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +22,7 @@ class FeaturedProductList extends StatelessWidget {
         .take(6)
         .toList();
 
-    if (featuredProducts.isEmpty) return const SizedBox();
+    if (featuredProducts.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 50),
@@ -43,10 +48,15 @@ class FeaturedProductList extends StatelessWidget {
               itemCount: featuredProducts.length,
               itemBuilder: (context, index) {
                 final product = featuredProducts[index];
+                // Encontra a primeira categoria à qual o produto pertence para dar um contexto
+                final firstCategoryId = product.categoryLinks.firstOrNull?.categoryId;
+                final category = categories.firstWhereOrNull((c) => c.id == firstCategoryId);
+
                 return Padding(
                   padding: const EdgeInsets.only(right: 12.0),
                   child: ProductCard(
                     product: product,
+                    category: category, // Passa a categoria para o card
                     onTap: () => goToProductPage(context, product),
                   ),
                 );
@@ -61,13 +71,45 @@ class FeaturedProductList extends StatelessWidget {
 
 class ProductCard extends StatelessWidget {
   final Product product;
+  final Category? category; // Recebe a categoria para contexto de preço
   final VoidCallback onTap;
 
   const ProductCard({
     super.key,
     required this.product,
+    this.category,
     required this.onTap,
   });
+
+  // Função helper para determinar o preço a ser exibido
+  String _getDisplayPrice() {
+    // Se for customizável (pizza, açaí), pega o menor preço dos tamanhos
+    if (category?.isCustomizable ?? false) {
+      if (product.prices.isNotEmpty) {
+        final minPrice = product.prices.map((p) => p.price).reduce(min);
+        return 'A partir de ${minPrice.toCurrency}';
+      }
+    }
+
+    // Se for um produto geral, pega o preço do vínculo com a categoria
+    if (category != null) {
+      final link = product.categoryLinks.firstWhereOrNull((l) => l.categoryId == category!.id);
+      if (link != null) {
+        final price = link.isOnPromotion && link.promotionalPrice != null
+            ? link.promotionalPrice!
+            : link.price;
+        return price.toCurrency;
+      }
+    }
+
+    // Fallback: se não encontrar um preço contextual, mostra o menor preço possível
+    if (product.categoryLinks.isNotEmpty) {
+      final minPrice = product.categoryLinks.map((l) => l.price).reduce(min);
+      return minPrice.toCurrency;
+    }
+
+    return 'Verificar';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +135,8 @@ class ProductCard extends StatelessWidget {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
               child: CachedNetworkImage(
-                imageUrl: product.coverImageUrl!,
+                // Usa o getter seguro para a URL da imagem
+                imageUrl: product.coverImageUrl ?? 'https://placehold.co/180x120/e0e0e0/a0a0a0?text=Sem+Imagem',
                 height: 120,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -132,21 +175,22 @@ class ProductCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          product.description,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
+                        if (product.description != null)
+                          Text(
+                            product.description!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
                       ],
                     ),
 
                     // Price
                     Text(
-                      'A partir de ${product.basePrice.toCurrency}',
+                      _getDisplayPrice(), // Usa a função para obter o preço correto
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -157,13 +201,9 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
             ),
-
-
           ],
         ),
       ),
     );
   }
 }
-
-

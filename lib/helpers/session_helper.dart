@@ -21,23 +21,3 @@ class SessionHelper {
 
 
 
-class CartStorage {
-  static const _cartKey = 'cart';
-
-  static void saveCart(List<CartProduct> products) {
-    final json = products.map((p) => p.toJson()).toList();
-    html.window.localStorage[_cartKey] = jsonEncode(json);
-  }
-
-  static List<CartProduct> loadCart() {
-    final data = html.window.localStorage[_cartKey];
-    if (data == null) return [];
-
-    final decoded = jsonDecode(data) as List;
-    return decoded.map((item) => CartProduct.fromJson(item)).toList();
-  }
-
-  static void clearCart() {
-    html.window.localStorage.remove(_cartKey);
-  }
-}

@@ -23,31 +23,24 @@ class OnboardingPage extends StatelessWidget {
 
 
 
-
-    // ✅ LÓGICA 1: O BlocListener "ouve" as mudanças de estado para navegar ou mostrar erros.
-    // Ele não reconstrói a UI, apenas executa ações.
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
-        // Garante que qualquer SnackBar anterior seja removido
+        print("👂 [OnboardingPage] BlocListener ouviu uma mudança! Novo estado: ${state.status}");
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
         if (state.status == AuthStatus.success) {
-          // ✅ 2. A ÚNICA AÇÃO EM CASO DE SUCESSO!
-          // Em vez de redirecionar, apenas fechamos a tela
-          // e devolvemos 'true' para quem a chamou (a ProductPage).
+          print("✅ [OnboardingPage] Estado de SUCESSO detectado. Tentando fechar a página (pop).");
           if (context.canPop()) {
             context.pop(true);
           } else {
-            // Fallback caso a página seja aberta diretamente (raro)
+            print("⚠️ [OnboardingPage] Não foi possível dar pop. Redirecionando para /address como fallback.");
             context.go('/address');
           }
         } else if (state.status == AuthStatus.error) {
-          // A lógica de erro continua igual.
+          print("❌ [OnboardingPage] Estado de ERRO detectado. Mostrando SnackBar.");
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                state.errorMessage ?? 'Ocorreu um erro desconhecido.',
-              ),
+              content: Text(state.errorMessage ?? 'Ocorreu um erro desconhecido.'),
               backgroundColor: Colors.redAccent,
             ),
           );

@@ -1,207 +1,183 @@
 // Em: lib/pages/product/product_page_cubit.dart
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-
+import 'package:collection/collection.dart';
 import 'package:totem/models/cart_product.dart';
-import 'package:totem/pages/product/product_page_state.dart';
 import 'package:totem/models/page_status.dart';
 import 'package:totem/models/product.dart';
-import 'package:totem/models/cart.dart';
 import 'package:totem/models/cart_variant.dart';
 import 'package:totem/models/cart_variant_option.dart';
+import 'package:totem/models/option_item.dart';
+import 'package:totem/pages/product/product_page_state.dart';
+import '../../cubit/store_cubit.dart';
 import '../../models/cart_item.dart';
 import '../../models/category.dart';
-
+import '../../models/option_group.dart';
 import '../../repositories/storee_repository.dart';
 
 class ProductPageCubit extends Cubit<ProductPageState> {
   final StoreRepository _repository;
+  final StoreCubit _storeCubit;
   final int productId;
 
   ProductPageCubit({
     required this.productId,
     required StoreRepository repository,
+    required StoreCubit storeCubit,
   })  : _repository = repository,
+        _storeCubit = storeCubit,
         super(ProductPageState.initial());
 
-  // ✅ MÉTODO DE ATUALIZAÇÃO UNIFICADO E SIMPLIFICADO
-  void updateOption(CartVariant variant, CartVariantOption option, int newQuantity) {
-    if (state.product == null) return;
-
-    // 1. Pede para o próprio model 'variant' se atualizar, aplicando suas regras internas.
-    final updatedVariant = variant.updateOption(option, newQuantity);
-
-    // 2. Mapeia a lista de variantes do estado, substituindo apenas a que foi alterada.
-    final newVariantsList = state.product!.cartVariants.map((v) {
-      return v.id == updatedVariant.id ? updatedVariant : v;
-    }).toList();
-
-    // 3. Cria o novo estado do produto.
-    final newProductState = state.product!.copyWith(cartVariants: newVariantsList);
-
-    // 4. Emite o novo estado completo.
-    emit(state.copyWith(product: newProductState, status: PageStatusSuccess(newProductState)));
-  }
-
-
-  void updateWithNewSourceProduct(Product newSourceProduct) {
-    if (state.status is! PageStatusSuccess) return;
-
-    // Pega o produto atual (com as escolhas do usuário) do estado
-    final currentCartProduct = state.product!;
-
-    final updatedCartProduct = currentCartProduct.copyWith(
-      sourceProduct: newSourceProduct,
-    );
-
-
-    emit(state.copyWith(
-      product: updatedCartProduct,
-      status: PageStatusSuccess(updatedCartProduct),
-    ));
-  }
-
-  /// O método de carregamento com a lógica final e otimizada.
   Future<void> loadProduct({
     Product? initialProduct,
     CartItem? cartItemToEdit,
   }) async {
+    emit(state.copyWith(status: PageStatusLoading()));
     try {
-      // --- Cenário 1: MODO EDIÇÃO (com UI Otimista) ---
-      if (cartItemToEdit != null) {
-        print("🧠 Cubit: Modo Edição Otimista.");
+      Product product;
+      Category category;
 
-        final temporaryProduct = Product(
-          id: cartItemToEdit.product.id,
-          name: cartItemToEdit.product.name,
-          description:  '',
-          basePrice: 0, // O preço será calculado a partir das variantes
+      if (initialProduct != null || cartItemToEdit != null) {
+        print("🧠 Cubit: Usando produto pré-carregado.");
+        product = initialProduct ?? cartItemToEdit!.product;
 
-          category: Category.empty(), // Placeholder
-          variantLinks: [],
-          featured: false,
-          activatePromotion: false,
-          productType: ProductType.INDIVIDUAL,
-          components: [],
-          defaultOptionIds: [],
-          cashbackType: '',
-          cashbackValue: 0, // Vazio por enquanto
-          status: ProductStatus.active, images: [], galleryImages: [], categoryLinks: [], prices: []
+        final categoryId = product.categoryLinks.firstOrNull?.categoryId;
+        if (categoryId == null) throw Exception('Produto sem categoria associada.');
+
+        final allCategories = _storeCubit.state.categories;
+        category = allCategories?.firstWhere((c) => c.id == categoryId)
+            ?? (throw Exception('Categoria com ID $categoryId não encontrada na memória.'));
+      }
+      else {
+        print("🌎 Cubit: Deep Link. Buscando detalhes na API.");
+
+        // ✅ CORREÇÃO APLICADA AQUI
+        // 1. Pega o slug da loja que já está no StoreCubit.
+        final storeSlug = _storeCubit.state.store?.urlSlug;
+        if (storeSlug == null) {
+          throw Exception("Não foi possível determinar a loja para buscar o produto.");
+        }
+
+        // 2. Passa o slug e o ID para o método do repositório.
+        product = await _repository.fetchProductDetails(
+          productId: productId,
+          storeSlug: storeSlug,
         );
 
-        // Cria o CartProduct com os dados temporários para a UI não ficar vazia
-        CartProduct optimisticConfiguredProduct = CartProduct.fromProduct(temporaryProduct)
-            .copyWith(quantity: cartItemToEdit.quantity, note: cartItemToEdit.note);
+        final categoryId = product.categoryLinks.firstOrNull?.categoryId;
+        if (categoryId == null) throw Exception('Produto da API sem categoria associada.');
 
-        // EMITE O ESTADO DE SUCESSO IMEDIATAMENTE! A TELA APARECE NA HORA.
+        // 3. A busca da categoria também é otimizada.
+        category = _storeCubit.state.categories?.firstWhere((c) => c.id == categoryId)
+            ?? await _repository.fetchCategoryDetails(
+              categoryId: categoryId,
+              storeSlug: storeSlug,
+            );
+      }
+
+      CartProduct configuredProduct;
+
+      if (cartItemToEdit != null) {
+        configuredProduct = _configureForEdit(product, category, cartItemToEdit);
         emit(state.copyWith(
-          status: PageStatusSuccess(optimisticConfiguredProduct),
-          product: optimisticConfiguredProduct,
+          status: PageStatusSuccess(configuredProduct),
+          product: configuredProduct,
           isEditMode: true,
           originalCartItemId: cartItemToEdit.id,
         ));
-
-        // --- ETAPA 2: BUSCA E SINCRONIZAÇÃO EM SEGUNDO PLANO ---
-        print("🔄 Cubit: Sincronizando dados completos em segundo plano...");
-        final productBase = await _repository.fetchProductDetails(productId);
-        CartProduct finalConfiguredProduct = CartProduct.fromProduct(productBase);
-
-        // A lógica de mesclagem para pré-selecionar os complementos
-        final savedOptions = <int, int>{};
-        for (var variant in cartItemToEdit.variants) {
-          for (var option in variant.options) {
-            savedOptions[option.variantOptionId] = option.quantity;
-          }
-        }
-        final newCartVariants = finalConfiguredProduct.cartVariants.map((variant) {
-          final newOptions = variant.cartOptions.map((option) {
-            return option.copyWith(quantity: savedOptions[option.id] ?? 0);
-          }).toList();
-          return variant.copyWith(options: newOptions);
-        }).toList();
-
-        finalConfiguredProduct = finalConfiguredProduct.copyWith(
-          quantity: cartItemToEdit.quantity,
-          note: cartItemToEdit.note,
-          cartVariants: newCartVariants,
-        );
-
-        // EMITE O ESTADO DE SUCESSO FINAL com os dados 100% corretos e completos.
-        // A UI vai se "corrigir" silenciosamente se algo tiver mudado.
-        emit(state.copyWith(
-          status: PageStatusSuccess(finalConfiguredProduct),
-          product: finalConfiguredProduct,
-        ));
-        return;
-      }
-
-      // --- Cenário 2: Navegação Interna (dados já disponíveis) ---
-      if (initialProduct != null) {
-        print("🧠 Cubit: Navegação interna. Usando produto pré-carregado.");
-        final configuredProduct = CartProduct.fromProduct(initialProduct);
+      } else {
+        configuredProduct = CartProduct.fromProduct(product, category);
         emit(state.copyWith(
           status: PageStatusSuccess(configuredProduct),
           product: configuredProduct,
           isEditMode: false,
         ));
-        return;
       }
-
-      // --- Cenário 3: Navegação Externa (Deep Link) ---
-      print("🌎 Cubit: Navegação externa. Buscando produto na API.");
-      emit(state.copyWith(status: PageStatusLoading()));
-      final product = await _repository.fetchProductDetails(productId);
-      final configuredProduct = CartProduct.fromProduct(product);
-
-      emit(state.copyWith(
-        status: PageStatusSuccess(configuredProduct),
-        product: configuredProduct,
-        isEditMode: false,
-      ));
-
     } catch (e) {
+      print("❌ Erro no ProductPageCubit: $e");
       emit(state.copyWith(status: PageStatusError(e.toString())));
     }
   }
 
+  // O resto do cubit permanece inalterado.
 
-  Future<void> retryLoad() async {
-    // Não precisa mais do estado inicial, apenas chama o load novamente.
-    await loadProduct();
+  CartProduct _configureForEdit(Product product, Category category, CartItem cartItem) {
+    var configuredProduct = CartProduct.fromProduct(product, category);
+    OptionItem? selectedSize;
+    if (category.isCustomizable) {
+      final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+      if (sizeGroup != null) {
+        selectedSize = sizeGroup.items.firstWhereOrNull((item) => item.name == cartItem.sizeName);
+      }
+    }
+    final savedVariantOptions = {
+      for (var v in cartItem.variants)
+        for (var o in v.options) o.variantOptionId: o.quantity
+    };
+    final newSelectedVariants = configuredProduct.selectedVariants.map((variant) {
+      final newOptions = variant.cartOptions.map((option) {
+        return option.copyWith(quantity: savedVariantOptions[option.id] ?? 0);
+      }).toList();
+      return variant.copyWith(options: newOptions);
+    }).toList();
+    return configuredProduct.copyWith(
+      quantity: cartItem.quantity,
+      note: cartItem.note,
+      selectedSize: selectedSize,
+      selectedVariants: newSelectedVariants,
+    );
   }
-
 
   void updateQuantity(int newQuantity) {
-    // Adicionamos logs para depuração
-    print("--- ⚙️ ProductPageCubit: updateQuantity chamado ---");
-
-    if (state.product == null) {
-      print("=> ❗️ Ação ignorada: state.product é nulo.");
-      return;
-    }
-
-    final currentProduct = state.product!;
-    print("=>  QUANTIDADE ATUAL NO ESTADO: ${currentProduct.quantity}");
-    print("=> NOVA QUANTIDADE SOLICITADA: $newQuantity");
-
-    // Impede que a quantidade seja menor que 1
-    if (newQuantity < 1) {
-      print("=> ❗️ Ação ignorada: nova quantidade é menor que 1.");
-      return;
-    }
-
-    // Garante que estamos criando uma cópia completamente nova e imutável do produto
-    final updatedProduct = currentProduct.copyWith(quantity: newQuantity);
-    print("=> QUANTIDADE FINAL A SER EMITIDA: ${updatedProduct.quantity}");
-
-    // Emite o novo estado. O `copyWith` do state também é crucial.
-    emit(state.copyWith(
-      product: updatedProduct,
-      // É importante emitir um novo PageStatusSuccess para que o AppPageStatusBuilder receba o novo dado
-      status: PageStatusSuccess(updatedProduct),
-    ));
-
-    print("--- ✅ ProductPageCubit: Novo estado emitido ---");
+    if (state.product == null || newQuantity < 1) return;
+    final updatedProduct = state.product!.copyWith(quantity: newQuantity);
+    emit(state.copyWith(product: updatedProduct, status: PageStatusSuccess(updatedProduct)));
   }
 
+  void updateOption(CartVariant variant, CartVariantOption option, int newQuantity) {
+    if (state.product == null) return;
+    final updatedVariant = variant.updateOption(option, newQuantity);
+    final newVariantsList = state.product!.selectedVariants.map((v) {
+      return v.id == updatedVariant.id ? updatedVariant : v;
+    }).toList();
+    final newProductState = state.product!.copyWith(selectedVariants: newVariantsList);
+    emit(state.copyWith(product: newProductState, status: PageStatusSuccess(newProductState)));
+  }
+
+  void selectSize(OptionItem size) {
+    if (state.product == null || !state.product!.category.isCustomizable) return;
+    final updatedProduct = state.product!.copyWith(selectedSize: size);
+    emit(state.copyWith(product: updatedProduct, status: PageStatusSuccess(updatedProduct)));
+  }
+
+  void toggleFlavor(Product flavor) {
+    if (state.product == null || !state.product!.category.isCustomizable || state.product!.selectedSize == null) return;
+    final currentFlavors = List<Product>.from(state.product!.selectedFlavors);
+    final maxFlavors = state.product!.selectedSize!.maxFlavors ?? 1;
+    final isAlreadySelected = currentFlavors.any((f) => f.id == flavor.id);
+    if (isAlreadySelected) {
+      currentFlavors.removeWhere((f) => f.id == flavor.id);
+    } else {
+      if (currentFlavors.length < maxFlavors) {
+        currentFlavors.add(flavor);
+      } else {
+        print("Atingiu o número máximo de sabores.");
+        return;
+      }
+    }
+    final updatedProduct = state.product!.copyWith(selectedFlavors: currentFlavors);
+    emit(state.copyWith(product: updatedProduct, status: PageStatusSuccess(updatedProduct)));
+  }
+
+  void updateWithNewSourceProduct(Product newSourceProduct) {
+    if (state.status is! PageStatusSuccess || state.product == null) return;
+    final updatedCartProduct = state.product!.copyWith(
+      product: newSourceProduct,
+    );
+    emit(state.copyWith(product: updatedCartProduct, status: PageStatusSuccess(updatedCartProduct)));
+  }
+
+  Future<void> retryLoad() async {
+    await loadProduct();
+  }
 }

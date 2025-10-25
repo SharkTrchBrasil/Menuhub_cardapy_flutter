@@ -2,6 +2,7 @@
 
 import 'package:equatable/equatable.dart';
 import 'package:totem/models/product.dart';
+import 'package:totem/core/extensions.dart'; // Para o helper .toCurrency
 
 class CartItemVariantOption extends Equatable {
   final int variantOptionId;
@@ -75,6 +76,7 @@ class CartItem extends Equatable {
   final List<CartItemVariant> variants;
   final int unitPrice;
   final int totalPrice;
+  final String? sizeName; // ✅ NOVO: Para exibir o tamanho escolhido (ex: "Pizza Grande")
 
   const CartItem({
     required this.id,
@@ -84,6 +86,7 @@ class CartItem extends Equatable {
     required this.variants,
     required this.unitPrice,
     required this.totalPrice,
+    this.sizeName, // ✅ NOVO
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
@@ -97,35 +100,38 @@ class CartItem extends Equatable {
           .toList(),
       unitPrice: json['unit_price'],
       totalPrice: json['total_price'],
+      sizeName: json['size_name'], // ✅ NOVO
     );
   }
 
-  // ✅ MÉTODO TOjson PADRÃO (para uso geral)
+  // ✅ CORRIGIDO: Não tenta mais serializar o objeto 'product' inteiro.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'product_id': product.id,
-      'product': product.toJson(),
+      // 'product': product.toJson(), // REMOVIDO - CAUSAVA O ERRO
       'quantity': quantity,
       'note': note,
       'unit_price': unitPrice,
       'total_price': totalPrice,
       'variants': variants.map((variant) => variant.toJson()).toList(),
+      'size_name': sizeName,
     };
   }
 
   // ✅ MÉTODO TOJSONFORORDER (formato específico para criar pedido)
+  // Este método já estava correto, pois só envia o ID.
   Map<String, dynamic> toJsonForOrder() {
     return {
       'product_id': product.id,
       'quantity': quantity,
       'note': note,
-      'price': unitPrice,
+      'price': unitPrice, // O backend recalcula, mas enviamos como referência
       'variants': variants.map((variant) => variant.toJson()).toList(),
+      'size_name': sizeName,
     };
   }
 
-  // ✅ COPYWITH ADICIONADO
   CartItem copyWith({
     int? id,
     Product? product,
@@ -134,6 +140,7 @@ class CartItem extends Equatable {
     List<CartItemVariant>? variants,
     int? unitPrice,
     int? totalPrice,
+    String? sizeName,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -143,39 +150,29 @@ class CartItem extends Equatable {
       variants: variants ?? this.variants,
       unitPrice: unitPrice ?? this.unitPrice,
       totalPrice: totalPrice ?? this.totalPrice,
+      sizeName: sizeName ?? this.sizeName,
     );
   }
 
-  // ✅ FACTORY EMPTY
-  factory CartItem.empty() {
-    return CartItem(
-      id: 0,
-      product: Product.empty(),
-      quantity: 1,
-      note: null,
-      variants: const [],
-      unitPrice: 0,
-      totalPrice: 0,
-    );
-  }
+  const CartItem.empty()
+      : id = 0,
+        product = const Product.empty(),
+        quantity = 1,
+        note = null,
+        variants = const [],
+        unitPrice = 0,
+        totalPrice = 0,
+        sizeName = null;
 
-  // ✅ HELPERS ÚTEIS
+  String get formattedUnitPrice => unitPrice.toCurrency;
+  String get formattedTotalPrice => totalPrice.toCurrency;
 
-  /// Preço formatado em reais
-  String get formattedUnitPrice {
-    return 'R\$ ${(unitPrice / 100).toStringAsFixed(2)}';
-  }
-
-  /// Total formatado em reais
-  String get formattedTotalPrice {
-    return 'R\$ ${(totalPrice / 100).toStringAsFixed(2)}';
-  }
-
-  /// Descrição resumida dos complementos
   String get variantsDescription {
-    if (variants.isEmpty) return '';
-
+    if (variants.isEmpty) return sizeName ?? '';
     final descriptions = <String>[];
+    if (sizeName != null) {
+      descriptions.add(sizeName!);
+    }
     for (final variant in variants) {
       for (final option in variant.options) {
         if (option.quantity > 1) {
@@ -188,19 +185,10 @@ class CartItem extends Equatable {
     return descriptions.join(', ');
   }
 
-  /// Verifica se tem complementos
   bool get hasVariants => variants.isNotEmpty;
 
-  /// Quantidade total de complementos selecionados
-  int get totalVariantOptions {
-    return variants.fold<int>(
-      0,
-          (sum, variant) => sum + variant.options.length,
-    );
-  }
-
   @override
-  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice];
+  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice, sizeName];
 
   @override
   String toString() {

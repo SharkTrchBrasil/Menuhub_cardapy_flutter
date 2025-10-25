@@ -19,18 +19,23 @@ import '../pages/not_found/error_505_Page.dart';
 import '../pages/order/order_confirmation_page.dart';
 import '../pages/product/product_page.dart';
 import '../pages/product/product_page_cubit.dart';
+import '../pages/signin/signin_page.dart'; // ✅ Importe a OnboardingPage
 import '../pages/store/store_details.dart';
+import '../pages/success/order_success.dart';
 import '../repositories/realtime_repository.dart';
 import '../repositories/storee_repository.dart';
 import '../themes/HomeSelectorPage.dart';
 import 'di.dart';
 
 GoRouter createGoRouter() {
+  final rootNavigatorKey = GlobalKey<NavigatorState>();
+  final storeCubit = StoreCubit(GetIt.I<RealtimeRepository>());
+
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/splash',
     observers: [BotToastNavigatorObserver()],
     routes: [
-      // ✅ Rota de splash SIMPLIFICADA (não precisa mais de subdomain)
       GoRoute(
         path: '/splash',
         builder: (_, state) => BlocProvider(
@@ -38,53 +43,38 @@ GoRouter createGoRouter() {
           child: const SplashPage(),
         ),
       ),
-
       GoRoute(path: '/not-found', builder: (_, state) => const NotFoundPage()),
 
-      // --- ROTA PRINCIPAL DA APLICAÇÃO ---
+      // ✅ ROTA DE ONBOARDING/LOGIN RESTAURADA
+      // Colocada no nível superior para ser acessível de qualquer lugar.
       GoRoute(
-        path: '/',
-        builder: (_, state) {
-          return BlocProvider(
-            create: (context) => StoreCubit(GetIt.I<RealtimeRepository>()),
-            child: const HomeSelectorPage(),
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingPage(),
+      ),
+
+      ShellRoute(
+        builder: (context, state, child) {
+          return BlocProvider.value(
+            value: storeCubit,
+            child: child,
           );
         },
         routes: [
           GoRoute(
-            path: 'cart',
-            pageBuilder: (_, state) => CustomTransitionPage(
-              child: BlocProvider.value(
-                value: GetIt.I<StoreCubit>(),
-                child: const CartPage(),
-              ),
-              opaque: false,
-              barrierDismissible: true,
-              barrierColor: Colors.black45,
-              transitionsBuilder: (_, animation, __, child) =>
-                  FadeTransition(opacity: animation, child: child),
-            ),
+            path: '/',
+            builder: (_, state) => const HomeSelectorPage(),
             routes: [
               GoRoute(
-                path: 'order-summary',
-                pageBuilder: (context, state) {
-                  final order = state.extra as Order?;
-                  return CustomTransitionPage(
-                    child: OrderSummaryPage(order: order),
-                    opaque: false,
-                    barrierDismissible: true,
-                    barrierColor: Colors.black45,
-                    transitionsBuilder: (_, animation, __, child) =>
-                        FadeTransition(opacity: animation, child: child),
-                  );
-                },
+                path: 'cart',
+                pageBuilder: (_, state) => CustomTransitionPage(
+                  child: const CartPage(),
+                  opaque: false,
+                  barrierDismissible: true,
+                  barrierColor: Colors.black45,
+                  transitionsBuilder: (_, animation, __, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                ),
               ),
-            ],
-          ),
-
-          ShellRoute(
-            builder: (context, state, child) => child,
-            routes: [
               GoRoute(
                 path: 'checkout',
                 pageBuilder: (context, state) => CustomTransitionPage(
@@ -108,111 +98,108 @@ GoRouter createGoRouter() {
                 ),
               ),
               GoRoute(
-                path: '/select-address',
+                path: 'select-address',
                 builder: (context, state) => const AddressSelectionPage(),
               ),
-            ],
-          ),
-
-          GoRoute(
-            path: 'add-coupon',
-            pageBuilder: (context, __) => CustomTransitionPage(
-              child: CouponPage(realtimeRepository: getIt<RealtimeRepository>()),
-              opaque: false,
-              barrierDismissible: true,
-              barrierColor: Colors.black45,
-              transitionsBuilder: (_, animation, __, child) =>
-                  FadeTransition(opacity: animation, child: child),
-            ),
-          ),
-
-          GoRoute(
-            path: 'store-details',
-            pageBuilder: (_, state) {
-              final int? initialTabIndex = state.extra as int?;
-              return CustomTransitionPage(
-                child: BlocProvider(
-                  create: (context) => StoreCubit(GetIt.I<RealtimeRepository>()),
-                  child: StoreDetails(initialTabIndex: initialTabIndex ?? 0),
-                ),
-                opaque: false,
-                barrierDismissible: true,
-                barrierColor: Colors.black45,
-                transitionsBuilder: (_, animation, __, child) =>
-                    FadeTransition(opacity: animation, child: child),
-              );
-            },
-          ),
-
-          GoRoute(
-            path: 'product/:productSlug/:id',
-            pageBuilder: (context, state) {
-              final productId = int.tryParse(state.pathParameters['id'] ?? '');
-              if (productId == null) {
-                return const MaterialPage(
-                    child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
-              }
-
-              final initialProduct =
-              state.extra is Product ? state.extra as Product : null;
-              final cartItemToEdit =
-              state.extra is CartItem ? state.extra as CartItem : null;
-
-              final isDesktop = MediaQuery.of(context).size.width >= 768;
-
-              final pageContent = BlocProvider<ProductPageCubit>(
-                create: (context) => ProductPageCubit(
-                  productId: productId,
-                  repository: getIt<StoreRepository>(),
-                )..loadProduct(
-                  initialProduct: initialProduct,
-                  cartItemToEdit: cartItemToEdit,
-                ),
-                child: const ProductPage(),
-              );
-
-              if (isDesktop) {
-                return CustomTransitionPage<void>(
-                  key: state.pageKey,
-                  child: pageContent,
-                  barrierDismissible: true,
-                  barrierColor: Colors.black.withOpacity(0.6),
+              GoRoute(
+                path: 'add-coupon',
+                pageBuilder: (context, __) => CustomTransitionPage(
+                  child: CouponPage(realtimeRepository: getIt<RealtimeRepository>()),
                   opaque: false,
-                  transitionDuration: const Duration(milliseconds: 200),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                );
-              } else {
-                return MaterialPage<void>(
-                  key: state.pageKey,
-                  child: pageContent,
-                );
-              }
-            },
+                  barrierDismissible: true,
+                  barrierColor: Colors.black45,
+                  transitionsBuilder: (_, animation, __, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                ),
+              ),
+              GoRoute(
+                path: 'store-details',
+                pageBuilder: (_, state) {
+                  final int? initialTabIndex = state.extra as int?;
+                  return CustomTransitionPage(
+                    child: StoreDetails(initialTabIndex: initialTabIndex ?? 0),
+                    opaque: false,
+                    barrierDismissible: true,
+                    barrierColor: Colors.black45,
+                    transitionsBuilder: (_, animation, __, child) =>
+                        FadeTransition(opacity: animation, child: child),
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'product/:productSlug/:id',
+                pageBuilder: (context, state) {
+                  final productId = int.tryParse(state.pathParameters['id'] ?? '');
+                  if (productId == null) {
+                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
+                  }
+
+                  final initialProduct = state.extra is Product ? state.extra as Product : null;
+                  final cartItemToEdit = state.extra is CartItem ? state.extra as CartItem : null;
+                  final isDesktop = MediaQuery.of(context).size.width >= 768;
+
+                  final pageContent = BlocProvider<ProductPageCubit>(
+                    create: (context) => ProductPageCubit(
+                      productId: productId,
+                      repository: getIt<StoreRepository>(),
+                      storeCubit: context.read<StoreCubit>(),
+                    )..loadProduct(
+                      initialProduct: initialProduct,
+                      cartItemToEdit: cartItemToEdit,
+                    ),
+                    child: const ProductPage(),
+                  );
+
+                  if (isDesktop) {
+                    return CustomTransitionPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                      barrierDismissible: true,
+                      barrierColor: Colors.black.withOpacity(0.6),
+                      opaque: false,
+                      transitionDuration: const Duration(milliseconds: 200),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    );
+                  } else {
+                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                  }
+                },
+              ),
+              GoRoute(
+                path: 'order/success',
+                builder: (context, state) {
+                  final order = state.extra as Order?;
+                  return OrderConfirmationPage(order: order);
+                },
+              ),
+            ],
           ),
         ],
       ),
     ],
-
     redirect: (context, state) {
-      final initialized =
-          getIt.isRegistered<bool>(instanceName: 'isInitialized') &&
-              getIt.get<bool>(instanceName: 'isInitialized');
+      // 🕵️‍♂️ DEBUG PRINT: Este é o nosso "dedo-duro" de navegação.
+      print("🔀 [GoRouter] Redirect sendo verificado. Localização atual: ${state.matchedLocation}. Tentando ir para: ${state.uri}");
+
+      final initialized = getIt.isRegistered<bool>(instanceName: 'isInitialized') && getIt.get<bool>(instanceName: 'isInitialized');
       final isSplash = state.matchedLocation == '/splash';
 
       if (!initialized) {
-        return isSplash
-            ? null
-            : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
+        print("🔀 [GoRouter] App não inicializado. Redirecionando para /splash.");
+        return isSplash ? null : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
       }
-
       if (isSplash) {
-        return state.uri.queryParameters['redirectTo'] ?? '/';
+        final redirectTo = state.uri.queryParameters['redirectTo'] ?? '/';
+        print("_ [GoRouter] Saindo do Splash. Redirecionando para: $redirectTo");
+        return redirectTo;
       }
 
-      return null;
+      print("🔀 [GoRouter] Nenhuma regra de redirect foi aplicada. Continuando navegação normal.");
+      return null; // Nenhuma outra regra de redirecionamento
     },
+
     errorPageBuilder: (context, state) => const MaterialPage(child: NotFoundPage()),
   );
 }

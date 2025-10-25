@@ -1,10 +1,7 @@
 // Em: lib/models/cart.dart
 
 import 'package:equatable/equatable.dart';
-import 'package:totem/models/product.dart';
-
 import 'cart_item.dart';
-
 
 class Cart extends Equatable {
   final int id;
@@ -51,9 +48,31 @@ class Cart extends Equatable {
       items: (json['items'] as List)
           .map((itemJson) => CartItem.fromJson(itemJson))
           .toList(),
-      subtotal: json['subtotal'],
-      discount: json['discount'],
-      total: json['total'],
+      subtotal: json['subtotal'] ?? 0,
+      discount: json['discount'] ?? 0,
+      total: json['total'] ?? 0,
+    );
+  }
+
+  Cart copyWith({
+    int? id,
+    String? status,
+    String? couponCode,
+    String? observation,
+    List<CartItem>? items,
+    int? subtotal,
+    int? discount,
+    int? total,
+  }) {
+    return Cart(
+      id: id ?? this.id,
+      status: status ?? this.status,
+      couponCode: couponCode ?? this.couponCode,
+      observation: observation ?? this.observation,
+      items: items ?? this.items,
+      subtotal: subtotal ?? this.subtotal,
+      discount: discount ?? this.discount,
+      total: total ?? this.total,
     );
   }
 

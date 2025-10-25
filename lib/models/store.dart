@@ -5,16 +5,17 @@ import 'package:totem/models/rating_summary.dart';
 import 'package:totem/models/store_city.dart';
 import 'package:totem/models/store_neig.dart';
 import 'package:totem/models/store_operation_config.dart';
+import 'package:totem/models/category.dart';
 import '../core/extensions.dart';
 import 'delivery_options.dart';
 import 'image_model.dart';
-
 import 'store_hour.dart';
 
 class Store {
-  Store( {
+  Store({
     this.id,
     this.name = '',
+    this.urlSlug = '', // ✅ ADICIONADO
     this.phone = '',
     this.image,
     this.zip_code,
@@ -35,12 +36,12 @@ class Store {
     this.store_operation_config,
     this.ratingsSummary,
     this.cities = const [],
-
-
+    this.categories = const [],
   });
 
   final int? id;
   final String name;
+  final String urlSlug; // ✅ ADICIONADO
   final String phone;
 
   final String? zip_code;
@@ -60,18 +61,17 @@ class Store {
   final ImageModel? banner;
 
   final List<PaymentMethodGroup> paymentMethodGroups;
-
   final List<StoreHour> hours;
   final StoreOperationConfig? store_operation_config;
   RatingsSummary? ratingsSummary;
-
   final List<StoreCity> cities;
-
+  final List<Category> categories;
 
   factory Store.fromJson(Map<String, dynamic> json) {
     return Store(
       id: json['id'] as int?,
       name: json['name'] ?? '',
+      urlSlug: json['url_slug'] ?? '', // ✅ ADICIONADO O PARSE
       phone: json['phone'] ?? '',
       zip_code: json['zip_code'],
       street: json['street'],
@@ -85,34 +85,34 @@ class Store {
       facebook: json['facebook'],
       tiktok: json['tiktok'],
       description: json['description'],
-      image: ImageModel(url: json['image_path']),
-      banner: ImageModel(url: json['banner_path']),
+      image: json['image_path'] != null
+          ? ImageModel(url: json['image_path'] as String)
+          : null,
+      banner: json['banner_path'] != null
+          ? ImageModel(url: json['banner_path'] as String)
+          : null,
       paymentMethodGroups: (json['payment_method_groups'] as List<dynamic>?)
-        ?.map((e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>))
-        .toList() ?? [],
+          ?.map((e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+          [],
       hours: (json['hours'] as List<dynamic>?)
           ?.map((e) => StoreHour.fromJson(e))
           .toList() ??
           [],
-
       store_operation_config: json['store_operation_config'] != null
           ? StoreOperationConfig.fromJson(json['store_operation_config'])
           : null,
-
       ratingsSummary: json['ratingsSummary'] != null
           ? RatingsSummary.fromMap(json['ratingsSummary'])
           : null,
-
-
       cities: (json['cities'] as List<dynamic>?)
           ?.map((e) => StoreCity.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [],
-
-
-
-
+          .toList() ??
+          [],
+      categories: (json['categories'] as List<dynamic>?)
+          ?.map((e) => Category.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+          [],
     );
   }
-
-
 }

@@ -6,7 +6,7 @@ import '../models/product.dart';
 import '../models/rating_summary.dart';
 
 class StoreState {
-  StoreState( {
+  StoreState({
     this.products,
     this.selectedCategory,
     this.store,
@@ -20,12 +20,8 @@ class StoreState {
   final List<BannerModel>? banners;
   final RatingsSummary? ratingsSummary;
 
-  late final List<Category> categories = (products
-      ?.map((e) => e.category)
-      .toSet()
-      .toList()
-    ?..sort((a, b) => b.priority.compareTo(a.priority))) ??
-      [];
+  // ✅ CORREÇÃO: Usa as categorias vindas do store, não dos produtos
+  late final List<Category> categories = store?.categories ?? [];
 
   StoreState copyWith({
     List<Product>? products,
@@ -39,8 +35,7 @@ class StoreState {
       selectedCategory: selectedCategory ?? this.selectedCategory,
       store: store ?? this.store,
       banners: banners ?? this.banners,
-      ratingsSummary: ratingsSummary ?? this.ratingsSummary
-
+      ratingsSummary: ratingsSummary ?? this.ratingsSummary,
     );
   }
 }

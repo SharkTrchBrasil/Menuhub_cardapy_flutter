@@ -1,47 +1,83 @@
+// lib/models/category.dart
+
 import 'package:equatable/equatable.dart';
-// Removido o import de 'image_model.dart' que não será mais usado diretamente aqui.
+import 'package:totem/models/image_model.dart';
+import 'package:totem/models/option_group.dart';
+import 'package:totem/models/product_category_link.dart';
+
+enum CategoryType {
+  GENERAL,
+  CUSTOMIZABLE,
+  UNKNOWN;
+
+  static CategoryType fromString(String? value) {
+    switch (value?.toUpperCase()) {
+      case 'GENERAL':
+        return CategoryType.GENERAL;
+      case 'CUSTOMIZABLE':
+        return CategoryType.CUSTOMIZABLE;
+      default:
+        return CategoryType.UNKNOWN;
+    }
+  }
+
+  String toApiString() => name;
+}
 
 class Category extends Equatable {
+  final int? id;
+  final String name;
+  final String? description;
+  final int priority;
+  final bool isActive;
+  final CategoryType type;
+  final ImageModel? image;
+  final List<OptionGroup> optionGroups;
+  final List<ProductCategoryLink> productLinks;
+
   const Category({
     this.id,
     required this.name,
-    this.imageUrl, // ✅ CORRIGIDO: de 'image' para 'imageUrl' (String)
+    this.description,
     required this.priority,
     required this.isActive,
+    this.type = CategoryType.GENERAL,
+    this.image,
+    this.optionGroups = const [],
+    this.productLinks = const [],
   });
 
-  final int? id;
-  final String name;
-  final int priority;
-  final String? imageUrl; // ✅ TIPO ALTERADO: para String anulável
-  final bool isActive;
+  bool get isCustomizable => type == CategoryType.CUSTOMIZABLE;
 
-  factory Category.fromJson(Map<String, dynamic> map) {
+  factory Category.fromJson(Map<String, dynamic> json) {
     return Category(
-      id: map['id'] as int?,
-      name: map['name'] as String? ?? '',
-      isActive: map['is_active'] as bool? ?? true,
-      priority: map['priority'] as int? ?? 1,
-      // ✅ ADICIONADO: Lógica para ler a URL da imagem.
-      // O backend deve enviar a chave 'image_path' ou 'image_url' no JSON da categoria.
-      // Estou assumindo 'image_path' para manter consistência com o modelo Product.
-      imageUrl: map['image_path'] as String?,
+      id: json['id'],
+      name: json['name'] ?? '',
+      description: json['description'],
+      priority: json['priority'] ?? 0,
+      isActive: json['is_active'] ?? true,
+      type: CategoryType.fromString(json['type']),
+      image: json['image'] != null ? ImageModel.fromJson(json['image']) : null,
+      optionGroups: (json['option_groups'] as List<dynamic>? ?? [])
+          .map((groupJson) => OptionGroup.fromJson(groupJson))
+          .toList(),
+      productLinks: (json['product_links'] as List<dynamic>? ?? [])
+          .map((linkJson) => ProductCategoryLink.fromJson(linkJson))
+          .toList(),
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'priority': priority,
-      'is_active': isActive,
-      'image_url': imageUrl, // ✅ Adicionado ao toJson também
-    };
-  }
-
-  // ✅ CORRIGIDO: Adicionado imageUrl ao construtor empty
-  factory Category.empty() => Category(id: 0, name: '', priority: 0, isActive: false, imageUrl: null);
+  const Category.empty()
+      : id = 0,
+        name = '',
+        description = null,
+        priority = 0,
+        isActive = false,
+        type = CategoryType.UNKNOWN,
+        image = null,
+        optionGroups = const [],
+        productLinks = const [];
 
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [id, name, type, isActive, optionGroups, productLinks];
 }

@@ -1,32 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:totem/models/cart.dart';
-
+import 'package:collection/collection.dart';
+import 'package:totem/models/category.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
-
 import 'package:totem/pages/cart/widgets/cart_bottom_bar.dart';
 import 'package:totem/pages/cart/widgets/cart_itens_section.dart';
-
 import 'package:totem/pages/cart/widgets/coupon_section.dart';
 import 'package:totem/pages/cart/widgets/free_shipping_progress.dart';
 import 'package:totem/pages/cart/widgets/min_order_info.dart';
 import 'package:totem/pages/cart/widgets/order_summary.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/cubit/store_cubit.dart';
-
 import 'package:totem/themes/ds_theme_switcher.dart';
-
-
 import '../../helpers/navigation_helper.dart';
 import '../../models/cart_item.dart';
-import '../../models/cart_product.dart';
 import '../../models/product.dart';
 import '../../models/update_cart_payload.dart';
 import '../../widgets/store_header_card.dart';
 import '../address/cubits/delivery_fee_cubit.dart';
-import 'cart_state.dart';
 
+import 'cart_state.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
@@ -40,11 +34,18 @@ class CartPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    final store = context.watch<StoreCubit>().state.store;
+    final storeState = context.watch<StoreCubit>().state;
+    final store = storeState.store;
+    final allProducts = storeState.products ?? [];
+    final allCategories = storeState.categories ?? [];
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
-    final allProducts = context.read<StoreCubit>().state.products ?? [];
 
     final minOrder = store?.store_operation_config?.deliveryMinOrder ?? 0;
+
+    int deliveryFeeInCents = 0;
+    if (deliveryFeeState is DeliveryFeeLoaded) {
+      deliveryFeeInCents = (deliveryFeeState.deliveryFee * 100).toInt();
+    }
 
     return Scaffold(
       backgroundColor: theme.cartBackgroundColor,
@@ -62,61 +63,38 @@ class CartPage extends StatelessWidget {
         centerTitle: true,
         actions: [
           TextButton(
-            style: ButtonStyle(
-              overlayColor: MaterialStateProperty.all(Colors.transparent),
-            ),
+            style: ButtonStyle(overlayColor: MaterialStateProperty.all(Colors.transparent)),
             onPressed: () => context.read<CartCubit>().clearCart(),
-            child: Text(
-              'Limpar',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: theme.primaryColor,
-              ),
-            ),
+            child: Text('Limpar', style: TextStyle(fontWeight: FontWeight.w600, color: theme.primaryColor)),
           ),
         ],
       ),
       body: BlocListener<CartCubit, CartState>(
-
-
-
-        // Adicione o BlocListener aqui
         listener: (context, state) {
-          if (state.cart.items.isEmpty && state.status == CartStatus.success) {
+          if (state.status == CartStatus.success && state.cart.items.isEmpty) {
             context.pop();
           }
-
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: BlocBuilder<CartCubit, CartState>(
             builder: (context, state) {
-              // ✅ FONTE ÚNICA DA VERDADE: Pegamos o objeto `cart` do estado.
+              if (state.status == CartStatus.loading && state.cart.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
               final cart = state.cart;
 
-
               if (cart.items.isEmpty) {
-                // O listener acima já vai fechar a tela, mas é bom ter um fallback.
                 return const Center(child: Text('Sua sacola está vazia'));
               }
 
-
               final recommendedProducts = getRecommendedProducts(
                 allProducts: allProducts,
-                itemsInCart: cart.items, // Passa a lista de CartItem
+                allCategories: allCategories,
+                itemsInCart: cart.items,
                 bebidaCategories: bebidaCategoryNames,
               );
-
-
-
-
-              // final hasCoupon = state.products.any((p) => p.coupon != null);
-              //
-              // // ✅ CORREÇÃO: Acessando os dados do produto via 'sourceProduct'
-              // final hasPromotion = state.products.any((p) =>
-              // p.sourceProduct.activatePromotion == true &&
-              //     (p.sourceProduct.promotionPrice ?? 0) < p.sourceProduct.basePrice);
-
 
               return Column(
                 children: [
@@ -124,30 +102,22 @@ class CartPage extends StatelessWidget {
                     child: ListView(
                       children: [
                         StoreHeaderCard(
-                          showAddItemsButton: true, // Mostra o botão
-                          onAddItemsPressed: () {
-                            context.pop(); // Ou sua rota para o cardápio
-                          },
+                          showAddItemsButton: true,
+                          onAddItemsPressed: () => context.pop(),
                         ),
                         const SizedBox(height: 25),
-
-                        if (minOrder > 0 && cart.subtotal < minOrder)
+                        if (minOrder > 0 && (cart.subtotal / 100) < minOrder) ...[
                           MinOrderNotice(minOrder: minOrder),
-                        if (minOrder > 0 && cart.subtotal < minOrder)
-                        const SizedBox(height: 25),
+                          const SizedBox(height: 25),
+                        ],
                         CartItemsSection(items: cart.items),
-
                         const SizedBox(height: 25),
                         Center(
                           child: GestureDetector(
                             onTap: () => context.pop(),
                             child: Text(
                               'Adicionar mais itens',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: theme.primaryColor,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: TextStyle(fontSize: 16, color: theme.primaryColor, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
@@ -155,46 +125,31 @@ class CartPage extends StatelessWidget {
                         if (recommendedProducts.isNotEmpty)
                           RecommendedProductsSection(
                             recommendedProducts: recommendedProducts,
+                            onProductTap: (product) => handleProductTap(context, product),
                           ),
                         const SizedBox(height: 34),
-
-                        // ✅ Passa apenas o código do cupom
                         CouponSection(couponCode: cart.couponCode),
-
-
                         const SizedBox(height: 26),
-
-                        // ✅ Passa o subtotal correto
                         FreeShippingProgress(
                           cartTotal: cart.subtotal / 100.0,
                           threshold: store?.store_operation_config?.freeDeliveryThreshold,
                         ),
                         const SizedBox(height: 40),
-
-
-                        //
-                        // // ✅ WIDGET ATUALIZADO COM OS DADOS CORRETOS
-                        // OrderSummary(
-                        //   subtotalInCents: cart.subtotal,
-                        //   discountInCents: cart.discount, // <-- CORREÇÃO: Pega o desconto direto do carrinho
-                        //   deliveryFeeInCents: (deliveryFeeState.deliveryFee * 100).toInt(), // <-- ADICIONADO: Pega a taxa e converte para centavos
-                        // ),
-
-
-
-
+                        OrderSummary(
+                          subtotalInCents: cart.subtotal,
+                          discountInCents: cart.discount,
+                          deliveryFeeInCents: deliveryFeeInCents,
+                        ),
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
-
-                  // ✅ CORREÇÃO: Passando os getters corretos do CartState
                   CartBottomBar(
                     subtotal: cart.subtotal / 100.0,
                     finalTotal: cart.total / 100.0,
                     minOrder: minOrder,
                     hasCoupon: cart.couponCode != null,
                   ),
-
                 ],
               );
             },
@@ -204,31 +159,39 @@ class CartPage extends StatelessWidget {
     );
   }
 
-// ✅ [VERSÃO CORRIGIDA E FINAL]
-
-// A função agora é async para poder esperar a resposta do backend.
+  // ✅ MÉTODO CORRIGIDO
   Future<void> handleProductTap(BuildContext context, Product product) async {
-    // A verificação de variantes continua perfeita.
-    final hasRequiredVariants = product.variantLinks?.any((link) => link.minSelectedOptions > 0) ?? false;
+    final hasVariants = product.variantLinks.any((link) => link.minSelectedOptions > 0);
 
-    if (hasRequiredVariants || (product.variantLinks?.isNotEmpty ?? false)) {
-      // Se tiver variantes, a ação de navegar para a página do produto está correta.
+    if (hasVariants) {
       goToProductPage(context, product);
     } else {
-      // ✅ CORREÇÃO: Se não tiver variantes, usamos o novo fluxo de dados.
+      // 1. Pega o primeiro vínculo de categoria do produto.
+      final firstCategoryLink = product.categoryLinks.firstOrNull;
 
-      // 1. Montamos o payload para o backend.
+      // 2. Validação de segurança: se o produto não tem categoria, não podemos adicioná-lo.
+      if (firstCategoryLink == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erro: ${product.name} não pertence a nenhuma categoria.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return; // Interrompe a execução
+      }
+
+      // 3. Cria o payload com o categoryId correto.
       final payload = UpdateCartItemPayload(
-        productId: product.id,
-        quantity: 1, // Adiciona uma unidade
-        variants: [],  // Lista de variantes vazia
+        productId: product.id!,
+        categoryId: firstCategoryLink.categoryId, // Usa o ID da primeira categoria encontrada
+        quantity: 1,
+        variants: null, // Para produtos simples, não há variantes a serem enviadas
       );
 
       try {
-        // 2. Chamamos o método `updateItem` do CartCubit.
         await context.read<CartCubit>().updateItem(payload);
-
-        // 3. Mostramos o feedback de sucesso apenas se a chamada de rede funcionar.
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -239,11 +202,10 @@ class CartPage extends StatelessWidget {
           );
         }
       } catch (e) {
-        // Opcional: Mostrar um feedback de erro se a chamada falhar.
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Não foi possível adicionar ${product.name}.'),
+              content: Text('Não foi possível adicionar ${product.name}. Tente novamente.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -252,72 +214,37 @@ class CartPage extends StatelessWidget {
     }
   }
 
-
   List<Product> getRecommendedProducts({
     required List<Product> allProducts,
+    required List<Category> allCategories,
     required List<CartItem> itemsInCart,
     Set<String>? bebidaCategories,
     int maxItems = 10,
   }) {
     final productIdsInCart = itemsInCart.map((item) => item.product.id).toSet();
+    final categoriesInCart = itemsInCart
+        .expand((item) => item.product.categoryLinks.map((link) => link.categoryId))
+        .toSet();
+    final beverages = bebidaCategories ?? const {};
 
-    // Precisamos encontrar as categorias dos produtos que estão no carrinho
-    final categoriesInCart = <int>{};
-    for (var id in productIdsInCart) {
-      final productInCart = allProducts.firstWhere((p) => p.id == id, orElse: () => Product.empty());
-      if (productInCart.id != 0) {
-        categoriesInCart.add(productInCart.category.id!);
-      }
-    }
+    final potentialProducts = allProducts
+        .where((p) => !productIdsInCart.contains(p.id) && (p.coverImageUrl?.isNotEmpty ?? false))
+        .toList();
 
-    final beverages = bebidaCategories ?? bebidaCategoryNames;
+    final recommended = <Product>[];
 
-    final recommended = [
-      // 1. Mesmo grupo de categorias
-      ...allProducts.where((product) {
-        final sameCategory =
-            product.category != null &&
-            categoriesInCart.contains(product.category!.id);
-        final notInCart = !productIdsInCart.contains(product.id);
-        final hasImage =
-            product.coverImageUrl != null && product.coverImageUrl!.isNotEmpty;
-        return sameCategory && notInCart && hasImage;
-      }),
+    recommended.addAll(potentialProducts.where((p) {
+      return p.categoryLinks.any((link) => categoriesInCart.contains(link.categoryId));
+    }));
 
-      // 2. Bebidas e acompanhamentos (categoria específica)
-      ...allProducts.where((product) {
-        final categoryName = product.category?.name?.toLowerCase();
-        final isBebida =
-            categoryName != null &&
-            beverages.any(
-              (bebida) => categoryName.contains(bebida.toLowerCase()),
-            );
-        final notInCart = !productIdsInCart.contains(product.id);
-        final hasImage =
-            product.coverImageUrl != null && product.coverImageUrl!.isNotEmpty;
-        return isBebida && notInCart && hasImage;
-      }),
+    recommended.addAll(potentialProducts.where((p) {
+      final categoryOfProduct = allCategories.firstWhereOrNull(
+            (cat) => p.categoryLinks.any((link) => link.categoryId == cat.id),
+      );
+      return beverages.any((bev) => categoryOfProduct?.name.toLowerCase().contains(bev.toLowerCase()) ?? false);
+    }));
 
-      // 3. Outros produtos populares com imagem
-      ...allProducts.where((product) {
-        final notInCart = !productIdsInCart.contains(product.id);
-        final hasImage =
-            product.coverImageUrl != null && product.coverImageUrl!.isNotEmpty;
-        return notInCart && hasImage;
-      }),
-    ];
-
-    // Remove duplicados por ID e limita o tamanho
-    final uniqueRecommended =
-        recommended
-            .fold<Map<String, Product>>(
-              {},
-              (map, product) => map..[product.id.toString()] = product,
-            )
-            .values
-            .take(maxItems)
-            .toList();
-
-    return uniqueRecommended;
+    final uniqueIds = <int>{};
+    return recommended.where((product) => uniqueIds.add(product.id!)).take(maxItems).toList();
   }
 }

@@ -134,10 +134,9 @@ class _ClassicThemeState extends State<ClassicTheme> {
                 categories: state.categories ?? [],
                 products: state.products ?? [],
                 selectedCategory: state.selectedCategory,
-                categoryLayout: categoryLayout,
-                productLayout: productLayout,
+
                 onCategorySelected: (c) {
-                  context.read<StoreCubit>().selectCategory(c);
+                  context.read<StoreCubit>().selectCategory(c!);
                   // Adicione qualquer lógica adicional necessária aqui
                 },
               );
@@ -148,13 +147,11 @@ class _ClassicThemeState extends State<ClassicTheme> {
                 banners: state.banners ?? [],
                 categories: state.categories ?? [],
                 products: state.products ?? [],
-                selectedCategory: state.selectedCategory,
-                categoryLayout: categoryLayout,
-                productLayout: productLayout,
+
                 onCategorySelected: (c) {
-                  context.read<StoreCubit>().selectCategory(c);
+                  context.read<StoreCubit>().selectCategory(c!);
                   // Adicione qualquer lógica adicional necessária aqui
-                },
+                }, selectedCategory: null,
               );
             },
             desktopBuilder: (context, constraints) {
@@ -166,10 +163,9 @@ class _ClassicThemeState extends State<ClassicTheme> {
                 categories: state.categories ?? [],
                 products: state.products ?? [],
                 selectedCategory: state.selectedCategory,
-                categoryLayout: categoryLayout,
-                productLayout: productLayout,
+
                 onCategorySelected: (c) {
-                  context.read<StoreCubit>().selectCategory(c);
+                  context.read<StoreCubit>().selectCategory(c!);
                   // Adicione qualquer lógica adicional necessária aqui
                 }, store: state.store,
               );

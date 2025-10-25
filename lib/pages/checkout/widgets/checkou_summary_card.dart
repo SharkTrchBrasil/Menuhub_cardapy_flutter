@@ -12,23 +12,22 @@ class OrderSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ouve as mudanças no carrinho e na taxa de entrega para se reconstruir
     return BlocBuilder<CartCubit, CartState>(
       builder: (context, cartState) {
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
           builder: (context, feeState) {
             final cart = cartState.cart;
 
-            // Lógica para determinar a taxa de entrega a ser exibida
-            final deliveryFee = (feeState.deliveryType == DeliveryType.delivery)
-                ? feeState.calculatedDeliveryFee
-                : 0;
+            // ✅ CORREÇÃO APLICADA AQUI
+            double deliveryFee = 0.0;
+            if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+              deliveryFee = feeState.deliveryFee;
+            }
 
             final grandTotal = (cart.total / 100.0) + deliveryFee;
 
-            // Formata os valores para exibição
             final subtotalString = UtilBrasilFields.obterReal(cart.subtotal / 100.0);
-            final deliveryFeeString = deliveryFee > 0 ? UtilBrasilFields.obterReal(deliveryFee.toDouble()) : 'Grátis';
+            final deliveryFeeString = deliveryFee > 0 ? UtilBrasilFields.obterReal(deliveryFee) : 'Grátis';
             final totalString = UtilBrasilFields.obterReal(grandTotal);
 
             return Column(
@@ -57,7 +56,7 @@ class OrderSummaryCard extends StatelessWidget {
                   context,
                   title: 'Total',
                   value: totalString,
-                  isBold: true, // Deixa a linha do total em negrito
+                  isBold: true,
                 ),
               ],
             );
@@ -67,7 +66,6 @@ class OrderSummaryCard extends StatelessWidget {
     );
   }
 
-  /// Widget auxiliar para criar cada linha do resumo (ex: Subtotal R$ 10,00)
   Widget _buildSummaryRow(BuildContext context, {
     required String title,
     required String value,
