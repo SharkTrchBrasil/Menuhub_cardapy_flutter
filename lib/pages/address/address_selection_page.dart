@@ -23,8 +23,46 @@ class AddressSelectionPage extends StatefulWidget {
 }
 
 class _AddressSelectionPageState extends State<AddressSelectionPage> {
-  // O estado local gerencia qual aba está selecionada
   late DeliveryType _selectedType;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Executa apenas uma vez após o widget estar completamente construído
+    if (!_initialized) {
+      _initializeDeliveryType();
+      _initialized = true;
+    }
+  }
+
+  void _initializeDeliveryType() {
+    final storeConfig = context.read<StoreCubit>().state.store?.store_operation_config;
+    final deliveryEnabled = storeConfig?.deliveryEnabled ?? false;
+    final pickupEnabled = storeConfig?.pickupEnabled ?? false;
+
+    // Pega o estado completo
+    final deliveryFeeState = context.read<DeliveryFeeCubit>().state;
+
+    // Acessa o tipo de entrega diretamente e de forma segura
+    DeliveryType currentType = deliveryFeeState.deliveryType;
+
+    // Se o tipo atual for 'entrega' mas a entrega estiver desabilitada,
+    // e a retirada estiver habilitada, muda para 'retirada'.
+    if (currentType == DeliveryType.delivery && !deliveryEnabled && pickupEnabled) {
+      currentType = DeliveryType.pickup;
+    }
+    // Se o tipo atual for 'retirada' mas a retirada estiver desabilitada,
+    // e a entrega estiver habilitada, muda para 'entrega'.
+    else if (currentType == DeliveryType.pickup && !pickupEnabled && deliveryEnabled) {
+      currentType = DeliveryType.delivery;
+    }
+
+    _selectedType = currentType;
+    // Atualiza o cubit caso a gente tenha feito uma mudança forçada
+    context.read<DeliveryFeeCubit>().updateDeliveryType(_selectedType);
+  }
 
   void _showEditAddressModal({CustomerAddress? addressToEdit}) {
     showModalBottomSheet(
@@ -49,38 +87,6 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
         );
       },
     );
-  }
-  @override
-  void initState() {
-    super.initState();
-    final storeConfig = context.read<StoreCubit>().state.store?.store_operation_config;
-    final deliveryEnabled = storeConfig?.deliveryEnabled ?? false;
-    final pickupEnabled = storeConfig?.pickupEnabled ?? false;
-
-// Pega o estado completo
-    final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
-
-// Acessa o tipo de entrega diretamente e de forma segura
-    final currentDeliveryType = deliveryFeeState.deliveryType;
-
-    // ✅ LÓGICA DE INICIALIZAÇÃO INTELIGENTE
-    // Pega o tipo de entrega atual do cubit
-    DeliveryType currentType = context.read<DeliveryFeeCubit>().state.deliveryType;
-
-    // Se o tipo atual for 'entrega' mas a entrega estiver desabilitada,
-    // e a retirada estiver habilitada, muda para 'retirada'.
-    if (currentType == DeliveryType.delivery && !deliveryEnabled && pickupEnabled) {
-      currentType = DeliveryType.pickup;
-    }
-    // Se o tipo atual for 'retirada' mas a retirada estiver desabilitada,
-    // e a entrega estiver habilitada, muda para 'entrega'.
-    else if (currentType == DeliveryType.pickup && !pickupEnabled && deliveryEnabled) {
-      currentType = DeliveryType.delivery;
-    }
-
-    _selectedType = currentType;
-    // Atualiza o cubit caso a gente tenha feito uma mudança forçada
-    context.read<DeliveryFeeCubit>().updateDeliveryType(_selectedType);
   }
 
   void _onTabSelected(DeliveryType type) {
@@ -224,8 +230,6 @@ class _ConfirmButton extends StatelessWidget {
 }
 
 // --- WIDGETS AUXILIARES PARA ESTA TELA ---
-
-// --- WIDGETS AUXILIARES MODIFICADOS ---
 
 class _TabSelector extends StatelessWidget {
   final DeliveryType selectedType;
@@ -392,31 +396,31 @@ class _AddressListItemState extends State<_AddressListItem> {
                 if (value == 'edit') {
                   // Abre o modal de edição
                   final parentState =
-                      context
-                          .findAncestorStateOfType<
-                            _AddressSelectionPageState
-                          >();
+                  context
+                      .findAncestorStateOfType<
+                      _AddressSelectionPageState
+                  >();
                   parentState?._showEditAddressModal(addressToEdit: widget.address);
                 } else if (value == 'delete') {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder:
                         (ctx) => AlertDialog(
-                          title: const Text('Excluir Endereço'),
-                          content: const Text(
-                            'Tem certeza que deseja excluir este endereço?',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Excluir'),
-                            ),
-                          ],
+                      title: const Text('Excluir Endereço'),
+                      content: const Text(
+                        'Tem certeza que deseja excluir este endereço?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar'),
                         ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Excluir'),
+                        ),
+                      ],
+                    ),
                   );
 
                   // Verifica se o widget ainda está montado antes de continuar
@@ -452,27 +456,27 @@ class _AddressListItemState extends State<_AddressListItem> {
               },
               itemBuilder:
                   (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, color: Colors.black54),
-                          SizedBox(width: 8),
-                          Text('Editar'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Excluir'),
-                        ],
-                      ),
-                    ),
-                  ],
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, color: Colors.black54),
+                      SizedBox(width: 8),
+                      Text('Editar'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Excluir'),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -530,5 +534,3 @@ class _PickupTabContent extends StatelessWidget {
     );
   }
 }
-
-

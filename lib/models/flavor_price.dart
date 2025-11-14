@@ -34,6 +34,16 @@ class FlavorPrice extends Equatable {
         isAvailable = true,
         posCode = null;
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'size_option_id': sizeOptionId,
+      'price': price,
+      'is_available': isAvailable,
+      'pos_code': posCode,
+    };
+  }
+
   @override
   List<Object?> get props => [id, sizeOptionId, price, isAvailable, posCode];
 }

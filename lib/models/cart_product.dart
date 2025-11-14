@@ -14,7 +14,8 @@ class CartProduct extends Equatable {
   final Category category;
 
   // ESTADO DA SELEÇÃO DO USUÁRIO
-  final int quantity;
+  final int quantity;  // Quantidade inteira (para unidades)
+  final double? weightQuantity;  // ✅ NOVO: Quantidade decimal (para kg/litros)
   final String? note;
   final OptionItem? selectedSize;
   final List<Product> selectedFlavors;
@@ -24,11 +25,25 @@ class CartProduct extends Equatable {
     required this.product,
     required this.category,
     this.quantity = 1,
+    this.weightQuantity,  // ✅ NOVO: Quantidade decimal para kg/litros
     this.note,
     this.selectedSize,
     this.selectedFlavors = const [],
     this.selectedVariants = const [],
   });
+  
+  // ✅ NOVO: Getter para quantidade efetiva (usa weightQuantity se disponível)
+  double get effectiveQuantity {
+    if (product.unit.requiresQuantityInput && weightQuantity != null) {
+      return weightQuantity!;
+    }
+    return quantity.toDouble();
+  }
+  
+  // ✅ NOVO: Verifica se precisa de entrada de quantidade decimal
+  bool get requiresDecimalQuantity {
+    return product.unit.requiresQuantityInput;
+  }
 
   // Construtor de fábrica para iniciar a configuração de um produto
   factory CartProduct.fromProduct(Product product, Category category) {
@@ -85,8 +100,12 @@ class CartProduct extends Equatable {
     return basePrice + variantsPrice;
   }
 
-  // Preço total (unitário * quantidade)
+  // Preço total (unitário * quantidade efetiva)
   int get totalPrice {
+    // ✅ NOVO: Para produtos vendidos por peso/volume, multiplica pela quantidade decimal
+    if (product.unit.requiresQuantityInput && weightQuantity != null) {
+      return (unitPrice * weightQuantity!).round();
+    }
     return unitPrice * quantity;
   }
 
@@ -101,6 +120,7 @@ class CartProduct extends Equatable {
   CartProduct copyWith({
     Product? product,
     int? quantity,
+    double? weightQuantity,  // ✅ NOVO: Quantidade decimal para kg/litros
     String? note,
     OptionItem? selectedSize,
     List<Product>? selectedFlavors,
@@ -110,6 +130,7 @@ class CartProduct extends Equatable {
       product: product ?? this.product,
       category: category,
       quantity: quantity ?? this.quantity,
+      weightQuantity: weightQuantity ?? this.weightQuantity,  // ✅ NOVO
       note: note ?? this.note,
       selectedSize: selectedSize ?? this.selectedSize,
       selectedFlavors: selectedFlavors ?? this.selectedFlavors,

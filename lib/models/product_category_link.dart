@@ -30,6 +30,17 @@ class ProductCategoryLink extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'product_id': productId,
+      'category_id': categoryId,
+      'price': price,
+      'is_available': isAvailable,
+      'is_on_promotion': isOnPromotion,
+      'promotional_price': promotionalPrice,
+    };
+  }
+
   @override
   List<Object?> get props => [
     productId,

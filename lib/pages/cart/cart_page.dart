@@ -19,6 +19,7 @@ import '../../models/product.dart';
 import '../../models/update_cart_payload.dart';
 import '../../widgets/store_header_card.dart';
 import '../address/cubits/delivery_fee_cubit.dart';
+import '../../services/product_recommendation_service.dart';
 
 import 'cart_state.dart';
 
@@ -161,9 +162,11 @@ class CartPage extends StatelessWidget {
 
   // ✅ MÉTODO CORRIGIDO
   Future<void> handleProductTap(BuildContext context, Product product) async {
-    final hasVariants = product.variantLinks.any((link) => link.minSelectedOptions > 0);
+    // ✅ Verifica se tem QUALQUER variante (obrigatória ou opcional)
+    final hasVariants = product.variantLinks.isNotEmpty;
 
     if (hasVariants) {
+      // Se tem complementos, vai para a tela de detalhes
       goToProductPage(context, product);
     } else {
       // 1. Pega o primeiro vínculo de categoria do produto.
@@ -218,33 +221,15 @@ class CartPage extends StatelessWidget {
     required List<Product> allProducts,
     required List<Category> allCategories,
     required List<CartItem> itemsInCart,
-    Set<String>? bebidaCategories,
+    Set<String>? bebidaCategories, // Mantido para compatibilidade, mas não usado mais
     int maxItems = 10,
   }) {
-    final productIdsInCart = itemsInCart.map((item) => item.product.id).toSet();
-    final categoriesInCart = itemsInCart
-        .expand((item) => item.product.categoryLinks.map((link) => link.categoryId))
-        .toSet();
-    final beverages = bebidaCategories ?? const {};
-
-    final potentialProducts = allProducts
-        .where((p) => !productIdsInCart.contains(p.id) && (p.coverImageUrl?.isNotEmpty ?? false))
-        .toList();
-
-    final recommended = <Product>[];
-
-    recommended.addAll(potentialProducts.where((p) {
-      return p.categoryLinks.any((link) => categoriesInCart.contains(link.categoryId));
-    }));
-
-    recommended.addAll(potentialProducts.where((p) {
-      final categoryOfProduct = allCategories.firstWhereOrNull(
-            (cat) => p.categoryLinks.any((link) => link.categoryId == cat.id),
-      );
-      return beverages.any((bev) => categoryOfProduct?.name.toLowerCase().contains(bev.toLowerCase()) ?? false);
-    }));
-
-    final uniqueIds = <int>{};
-    return recommended.where((product) => uniqueIds.add(product.id!)).take(maxItems).toList();
+    // ✅ Usa o serviço profissional de recomendações
+    return ProductRecommendationService.getRecommendedProducts(
+      allProducts: allProducts,
+      allCategories: allCategories,
+      itemsInCart: itemsInCart,
+      maxItems: maxItems,
+    );
   }
 }

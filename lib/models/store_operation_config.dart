@@ -33,6 +33,7 @@ class StoreOperationConfig {
   final String? barPrinterDestination;
 
   final double? freeDeliveryThreshold;
+  final bool scheduledOrdersEnabled;
 
   StoreOperationConfig({
     // Gerais
@@ -62,6 +63,7 @@ class StoreOperationConfig {
     this.barPrinterDestination,
     this.is_operational = true,
     this.freeDeliveryThreshold,
+    this.scheduledOrdersEnabled = false,
   });
 
   factory StoreOperationConfig.fromJson(Map<String, dynamic> json) {
@@ -94,7 +96,7 @@ class StoreOperationConfig {
       barPrinterDestination: json['bar_printer_destination'],
       // o mesmo que você definiu no schema Pydantic da sua API.
       freeDeliveryThreshold: (json['free_delivery_threshold'] as num?)?.toDouble(),
-
+      scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
     );
   }
 

@@ -47,6 +47,15 @@ class _AddressPageState extends State<AddressPage> {
         BlocListener<DeliveryFeeCubit, DeliveryFeeState>(
           listener: (context, state) => _triggerFeeCalculation(context),
         ),
+        // ✅ ENTERPRISE: Escuta mudanças no Store para recalcular frete quando regras são atualizadas
+        BlocListener<StoreCubit, StoreState>(
+          listener: (context, state) {
+            // Recalcula frete quando o store é atualizado (ex: regras de frete atualizadas via WebSocket)
+            if (state.store != null) {
+              _triggerFeeCalculation(context);
+            }
+          },
+        ),
       ],
       child: Scaffold(
         appBar: AppBar(
@@ -82,13 +91,13 @@ class _AddressPageState extends State<AddressPage> {
     );
   }
 
-  void _triggerFeeCalculation(BuildContext context) {
+  void _triggerFeeCalculation(BuildContext context) async {
     if (!mounted) return;
     final addressState = context.read<AddressCubit>().state;
     final store = context.read<StoreCubit>().state.store;
     final cartSubtotal = context.read<CartCubit>().state.cart.subtotal / 100.0;
     if (store != null) {
-      context.read<DeliveryFeeCubit>().calculate(
+      await context.read<DeliveryFeeCubit>().calculate(
         address: addressState.selectedAddress,
         store: store,
         cartSubtotal: cartSubtotal,
@@ -292,8 +301,15 @@ class _DeliveryOptionTile extends StatelessWidget {
     required this.onTap,
   });
 
-  String _getFeeText() {
+  String _getFeeText(BuildContext context) {
     final state = feeState; // Apenas para facilitar a leitura
+    
+    // ✅ Verifica se deve ocultar o valor do frete (hide_fee_display)
+    final store = context.read<StoreCubit>().state.store;
+    if (store != null && _shouldHideFeeDisplay(store)) {
+      return ''; // Ocultar valor
+    }
+    
     if (state is DeliveryFeeRequiresAddress) {
       return 'A calcular';
     }
@@ -311,6 +327,21 @@ class _DeliveryOptionTile extends StatelessWidget {
       return 'Grátis';
     }
     return 'A calcular';
+  }
+
+  bool _shouldHideFeeDisplay(Store store) {
+    // Busca regra de frete por bairros ativa
+    try {
+      final neighborhoodFeeRule = store.deliveryFeeRules.firstWhere(
+        (rule) => rule.ruleType == 'neighborhood_fee' && rule.isActive,
+      );
+      
+      // Verifica se hide_fee_display está ativo
+      return neighborhoodFeeRule.config['hide_fee_display'] as bool? ?? false;
+    } catch (e) {
+      // Se não encontrar regra, retorna false
+      return false;
+    }
   }
 
   @override
@@ -332,7 +363,7 @@ class _DeliveryOptionTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _getFeeText(),
+              _getFeeText(context),
               style: TextStyle(
                 color: (feeState is DeliveryFeeLoaded && (feeState as DeliveryFeeLoaded).deliveryFee > 0)
                     ? null

@@ -35,11 +35,16 @@ class CartQuantityControl extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ✅ AJUSTE 1: Se quantidade = 1, mostra lixeira. Se > 1, mostra menos
           IconButton(
             iconSize: 16,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-            icon: Icon(Icons.remove, color: theme.primaryColor, size: 16),
+            icon: Icon(
+              quantity == 1 ? Icons.delete_outline : Icons.remove,
+              color: quantity == 1 ? Colors.red : theme.primaryColor,
+              size: 16,
+            ),
             onPressed: quantity > 0 ? onRemove : null,
           ),
           const SizedBox(width: 4),

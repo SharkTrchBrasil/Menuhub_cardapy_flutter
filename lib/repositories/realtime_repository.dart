@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -7,8 +8,15 @@ import 'package:rxdart/rxdart.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/store.dart';
+import 'package:totem/models/payment_method.dart';
+import 'package:totem/models/store_hour.dart';
+import 'package:totem/models/scheduled_pause.dart';
+import 'package:totem/models/store_operation_config.dart';
+import 'package:totem/models/coupon.dart';
+import 'package:totem/models/delivery_fee_rule.dart';
 import 'package:totem/themes/ds_theme.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/banners.dart';
 import '../models/cart.dart';
@@ -21,6 +29,7 @@ import '../models/rating_summary.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import '../models/update_cart_payload.dart';
+import 'auth_repository.dart';
 
 
 class RealtimeRepository {
@@ -28,9 +37,23 @@ class RealtimeRepository {
   RealtimeRepository(this._dsThemeSwitcher);
 
   late IO.Socket _socket;
-
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 10;
+  static const int _baseReconnectDelay = 1000; // 1s
+  static const int _maxReconnectDelay = 30000; // 30s
+  
+  // ✅ NOVO: Gerenciamento de token de conexão
+  String? _currentConnectionToken;
+  Timer? _tokenRenewalTimer;
+  bool _isRenewingToken = false;
+  Completer<void>? _reconnectionCompleter;
+  String? _storeUrl; // Armazena store_url para renovação de token
 
   final DsThemeSwitcher _dsThemeSwitcher;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  
+  // ✅ Constante para chave de armazenamento
+  static const String _keyStoreUrl = 'store_url';
 
   final BehaviorSubject<Store> storeController = BehaviorSubject<Store>();
 
@@ -45,6 +68,10 @@ class RealtimeRepository {
   Future<void> initialize(String connectionToken) async {
     final completer = Completer<void>();
 
+    // ✅ Salva o token atual e o store_url para renovação futura
+    _currentConnectionToken = connectionToken;
+    _storeUrl = await _secureStorage.read(key: _keyStoreUrl);
+
     final apiUrl = dotenv.env['API_URL'];
 
     // --- ✅ 2. MUDANÇA NA CONSTRUÇÃO DA URL ---
@@ -54,13 +81,17 @@ class RealtimeRepository {
     print("🔌 RealtimeRepository: Conectando ao servidor...");
     print('🛠️ URL de conexão: $uri');
 
+    // ✅ ENTERPRISE: Configuração otimizada de reconexão com backoff exponencial
     _socket = IO.io(
       uri,
       IO.OptionBuilder()
-          .setTransports(<String>['websocket'])
+          .setTransports(<String>['websocket', 'polling']) // ✅ Fallback para polling se WebSocket falhar
           .disableAutoConnect()
-          .setReconnectionAttempts(5)
-          .setReconnectionDelay(2000)
+          // ✅ ENTERPRISE: Melhor lógica de reconexão
+          .setReconnectionAttempts(_maxReconnectAttempts)
+          .setReconnectionDelay(_baseReconnectDelay)
+          .setReconnectionDelayMax(_maxReconnectDelay)
+          .setRandomizationFactor(0.1) // ✅ Adiciona variação aleatória para evitar thundering herd
           .build(),
     );
 
@@ -72,13 +103,51 @@ class RealtimeRepository {
 
     _socket.on('connect_error', (error) {
       print('❌ Socket.IO: Erro de conexão: $error');
-      if (!completer.isCompleted) {
+      
+      // ✅ NOVO: Detecta erro de token inválido e renova automaticamente
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('invalid') || 
+          errorString.contains('expired') || 
+          errorString.contains('used connection token') ||
+          errorString.contains('connection token')) {
+        print('🔄 Token de conexão inválido/expirado. Iniciando renovação automática...');
+        _renewConnectionTokenAndReconnect();
+      } else if (!completer.isCompleted) {
         completer.completeError('Erro ao conectar: $error');
       }
     });
 
-    _socket.on('disconnect', (_) {
-      print('⚠️ Socket.IO: Desconectado do servidor');
+    // ✅ MELHOR TRATAMENTO DE RECONEXÃO
+    _socket.on('reconnect_attempt', (_) {
+      _reconnectAttempts++;
+      final exponentialDelay = _baseReconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
+      final delay = exponentialDelay.clamp(0, _maxReconnectDelay);
+      print('???? Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...');
+    });
+
+    _socket.on('reconnect', (_) {
+      _reconnectAttempts = 0; // ✅ Reset ao reconectar com sucesso
+      print('???? Socket.IO: Reconectado com sucesso!');
+      // Aqui você pode recarregar estado da aplicação se necessário
+    });
+
+    _socket.on('reconnect_error', (error) {
+      print('❌ Socket.IO: Erro ao reconectar: $error');
+      // ✅ NOVO: Detecta erro de token inválido durante reconexão
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('invalid') || 
+          errorString.contains('expired') || 
+          errorString.contains('used connection token')) {
+        print('🔄 Token inválido durante reconexão. Renovando token...');
+        _renewConnectionTokenAndReconnect();
+      }
+    });
+
+    _socket.on('reconnect_failed', (_) {
+      print('❌ Socket.IO: Falha ao reconectar após máximo de tentativas');
+      // ✅ NOVO: Tenta renovar token e reconectar quando todas as tentativas falharem
+      print('🔄 Tentando renovar token de conexão e reconectar...');
+      _renewConnectionTokenAndReconnect();
     });
 
     _socket.on('initial_state_loaded', (data) {
@@ -93,15 +162,37 @@ class RealtimeRepository {
         // Processa a loja
         if (payload['store'] != null) {
           print('🏪 Processando dados da loja...');
-          print('   ├─ Store raw data keys: ${(payload['store'] as Map).keys.toList()}');
+          final storeData = payload['store'] as Map<String, dynamic>;
+          print('   ├─ Store raw data keys: ${storeData.keys.toList()}');
+          
+          // ✅ DEBUG: Verifica se payment_method_groups está presente
+          if (storeData.containsKey('payment_method_groups')) {
+            final groups = storeData['payment_method_groups'] as List?;
+            print('   ├─ ✅ payment_method_groups encontrado: ${groups?.length ?? 0} grupos');
+            if (groups != null && groups.isNotEmpty) {
+              for (var group in groups.take(3)) {
+                final groupMap = group as Map<String, dynamic>;
+                final methods = groupMap['methods'] as List?;
+                print('      └─ Grupo "${groupMap['name']}": ${methods?.length ?? 0} métodos');
+              }
+            }
+          } else {
+            print('   ├─ ❌ payment_method_groups NÃO encontrado no JSON!');
+          }
 
-          final Store store = Store.fromJson(payload['store']);
+          final Store store = Store.fromJson(storeData);
           storeController.add(store);
 
           print('✅ Loja processada:');
           print('   ├─ Nome: ${store.name}');
           print('   ├─ ID: ${store.id}');
+          print('   ├─ Grupos de pagamento: ${store.paymentMethodGroups.length}');
           print('   └─ Categorias: ${store.categories.length}');
+          
+          // ✅ DEBUG: Lista grupos de pagamento processados
+          for (var group in store.paymentMethodGroups) {
+            print('      └─ Pagamento: ${group.name} (${group.methods.length} métodos)');
+          }
 
           for (var cat in store.categories) {
             print('      └─ ${cat.name} (ID: ${cat.id}, priority: ${cat.priority})');
@@ -152,17 +243,334 @@ class RealtimeRepository {
     });
 
 
-    // ✅ EVENTOS DE DADOS DO BACKEND (permanecem iguais)
+    // ✅ P1: EVENTOS DE DADOS DO BACKEND com suporte a delta updates
     _socket.on('products_update', (data) {
       print('📦 Produtos atualizados recebidos');
-      final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
-      productsController.add(products);
+      
+      // ✅ P1: Processa delta update se for mensagem delta
+      if (data is Map && data.containsKey('type') && data['type'] == 'delta_update') {
+        _handleDeltaUpdate(data as Map<String, dynamic>);
+      } else {
+        // Atualização completa
+        final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
+        productsController.add(products);
+      }
     });
 
     _socket.on('banners_update', (data) {
       print('🎨 Banners atualizados recebidos');
       final List<BannerModel> banners = (data as List).map((json) => BannerModel.fromJson(json)).toList();
       bannersController.add(banners);
+    });
+
+    // ✅ LISTENER: Atualizações de loja (quando admin atualiza configurações)
+    _socket.on('store_details_updated', (data) {
+      print('🏪 store_details_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        if (payload['store'] != null) {
+          final storeData = payload['store'] as Map<String, dynamic>;
+          
+          // ✅ DEBUG: Verifica payment_method_groups
+          if (storeData.containsKey('payment_method_groups')) {
+            final groups = storeData['payment_method_groups'] as List?;
+            print('   ├─ ✅ payment_method_groups: ${groups?.length ?? 0} grupos');
+          } else {
+            print('   ├─ ❌ payment_method_groups NÃO encontrado!');
+          }
+          
+          final Store updatedStore = Store.fromJson(storeData);
+          storeController.add(updatedStore);
+          print('✅ Loja atualizada (payment_method_groups: ${updatedStore.paymentMethodGroups.length})');
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar store_details_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    // ✅ ENTERPRISE: Listeners granulares para atualizações específicas
+    // Agora processa os eventos granulares para atualizar apenas a parte específica do Store
+    _socket.on('payment_methods_updated', (data) {
+      print('💳 [TOTEM] payment_methods_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        // Pega o store atual
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // Parse dos payment_method_groups
+        final paymentMethodGroups = (payload['payment_method_groups'] as List<dynamic>?)
+            ?.map((e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [];
+
+        // Atualiza apenas os métodos de pagamento
+        final updatedStore = currentStore.copyWith(
+          paymentMethodGroups: paymentMethodGroups,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Métodos de pagamento atualizados (${paymentMethodGroups.length} grupos)');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar payment_methods_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('store_hours_updated', (data) {
+      print('🕐 [TOTEM] store_hours_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // Parse dos hours
+        final hours = (payload['hours'] as List<dynamic>?)
+            ?.map((e) => StoreHour.fromJson(e))
+            .toList() ?? [];
+
+        // Atualiza apenas os horários
+        final updatedStore = currentStore.copyWith(
+          hours: hours,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Horários atualizados (${hours.length} horários)');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar store_hours_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('scheduled_pauses_updated', (data) {
+      print('⏸️ [TOTEM] scheduled_pauses_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // Parse das pausas
+        final pauses = (payload['pauses'] as List<dynamic>?)
+            ?.map((e) => ScheduledPause.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [];
+
+        // Atualiza apenas as pausas
+        final updatedStore = currentStore.copyWith(
+          scheduledPauses: pauses,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Pausas agendadas atualizadas (${pauses.length} pausas)');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar scheduled_pauses_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('operation_config_updated', (data) {
+      print('⚙️ [TOTEM] operation_config_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // Parse da operation_config
+        final operationConfig = payload['operation_config'] != null
+            ? StoreOperationConfig.fromJson(payload['operation_config'] as Map<String, dynamic>)
+            : null;
+
+        // Atualiza apenas a configuração operacional
+        final updatedStore = currentStore.copyWith(
+          store_operation_config: operationConfig,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Configuração operacional atualizada');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar operation_config_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('store_profile_updated', (data) {
+      print('👤 [TOTEM] store_profile_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        final profile = payload['profile'] as Map<String, dynamic>?;
+        if (profile == null) return;
+
+        // Atualiza apenas os campos de perfil
+        final updatedStore = currentStore.copyWith(
+          name: profile['name'] ?? currentStore.name,
+          phone: profile['phone'] ?? currentStore.phone,
+          description: profile['description'] ?? currentStore.description,
+          urlSlug: profile['url_slug'] ?? currentStore.urlSlug,
+          zip_code: profile['zip_code'] ?? currentStore.zip_code,
+          street: profile['street'] ?? currentStore.street,
+          number: profile['number'] ?? currentStore.number,
+          neighborhood: profile['neighborhood'] ?? currentStore.neighborhood,
+          complement: profile['complement'] ?? currentStore.complement,
+          city: profile['city'] ?? currentStore.city,
+          state: profile['state'] ?? currentStore.state,
+          instagram: profile['instagram'] ?? currentStore.instagram,
+          facebook: profile['facebook'] ?? currentStore.facebook,
+          tiktok: profile['tiktok'] ?? currentStore.tiktok,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Perfil da loja atualizado');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar store_profile_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('coupons_updated', (data) {
+      print('🎫 [TOTEM] coupons_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // Parse dos cupons
+        final coupons = (payload['coupons'] as List<dynamic>?)
+            ?.map((e) => Coupon.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [];
+
+        // Atualiza apenas os cupons
+        final updatedStore = currentStore.copyWith(
+          coupons: coupons,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Cupons atualizados (${coupons.length} cupons)');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar coupons_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('delivery_fee_rules_updated', (data) {
+      print('🚚 [TOTEM] delivery_fee_rules_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        // ✅ ENTERPRISE: Parse das regras de frete com validação
+        final rulesData = payload['delivery_fee_rules'] as List<dynamic>?;
+        if (rulesData == null) {
+          print('⚠️ delivery_fee_rules não encontrado no payload');
+          return;
+        }
+
+        final rules = rulesData
+            .map((e) {
+              try {
+                return DeliveryFeeRule.fromJson(e as Map<String, dynamic>);
+              } catch (e) {
+                print('⚠️ Erro ao parsear regra de frete: $e');
+                return null;
+              }
+            })
+            .whereType<DeliveryFeeRule>()
+            .toList();
+
+        // ✅ ENTERPRISE: Atualiza apenas as regras de frete
+        final updatedStore = currentStore.copyWith(
+          deliveryFeeRules: rules,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Regras de frete atualizadas (${rules.length} regras ativas)');
+        
+        // ✅ DEBUG: Loga tipos de regras
+        final ruleTypes = rules.map((r) => r.ruleType).toSet();
+        print('   └─ Tipos de regras: ${ruleTypes.join(", ")}');
+        
+        // ✅ ENTERPRISE: Notifica listeners que as regras foram atualizadas
+        // Isso permitirá que a tela de endereço recalcule o frete automaticamente
+        // A tela de endereço já escuta mudanças no StoreCubit, então o recálculo acontecerá automaticamente
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar delivery_fee_rules_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('store_internationalization_updated', (data) {
+      print('🌐 [TOTEM] store_internationalization_updated recebido');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) {
+          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          return;
+        }
+
+        final internationalization = payload['internationalization'] as Map<String, dynamic>?;
+        if (internationalization == null) return;
+
+        // Atualiza apenas os campos de internacionalização
+        final updatedStore = currentStore.copyWith(
+          locale: internationalization['locale'] ?? currentStore.locale,
+          currencyCode: internationalization['currency_code'] ?? currentStore.currencyCode,
+          timezone: internationalization['timezone'] ?? currentStore.timezone,
+        );
+
+        storeController.add(updatedStore);
+        print('✅ [TOTEM] Internacionalização atualizada (locale: ${updatedStore.locale}, currency: ${updatedStore.currencyCode}, timezone: ${updatedStore.timezone})');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar store_internationalization_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
     });
 
     // O evento `initial_state_loaded` agora é manipulado no handler de conexão do backend,
@@ -184,13 +592,314 @@ class RealtimeRepository {
   }
 
 
+  // ✅ P1: Processa delta update
+  void _handleDeltaUpdate(Map<String, dynamic> deltaMessage) {
+    try {
+      final delta = deltaMessage['delta'] as Map<String, dynamic>;
+      final entityType = deltaMessage['entity_type'] as String;
+      final entityId = deltaMessage['entity_id'];
+      
+      if (entityType == 'product') {
+        // Aplica delta ao produto existente
+        final currentProducts = productsController.value;
+        final productIndex = currentProducts.indexWhere((p) => p.id == entityId);
+        
+        if (productIndex != -1) {
+          final existingProduct = currentProducts[productIndex];
+          final productJson = existingProduct.toJson();
+          
+          // Aplica delta
+          delta.forEach((key, value) {
+            if (value == null) {
+              productJson.remove(key);
+            } else {
+              productJson[key] = value;
+            }
+          });
+          
+          // Recria produto atualizado
+          final updatedProduct = Product.fromJson(productJson);
+          final updatedProducts = List<Product>.from(currentProducts);
+          updatedProducts[productIndex] = updatedProduct;
+          
+          productsController.add(updatedProducts);
+          print('✅ Delta update aplicado ao produto $entityId');
+        }
+      }
+    } catch (e) {
+      print('❌ Erro ao processar delta update: $e');
+    }
+  }
+
   void dispose() {
+    _tokenRenewalTimer?.cancel();
     storeController.close();
     productsController.close();
     bannersController.close();
     orderController.close();
-
+    _socket.disconnect();
   }
+
+  // ✅ NOVO: Renova token de conexão e reconecta automaticamente
+  Future<void> _renewConnectionTokenAndReconnect() async {
+    // Evita múltiplas renovações simultâneas
+    if (_isRenewingToken) {
+      print('⏳ Renovação de token já em andamento, aguardando...');
+      return;
+    }
+
+    _isRenewingToken = true;
+    print('🔄 Iniciando renovação automática de token de conexão...');
+
+    try {
+      // Obtém o store_url salvo ou do ambiente
+      String? storeUrl = _storeUrl;
+      if (storeUrl == null || storeUrl.isEmpty) {
+        storeUrl = await _secureStorage.read(key: _keyStoreUrl);
+      }
+
+      if (storeUrl == null || storeUrl.isEmpty) {
+        print('❌ Store URL não encontrada. Não é possível renovar token.');
+        _isRenewingToken = false;
+        return;
+      }
+
+      // ✅ Cria AuthRepository temporário para buscar novo token
+      // Configura Dio com base URL correta (sem interceptors para evitar loop)
+      final apiUrl = dotenv.env['API_URL'];
+      final dioForRenewal = Dio(BaseOptions(
+        baseUrl: '$apiUrl/app',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
+      ));
+      
+      final authRepo = AuthRepository(
+        dioForRenewal,
+        _secureStorage,
+      );
+
+      print('🔐 Solicitando novo token de conexão para: $storeUrl');
+      final authResult = await authRepo.getToken(storeUrl);
+
+      if (authResult.isLeft) {
+        print('❌ Falha ao renovar token: ${authResult.left}');
+        _isRenewingToken = false;
+        return;
+      }
+
+      final totemAuth = authResult.right;
+      final newConnectionToken = totemAuth.connectionToken;
+      
+      print('✅ Novo token de conexão obtido com sucesso');
+
+      // Desconecta socket antigo se estiver conectado
+      if (_socket.connected) {
+        await _socket.disconnect();
+      }
+
+      // ✅ Reconecta com novo token
+      await _reconnectWithNewToken(newConnectionToken);
+      
+      _isRenewingToken = false;
+      print('✅ Reconexão automática concluída com sucesso');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao renovar token de conexão: $e');
+      print('📍 StackTrace: $stackTrace');
+      _isRenewingToken = false;
+      
+      // ✅ Retenta após delay (para casos de deploy ou rede instável)
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!_socket.connected) {
+          print('🔄 Retentando renovação de token após delay...');
+          _renewConnectionTokenAndReconnect();
+        }
+      });
+    }
+  }
+
+  // ✅ NOVO: Reconecta com novo token de conexão
+  Future<void> _reconnectWithNewToken(String newConnectionToken) async {
+    _currentConnectionToken = newConnectionToken;
+    _reconnectionCompleter = Completer<void>();
+
+    final apiUrl = dotenv.env['API_URL'];
+    final uri = '$apiUrl?connection_token=$newConnectionToken';
+
+    print('🔌 Reconectando com novo token: $uri');
+
+    // Desconecta socket antigo
+    _socket.disconnect();
+    _socket.dispose();
+
+    // Cria novo socket com novo token
+    _socket = IO.io(
+      uri,
+      IO.OptionBuilder()
+          .setTransports(<String>['websocket', 'polling'])
+          .disableAutoConnect()
+          .setReconnectionAttempts(_maxReconnectAttempts)
+          .setReconnectionDelay(_baseReconnectDelay)
+          .setReconnectionDelayMax(_maxReconnectDelay)
+          .setRandomizationFactor(0.1)
+          .build(),
+    );
+
+    // ✅ Reconfigura listeners essenciais
+    _socket.on('connect', (_) {
+      print('✅ Socket.IO: Reconectado com novo token com sucesso!');
+      _reconnectAttempts = 0;
+      if (!_reconnectionCompleter!.isCompleted) {
+        _reconnectionCompleter!.complete();
+      }
+    });
+
+    _socket.on('connect_error', (error) {
+      print('❌ Socket.IO: Erro ao reconectar com novo token: $error');
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('invalid') || 
+          errorString.contains('expired') || 
+          errorString.contains('used connection token')) {
+        print('🔄 Novo token também inválido. Aguardando e tentando novamente...');
+        Future.delayed(const Duration(seconds: 3), () {
+          if (!_socket.connected) {
+            _renewConnectionTokenAndReconnect();
+          }
+        });
+      }
+    });
+
+    _socket.on('reconnect_error', (error) {
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('invalid') || 
+          errorString.contains('expired') || 
+          errorString.contains('used connection token')) {
+        print('🔄 Token inválido durante reconexão. Renovando novamente...');
+        _renewConnectionTokenAndReconnect();
+      }
+    });
+
+    // Reconecta eventos de dados (mantém os mesmos handlers)
+    _setupDataListeners();
+
+    // Conecta
+    _socket.connect();
+
+    // Aguarda conexão ou timeout
+    try {
+      await _reconnectionCompleter!.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw TimeoutException('Timeout ao reconectar com novo token');
+        },
+      );
+    } catch (e) {
+      print('❌ Timeout ou erro ao reconectar: $e');
+      // Retenta após delay
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!_socket.connected) {
+          _renewConnectionTokenAndReconnect();
+        }
+      });
+    }
+  }
+
+  // ✅ NOVO: Reconfigura listeners de dados (evita duplicação)
+  void _setupDataListeners() {
+    // Reconecta listeners essenciais de dados
+    _socket.on('initial_state_loaded', (data) {
+      print('🎉 Estado inicial carregado recebido após reconexão!');
+      _processInitialState(data);
+    });
+
+    _socket.on('store_details_updated', (data) {
+      print('🏪 Dados da loja atualizados recebidos após reconexão');
+      _processStoreUpdate(data);
+    });
+
+    _socket.on('products_update', (data) {
+      print('📦 Produtos atualizados recebidos');
+      final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
+      productsController.add(products);
+    });
+
+    _socket.on('order_update', (data) {
+      print('🛒 Atualização de pedido recebida');
+      final Order order = Order.fromJson(data);
+      orderController.add(order);
+    });
+  }
+
+  // ✅ NOVO: Processa estado inicial (extraído para evitar duplicação)
+  void _processInitialState(dynamic data) {
+    try {
+      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      
+      if (payload['store'] != null) {
+        final storeData = payload['store'] as Map<String, dynamic>;
+        final Store store = Store.fromJson(storeData);
+        storeController.add(store);
+      }
+
+      if (payload['products'] != null) {
+        final List<Product> products = (payload['products'] as List)
+            .map((json) => Product.fromJson(json))
+            .toList();
+        productsController.add(products);
+      }
+
+      if (payload['banners'] != null) {
+        final List<BannerModel> banners = (payload['banners'] as List)
+            .map((json) => BannerModel.fromJson(json))
+            .toList();
+        bannersController.add(banners);
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao processar initial_state_loaded: $e');
+      print('📍 StackTrace: $stackTrace');
+    }
+  }
+
+  // ✅ NOVO: Processa atualização da loja (extraído)
+  void _processStoreUpdate(dynamic data) {
+    try {
+      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      if (payload['store'] != null) {
+        final storeData = payload['store'] as Map<String, dynamic>;
+        final Store updatedStore = Store.fromJson(storeData);
+        storeController.add(updatedStore);
+        print('✅ Loja atualizada');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao processar store_details_updated: $e');
+      print('📍 StackTrace: $stackTrace');
+    }
+  }
+
+  // ✅ NOVO: Método para reconectar manualmente
+  Future<void> reconnect() async {
+    if (_socket.connected) {
+      print('✅ Socket.IO: Já está conectado');
+      return;
+    }
+
+    print('🔡 Socket.IO: Tentando reconectar manualmente...');
+    _reconnectAttempts = 0; // Reset ao reconectar manualmente
+    _socket.connect();
+
+    // Aguarda a conexão com timeout
+    return Future.delayed(const Duration(seconds: 10)).then((_) {
+      if (!_socket.connected) {
+        throw TimeoutException('Timeout ao reconectar');
+      }
+    });
+  }
+
+  // ✅ NOVO: Método para verificar se está conectado
+  bool get isConnected => _socket.connected;
+
+  // ✅ NOVO: Método para obter status de reconexão
+  int get reconnectAttempts => _reconnectAttempts;
 
   // ✅ MÉTODO `linkCustomerToSession` MAIS SEGURO
   Future<void> linkCustomerToSession(int customerId) async {

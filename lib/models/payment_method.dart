@@ -72,6 +72,7 @@ class PlatformPaymentMethod extends Equatable {
   final String name;
   final String method_type;
   final String? iconKey;
+  final bool requiresDetails; // ✅ ADICIONADO: Campo do backend
   final StorePaymentMethodActivation? activation;
 
   const PlatformPaymentMethod({
@@ -80,6 +81,7 @@ class PlatformPaymentMethod extends Equatable {
     this.iconKey,
     this.activation,
     required this.method_type,
+    this.requiresDetails = false, // ✅ ADICIONADO
 
   });
 
@@ -89,6 +91,7 @@ class PlatformPaymentMethod extends Equatable {
       name: json['name'],
       iconKey: json['icon_key'],
       method_type: json['method_type'], // ✅ ADICIONADO
+      requiresDetails: json['requires_details'] ?? false, // ✅ ADICIONADO
       activation: json['activation'] != null
           ? StorePaymentMethodActivation.fromJson(json['activation'])
           : null,
@@ -96,12 +99,13 @@ class PlatformPaymentMethod extends Equatable {
   }
 
   // ✅ ADICIONADO copyWith E deepCopy
-  PlatformPaymentMethod copyWith({ int? id, String? name,    String? method_type, String? iconKey, StorePaymentMethodActivation? activation }) {
+  PlatformPaymentMethod copyWith({ int? id, String? name, String? method_type, String? iconKey, bool? requiresDetails, StorePaymentMethodActivation? activation }) {
     return PlatformPaymentMethod(
       id: id ?? this.id,
       name: name ?? this.name,
       method_type: method_type ?? this.method_type,
       iconKey: iconKey ?? this.iconKey,
+      requiresDetails: requiresDetails ?? this.requiresDetails,
       activation: activation ?? this.activation,
     );
   }
@@ -109,11 +113,12 @@ class PlatformPaymentMethod extends Equatable {
   PlatformPaymentMethod deepCopy() => PlatformPaymentMethod(
     id: id, name: name, iconKey: iconKey,
     method_type: method_type,
+    requiresDetails: requiresDetails,
     activation: activation?.copyWith(), // Copia a ativação também
   );
 
   @override
-  List<Object?> get props => [id, name, iconKey,method_type, activation];
+  List<Object?> get props => [id, name, iconKey, method_type, requiresDetails, activation];
 }
 
 
@@ -150,32 +155,70 @@ class PaymentMethodCategory extends Equatable {
 
 
 // --- Nível 4: O Grupo Principal ---
+// ✅ ATUALIZADO: Agora corresponde ao backend que retorna methods diretamente (sem categories)
+// ✅ ADICIONADO: title e description para corresponder ao Admin e backend
 class PaymentMethodGroup extends Equatable {
   final String name;
-  final List<PaymentMethodCategory> categories;
+  final String? title; // ✅ ADICIONADO: Título do grupo (ex: "Cartões de Crédito")
+  final String? description; // ✅ ADICIONADO: Descrição do grupo
+  final List<PlatformPaymentMethod> methods; // ✅ Mudou de categories para methods
 
-  const PaymentMethodGroup({ required this.name, required this.categories });
+  const PaymentMethodGroup({ 
+    required this.name, 
+    this.title,
+    this.description,
+    required this.methods 
+  });
 
   factory PaymentMethodGroup.fromJson(Map<String, dynamic> json) {
-    final categoriesList = (json['categories'] as List)
-        .map((categoryJson) => PaymentMethodCategory.fromJson(categoryJson))
-        .toList();
-    return PaymentMethodGroup( name: json['name'], categories: categoriesList );
+    // ✅ Compatibilidade: Aceita tanto a estrutura nova (methods) quanto antiga (categories)
+    List<PlatformPaymentMethod> methodsList = [];
+    
+    if (json['methods'] != null) {
+      // Nova estrutura: methods diretamente
+      methodsList = (json['methods'] as List)
+          .map((methodJson) => PlatformPaymentMethod.fromJson(methodJson))
+          .toList();
+    } else if (json['categories'] != null) {
+      // Estrutura antiga: categories -> methods (para compatibilidade)
+      final categoriesList = (json['categories'] as List)
+          .map((categoryJson) => PaymentMethodCategory.fromJson(categoryJson))
+          .toList();
+      methodsList = categoriesList
+          .expand((cat) => cat.methods)
+          .toList();
+    }
+    
+    return PaymentMethodGroup(
+      name: json['name'] ?? '',
+      title: json['title'], // ✅ ADICIONADO
+      description: json['description'], // ✅ ADICIONADO
+      methods: methodsList,
+    );
   }
 
   // ✅ ADICIONADO copyWith E deepCopy
-  PaymentMethodGroup copyWith({ String? name, List<PaymentMethodCategory>? categories }) {
+  PaymentMethodGroup copyWith({ 
+    String? name, 
+    String? title,
+    String? description,
+    List<PlatformPaymentMethod>? methods 
+  }) {
     return PaymentMethodGroup(
       name: name ?? this.name,
-      categories: categories ?? this.categories,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      methods: methods ?? this.methods,
     );
   }
 
   PaymentMethodGroup deepCopy() => PaymentMethodGroup(
     name: name,
-    categories: categories.map((c) => c.deepCopy()).toList(),
+    title: title,
+    description: description,
+    methods: methods.map((m) => m.deepCopy()).toList(),
   );
 
   @override
-  List<Object?> get props => [name, categories];
+  List<Object?> get props => [name, title, description, methods];
 }

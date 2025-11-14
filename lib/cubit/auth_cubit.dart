@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/controllers/customer_controller.dart';
@@ -9,6 +10,7 @@ import 'package:totem/repositories/customer_repository.dart';
 import '../pages/address/cubits/address_cubit.dart';
 import '../pages/cart/cart_cubit.dart';
 import '../repositories/realtime_repository.dart';
+import '../services/pending_cart_service.dart';
 
 part 'auth_state.dart';
 
@@ -27,6 +29,22 @@ class AuthCubit extends Cubit<AuthState> {
   final CartCubit cartCubit;
   final AddressCubit addressCubit;
 
+  /// ✅ Método auxiliar para processar payload pendente após login bem-sucedido
+  Future<void> _processPendingCartItem() async {
+    final pendingPayload = await PendingCartService.getPendingCartItem();
+    if (pendingPayload != null) {
+      print('🛒 Processando item pendente após login: ${pendingPayload.productId}');
+      try {
+        await cartCubit.updateItem(pendingPayload);
+        await PendingCartService.clearPendingCartItem();
+        print('✅ Item pendente adicionado ao carrinho com sucesso');
+      } catch (e) {
+        print('❌ Erro ao adicionar item pendente: $e');
+        // Não falha o login se houver erro ao adicionar item
+      }
+    }
+  }
+
   Future<void> checkInitialAuthStatus() async {
     // ... (este método não precisa de prints por agora)
     final initialCustomer = customerController.value;
@@ -36,6 +54,8 @@ class AuthCubit extends Cubit<AuthState> {
         emit(state.copyWith(status: AuthStatus.success, customer: initialCustomer));
         cartCubit.fetchCart();
         addressCubit.loadAddresses(initialCustomer.id!);
+        // ✅ Processa payload pendente se houver
+        await _processPendingCartItem();
       } catch (e) {
         await signOut();
       }
@@ -48,7 +68,19 @@ class AuthCubit extends Cubit<AuthState> {
     print("🕵️‍♂️ [AuthCubit] 1. signInWithGoogle INICIADO.");
 
     try {
-      final auth = FirebaseAuth.instance;
+      // ✅ Verifica se Firebase está inicializado
+      final apps = Firebase.apps;
+      if (apps.isEmpty) {
+        print("❌ [AuthCubit] Firebase não está inicializado!");
+        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Firebase não está configurado. Por favor, reinicie o aplicativo.'));
+        return;
+      }
+      
+      print("🔥 [AuthCubit] Firebase apps: ${apps.length}");
+      print("🔥 [AuthCubit] Firebase project: ${apps.first.options.projectId}");
+      print("🔥 [AuthCubit] Firebase API key: ${apps.first.options.apiKey.substring(0, 10)}...");
+      
+      final auth = FirebaseAuth.instanceFor(app: apps.first);
       final authProvider = GoogleAuthProvider();
 
       print("🕵️‍♂️ [AuthCubit] 2. Prestes a chamar signInWithPopup. O popup deve abrir AGORA.");
@@ -74,17 +106,19 @@ class AuthCubit extends Cubit<AuthState> {
           print("❌ [AuthCubit] ERRO no processGoogleSignInCustomer: $errorMessage");
           emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
         },
-            (customer) async {
-          print("✅ [AuthCubit] 6. Cliente criado/obtido no backend: ${customer.name}. Vinculando sessão...");
+        (customer) async {
           try {
             await realtimeRepository.linkCustomerToSession(customer.id!);
-            print("✅ [AuthCubit] 7. Sessão vinculada. Emitindo estado de SUCESSO.");
             emit(state.copyWith(status: AuthStatus.success, customer: customer));
             cartCubit.fetchCart();
             addressCubit.loadAddresses(customer.id!);
+            // ✅ Processa payload pendente após login bem-sucedido
+            await _processPendingCartItem();
           } catch (e) {
-            print("❌ [AuthCubit] ERRO ao vincular sessão: $e");
-            emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Erro ao vincular sessão ao carrinho.'));
+            emit(state.copyWith(
+              status: AuthStatus.error,
+              errorMessage: 'Erro ao vincular sessão ao carrinho.',
+            ));
           }
         },
       );
@@ -102,8 +136,201 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  Future<void> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    emit(state.copyWith(status: AuthStatus.loading));
+
+    try {
+      // ✅ Verifica se Firebase está inicializado
+      final apps = Firebase.apps;
+      if (apps.isEmpty) {
+        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Firebase não está configurado. Por favor, reinicie o aplicativo.'));
+        return;
+      }
+      
+      final auth = FirebaseAuth.instanceFor(app: apps.first);
+      final userCredential = await auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        emit(state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Não foi possível obter os dados do usuário.',
+        ));
+        return;
+      }
+
+      // Processa o cliente no backend
+      final customerResult = await customerRepository.processGoogleSignInCustomer(
+        firebaseUser: firebaseUser,
+      );
+
+      customerResult.fold(
+        (errorMessage) {
+          emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+        },
+        (customer) async {
+          try {
+            await realtimeRepository.linkCustomerToSession(customer.id!);
+            emit(state.copyWith(status: AuthStatus.success, customer: customer));
+            cartCubit.fetchCart();
+            addressCubit.loadAddresses(customer.id!);
+          } catch (e) {
+            emit(state.copyWith(
+              status: AuthStatus.error,
+              errorMessage: 'Erro ao vincular sessão ao carrinho.',
+            ));
+          }
+        },
+      );
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = 'Erro ao fazer login';
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = 'Usuário não encontrado';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Senha incorreta';
+          break;
+        case 'invalid-email':
+          errorMessage = 'E-mail inválido';
+          break;
+        case 'user-disabled':
+          errorMessage = 'Usuário desabilitado';
+          break;
+      }
+      emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+    } catch (e) {
+      emit(state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'Erro inesperado: $e',
+      ));
+    }
+  }
+
+  Future<void> signUpWithEmail({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    emit(state.copyWith(status: AuthStatus.loading));
+
+    try {
+      // ✅ Verifica se Firebase está inicializado
+      final apps = Firebase.apps;
+      if (apps.isEmpty) {
+        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Firebase não está configurado. Por favor, reinicie o aplicativo.'));
+        return;
+      }
+      
+      final auth = FirebaseAuth.instanceFor(app: apps.first);
+
+      // Cria o usuário no Firebase
+      final userCredential = await auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        emit(state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Não foi possível criar a conta.',
+        ));
+        return;
+      }
+
+      // Atualiza o display name
+      await firebaseUser.updateDisplayName(name);
+      await firebaseUser.reload();
+      final updatedUser = auth.currentUser;
+
+      if (updatedUser == null) {
+        emit(state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Erro ao atualizar dados do usuário.',
+        ));
+        return;
+      }
+
+      // Processa o cliente no backend
+      final customerResult = await customerRepository.processGoogleSignInCustomer(
+        firebaseUser: updatedUser,
+      );
+
+      customerResult.fold(
+        (errorMessage) {
+          emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+        },
+        (customer) async {
+          try {
+            await realtimeRepository.linkCustomerToSession(customer.id!);
+            emit(state.copyWith(status: AuthStatus.success, customer: customer));
+            cartCubit.fetchCart();
+            addressCubit.loadAddresses(customer.id!);
+          } catch (e) {
+            emit(state.copyWith(
+              status: AuthStatus.error,
+              errorMessage: 'Erro ao vincular sessão ao carrinho.',
+            ));
+          }
+        },
+      );
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = 'Erro ao criar conta';
+      switch (e.code) {
+        case 'weak-password':
+          errorMessage = 'Senha muito fraca';
+          break;
+        case 'email-already-in-use':
+          errorMessage = 'E-mail já está em uso';
+          break;
+        case 'invalid-email':
+          errorMessage = 'E-mail inválido';
+          break;
+      }
+      emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+    } catch (e) {
+      emit(state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'Erro inesperado: $e',
+      ));
+    }
+  }
+
+  Future<void> resetPassword(String email) async {
+    try {
+      final apps = Firebase.apps;
+      if (apps.isEmpty) {
+        throw Exception('Firebase não está configurado');
+      }
+      final auth = FirebaseAuth.instanceFor(app: apps.first);
+      await auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      throw Exception('Erro ao enviar email de recuperação: ${e.message}');
+    }
+  }
+
+  void updateCustomer(Customer updatedCustomer) {
+    customerController.setCustomer(updatedCustomer);
+    emit(state.copyWith(customer: updatedCustomer));
+  }
+
   Future<void> signOut() async {
-    await FirebaseAuth.instance.signOut();
+    try {
+      final apps = Firebase.apps;
+      if (apps.isNotEmpty) {
+        final auth = FirebaseAuth.instanceFor(app: apps.first);
+        await auth.signOut();
+      }
+    } catch (e) {
+      print('⚠️ Erro ao fazer logout do Firebase: $e');
+    }
     customerController.clearCustomer();
     cartCubit.clearCart();
   //  addressCubit.clearAddresses();

@@ -16,6 +16,13 @@ class AuthRepository {
 
   final Dio _dio;
   final FlutterSecureStorage _secureStorage;
+  
+  // ✅ Dio separado para refresh token (sem interceptor de autenticação)
+  Dio? _refreshDio;
+  
+  // ✅ Lock para evitar múltiplas renovações simultâneas
+  bool _isRefreshing = false;
+  String? _pendingToken;
 
   // ✅ Chaves de armazenamento
   static const String _keyTotemToken = 'totem_token';
@@ -25,6 +32,21 @@ class AuthRepository {
   static const String _keyStoreId = 'store_id';
   static const String _keyStoreUrl = 'store_url';
   static const String _keyStoreName = 'store_name';
+  
+  /// ✅ Inicializa Dio separado para refresh (sem interceptor)
+  Dio _getRefreshDio() {
+    if (_refreshDio != null) return _refreshDio!;
+    
+    // Usa a mesma base URL mas sem interceptores de autenticação
+    final apiUrl = _dio.options.baseUrl.replaceAll('/app', '');
+    _refreshDio = Dio(BaseOptions(
+      baseUrl: '$apiUrl/app',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 30),
+      sendTimeout: const Duration(seconds: 30),
+    ));
+    return _refreshDio!;
+  }
 
   /// Handles Google Sign-In process
   Future<User?> signInWithGoogle() async {
@@ -41,6 +63,20 @@ class AuthRepository {
 
   /// ✅ Obtém o access token válido (renova se necessário)
   Future<String?> getValidAccessToken() async {
+    // ✅ Se já está renovando, aguarda o token pendente
+    if (_isRefreshing && _pendingToken != null) {
+      print('⏳ Aguardando renovação de token em andamento...');
+      // Aguarda até 5 segundos
+      int attempts = 0;
+      while (_isRefreshing && attempts < 50) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+      if (_pendingToken != null) {
+        return _pendingToken;
+      }
+    }
+    
     final accessToken = await _secureStorage.read(key: _keyAccessToken);
     final expirationStr = await _secureStorage.read(key: _keyTokenExpiration);
 
@@ -54,6 +90,18 @@ class AuthRepository {
 
     // Se faltar menos de 5 minutos para expirar, renova
     if (expiration.isBefore(now.add(const Duration(minutes: 5)))) {
+      // ✅ Evita múltiplas renovações simultâneas
+      if (_isRefreshing) {
+        print('⏳ Renovação já em andamento, aguardando...');
+        int attempts = 0;
+        while (_isRefreshing && attempts < 50) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          attempts++;
+        }
+        final newToken = await _secureStorage.read(key: _keyAccessToken);
+        return newToken;
+      }
+      
       print('🔄 Token expirando, renovando...');
       final refreshed = await _refreshAccessToken();
       if (refreshed.isRight) {
@@ -69,14 +117,34 @@ class AuthRepository {
 
   /// ✅ Renova o access token usando o refresh token
   Future<Either<String, String>> _refreshAccessToken() async {
+    // ✅ Lock para evitar múltiplas renovações simultâneas
+    if (_isRefreshing) {
+      print('⚠️ Renovação já em andamento, aguardando...');
+      int attempts = 0;
+      while (_isRefreshing && attempts < 50) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+      final token = await _secureStorage.read(key: _keyAccessToken);
+      return token != null ? Right(token) : const Left('Token não disponível após renovação');
+    }
+    
+    _isRefreshing = true;
+    _pendingToken = null;
+    
     try {
+      // ✅ Usa Dio separado sem interceptor
+      final refreshDio = _getRefreshDio();
+      
       final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
 
       if (refreshToken == null) {
+        _isRefreshing = false;
         return const Left('Refresh token não encontrado');
       }
 
-      final response = await _dio.post(
+      // ✅ Usa refreshDio (sem interceptor) para evitar loop
+      final response = await refreshDio.post(
         '/auth/refresh',
         data: {'refresh_token': refreshToken},
       );
@@ -89,11 +157,23 @@ class AuthRepository {
       await _secureStorage.write(key: _keyAccessToken, value: newAccessToken);
       await _secureStorage.write(key: _keyTokenExpiration, value: newExpiration.toIso8601String());
 
+      _pendingToken = newAccessToken;
+      _isRefreshing = false;
+      
       print('✅ Token renovado com sucesso');
       return Right(newAccessToken);
     } on DioException catch (e) {
+      _isRefreshing = false;
+      _pendingToken = null;
       print('❌ Erro ao renovar token: ${e.message}');
+      print('❌ Status: ${e.response?.statusCode}');
+      print('❌ Response: ${e.response?.data}');
       return Left(e.message ?? 'Erro desconhecido');
+    } catch (e) {
+      _isRefreshing = false;
+      _pendingToken = null;
+      print('❌ Erro inesperado ao renovar token: $e');
+      return Left('Erro inesperado');
     }
   }
 

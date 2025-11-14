@@ -20,6 +20,10 @@ class CustomerAddress extends Equatable {
   final int? cityId;
   final int? neighborhoodId;
 
+  // Coordenadas geográficas (para cálculo de raio)
+  final double? latitude;
+  final double? longitude;
+
   // --- Construtor ---
   const CustomerAddress({
     this.id,
@@ -35,6 +39,8 @@ class CustomerAddress extends Equatable {
     this.reference,
     this.cityId,
     this.neighborhoodId,
+    this.latitude,
+    this.longitude,
   });
 
   // --- Conversor do JSON da API para o Objeto Dart ---
@@ -53,6 +59,8 @@ class CustomerAddress extends Equatable {
       reference: json['reference'] as String?,
       cityId: json['city_id'] as int?,
       neighborhoodId: json['neighborhood_id'] as int?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 
@@ -72,6 +80,9 @@ class CustomerAddress extends Equatable {
       // Os IDs são enviados para o backend associar com as regras de frete
       'city_id': cityId,
       'neighborhood_id': neighborhoodId,
+      // Coordenadas geográficas
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
     };
   }
 
@@ -90,6 +101,8 @@ class CustomerAddress extends Equatable {
     String? reference,
     int? cityId,
     int? neighborhoodId,
+    double? Function()? latitude,
+    double? Function()? longitude,
   }) {
     return CustomerAddress(
       id: id ?? this.id,
@@ -105,6 +118,8 @@ class CustomerAddress extends Equatable {
       reference: reference ?? this.reference,
       cityId: cityId ?? this.cityId,
       neighborhoodId: neighborhoodId ?? this.neighborhoodId,
+      latitude: latitude != null ? latitude() : this.latitude,
+      longitude: longitude != null ? longitude() : this.longitude,
     );
   }
 
@@ -130,5 +145,7 @@ class CustomerAddress extends Equatable {
     reference,
     cityId,
     neighborhoodId,
+    latitude,
+    longitude,
   ];
 }

@@ -93,29 +93,16 @@ class CartItemListItem extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ✅ TÍTULO DO PRODUTO + CONTROLE DE QUANTIDADE
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.product.name,
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: theme.cartTextColor.withOpacity(0.8)),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (item.variantsDescription.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            item.variantsDescription,
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: theme.cartTextColor.withOpacity(0.9)),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      item.product.name,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: theme.cartTextColor.withOpacity(0.8)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -137,20 +124,128 @@ class CartItemListItem extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                item.formattedTotalPrice,
-                style: TextStyle(fontWeight: FontWeight.w600, color: theme.productTextColor),
-              ),
-              if (item.note != null && item.note!.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text("Observação: ${item.note!.trim()}", style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              
+              // ✅ DESCRIÇÃO DO PRODUTO (se houver)
+              if (item.product.description != null && item.product.description!.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  item.product.description!,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: theme.cartTextColor.withOpacity(0.7)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ],
+
+              if (item.product.description != null)
+              const SizedBox(height: 8),
+              _buildPriceSection(context, item, theme),
+              
+              // ✅ COMPLEMENTOS COM QUANTIDADE (AJUSTE 2)
+              if (item.variants.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _buildVariantsSection(item, theme),
+              ],
+              
+              // ✅ OBSERVAÇÃO (por último)
+              if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  "Observação: ${item.note!.trim()}",
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+
+  // ✅ MÉTODO: Exibe preço e preço com desconto (se houver)
+  Widget _buildPriceSection(BuildContext context, CartItem item, DsTheme theme) {
+    final firstCategoryLink = item.product.categoryLinks.firstOrNull;
+    
+    // Verifica se há promoção na categoria
+    if (firstCategoryLink != null && 
+        firstCategoryLink.isOnPromotion && 
+        firstCategoryLink.promotionalPrice != null) {
+      // Calcula o preço total original (sem desconto)
+      final originalTotalPrice = firstCategoryLink.price * item.quantity;
+      // O totalPrice já vem com o desconto aplicado do backend
+      final discountedTotalPrice = item.totalPrice;
+      
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            discountedTotalPrice.toCurrency,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: theme.productTextColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            originalTotalPrice.toCurrency,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Sem desconto, mostra apenas o preço atual
+    return Text(
+      item.formattedTotalPrice,
+      style: TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 16,
+        color: theme.productTextColor,
+      ),
+    );
+  }
+
+  // ✅ MÉTODO: Exibe complementos com quantidade antes do nome
+  Widget _buildVariantsSection(CartItem item, DsTheme theme) {
+    final variantLines = <Widget>[];
+
+    for (final variant in item.variants) {
+      for (final option in variant.options) {
+        if (option.quantity > 0) {
+          variantLines.add(
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '• ',
+                    style: TextStyle(color: theme.cartTextColor.withOpacity(0.6)),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '${option.quantity}x ${option.name}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.cartTextColor.withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: variantLines,
     );
   }
 }

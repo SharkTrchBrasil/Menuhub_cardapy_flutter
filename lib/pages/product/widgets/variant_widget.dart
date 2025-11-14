@@ -15,10 +15,12 @@ class VariantWidget extends StatelessWidget {
     super.key,
     required this.onOptionUpdated,
     required this.variant,
+    this.onScrollToNextRequired,
   });
 
   final CartVariant variant;
   final void Function(CartVariant, CartVariantOption, int) onOptionUpdated;
+  final VoidCallback? onScrollToNextRequired;
 
 
   @override
@@ -42,6 +44,13 @@ class VariantWidget extends StatelessWidget {
               option: option,
               onUpdate: (newQuantity) {
                 onOptionUpdated(variant, option, newQuantity);
+                // ✅ Auto-scroll para próximo obrigatório se este grupo foi completado
+                if (variant.isRequired && newQuantity > 0) {
+                  final updatedVariant = variant.updateOption(option, newQuantity);
+                  if (updatedVariant.isValid && onScrollToNextRequired != null) {
+                    onScrollToNextRequired!();
+                  }
+                }
               },
             );
           },

@@ -2,11 +2,13 @@ import 'package:either_dart/either.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/models/store_city.dart';
 import 'package:totem/models/store_neig.dart';
 import 'package:totem/pages/address/widgets/clean_text_field.dart';
+import 'package:totem/services/geolocation_service.dart';
 
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../cubit/store_cubit.dart';
@@ -37,6 +39,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
   StoreNeighborhood? _selectedNeighborhood;
   late String _selectedLabel;
   late bool _noComplement;
+  double? _latitude;
+  double? _longitude;
+  bool _isGettingLocation = false;
 
   @override
   void initState() {
@@ -56,6 +61,13 @@ class _EditAddressPageState extends State<EditAddressPage> {
 
     _selectedLabel = _currentAddress.label;
     _noComplement = _currentAddress.complement == null || _currentAddress.complement!.isEmpty;
+    _latitude = _currentAddress.latitude;
+    _longitude = _currentAddress.longitude;
+
+    // Se for novo endereço, tenta pegar localização automaticamente
+    if (widget.addressToEdit == null) {
+      _getCurrentLocation();
+    }
 
     if (widget.addressToEdit != null && store != null) {
       if (_currentAddress.cityId != null) {
@@ -103,7 +115,18 @@ class _EditAddressPageState extends State<EditAddressPage> {
       );
     }
 
+    // ✅ CRÍTICO: Verificar se há regra neighborhood_fee ATIVA (não apenas deliveryScope antigo)
+    final hasNeighborhoodFeeRule = store.deliveryFeeRules.any(
+      (r) => r.ruleType == 'neighborhood_fee' && r.isActive,
+    );
+    // Fallback para compatibilidade com sistema antigo
     final deliveryScopeIsNeighborhood = store.store_operation_config?.deliveryScope == 'neighborhood';
+    final requiresNeighborhoodSelection = hasNeighborhoodFeeRule || deliveryScopeIsNeighborhood;
+
+    // ✅ CRÍTICO: Verificar se frete por km/raio requer coordenadas
+    final requiresCoordinates = store.deliveryFeeRules.any(
+      (r) => r.isActive && (r.ruleType == 'per_km' || r.ruleType == 'radius'),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -128,6 +151,78 @@ class _EditAddressPageState extends State<EditAddressPage> {
               _buildSectionTitle(context, 'Localização'),
               const SizedBox(height: 16),
 
+              // ✅ CRÍTICO: Mostrar aviso se coordenadas são obrigatórias
+              if (requiresCoordinates)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'É necessário capturar sua localização para calcular o frete.',
+                            style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Botão para pegar localização atual
+              if (_latitude == null || _longitude == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: OutlinedButton.icon(
+                    icon: _isGettingLocation
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location),
+                    label: Text(_isGettingLocation ? 'Obtendo localização...' : 'Usar minha localização'),
+                    onPressed: _isGettingLocation ? null : _getCurrentLocation,
+                  ),
+                ),
+
+              if (_latitude != null && _longitude != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Localização capturada: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
+                            style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _getCurrentLocation,
+                          child: const Text('Atualizar'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               CleanSelectionFormField<StoreCity>(
                 initialValue: _selectedCity,
                 title: 'Cidade',
@@ -141,7 +236,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
               ),
               const SizedBox(height: 16),
 
-              if (deliveryScopeIsNeighborhood)
+              if (requiresNeighborhoodSelection)
                 CleanSelectionFormField<StoreNeighborhood>(
                   title: 'Bairro',
                   initialValue: _selectedNeighborhood,
@@ -310,7 +405,14 @@ class _EditAddressPageState extends State<EditAddressPage> {
       return;
     }
 
-    final deliveryScopeIsNeighborhood = context.read<StoreCubit>().state.store?.store_operation_config?.deliveryScope == 'neighborhood';
+    // ✅ CRÍTICO: Verificar se há regra neighborhood_fee ATIVA
+    final storeState = context.read<StoreCubit>().state.store;
+    final hasNeighborhoodFeeRule = storeState?.deliveryFeeRules.any(
+      (r) => r.ruleType == 'neighborhood_fee' && r.isActive,
+    ) ?? false;
+    // Fallback para compatibilidade com sistema antigo
+    final deliveryScopeIsNeighborhood = storeState?.store_operation_config?.deliveryScope == 'neighborhood';
+    final requiresNeighborhoodSelection = hasNeighborhoodFeeRule || deliveryScopeIsNeighborhood;
 
     final finalAddress = _currentAddress.copyWith(
       label: _selectedLabel.isNotEmpty ? _selectedLabel : 'Endereço',
@@ -321,12 +423,50 @@ class _EditAddressPageState extends State<EditAddressPage> {
       city: _selectedCity!.name,
       cityId: _selectedCity!.id,
 
-      neighborhood: deliveryScopeIsNeighborhood ? _selectedNeighborhood!.name : _neighborhoodTextController.text.trim(),
-      neighborhoodId: deliveryScopeIsNeighborhood ? _selectedNeighborhood!.id : null,
+      neighborhood: requiresNeighborhoodSelection ? _selectedNeighborhood!.name : _neighborhoodTextController.text.trim(),
+      neighborhoodId: requiresNeighborhoodSelection ? _selectedNeighborhood!.id : null,
       isFavorite: _selectedLabel.isNotEmpty,
+      latitude: () => _latitude,
+      longitude: () => _longitude,
     );
 
     context.read<AddressCubit>().saveAddress(customerId, finalAddress);
     context.pop();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+
+    final position = await GeolocationService.getCurrentPosition();
+
+    if (position != null) {
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _isGettingLocation = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Localização capturada com sucesso!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      setState(() => _isGettingLocation = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível obter sua localização. Permita o acesso à localização nas configurações.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 }

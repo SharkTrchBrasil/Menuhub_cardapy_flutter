@@ -11,7 +11,8 @@ class CheckoutState extends Equatable {
     this.changeFor,
     this.observation,
     this.finalOrder,
-
+    this.isScheduled = false,
+    this.scheduledFor,
     this.errorMessage, // ✅ 1. Adicione a propriedade aqui
   });
 
@@ -21,6 +22,8 @@ class CheckoutState extends Equatable {
   final double? changeFor;
   final String? observation;
   final Order? finalOrder;
+  final bool isScheduled;
+  final DateTime? scheduledFor;
   final String? errorMessage;
 
 
@@ -31,6 +34,8 @@ class CheckoutState extends Equatable {
     double? changeFor,
     String? observation,
     Order? finalOrder,
+    bool? isScheduled,
+    DateTime? scheduledFor,
     String? errorMessage, // ✅ 2. Adicione o parâmetro aqui
   }) {
     return CheckoutState(
@@ -40,6 +45,8 @@ class CheckoutState extends Equatable {
       changeFor: changeFor ?? this.changeFor,
       observation: observation ?? this.observation,
       finalOrder: finalOrder ?? this.finalOrder,
+      isScheduled: isScheduled ?? this.isScheduled,
+      scheduledFor: scheduledFor ?? this.scheduledFor,
       errorMessage: errorMessage, // ✅ 3. Adicione a atribuição aqui
     );
   }
@@ -52,6 +59,8 @@ class CheckoutState extends Equatable {
     changeFor,
     observation,
     finalOrder,
+    isScheduled,
+    scheduledFor,
     errorMessage, // ✅ 4. Adicione à lista de props
   ];
 }

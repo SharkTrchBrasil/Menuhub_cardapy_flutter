@@ -25,6 +25,15 @@ class ImageModel extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'url': url,
+      'image_url': url,
+      'isVideo': isVideo,
+    };
+  }
+
   @override
   List<Object?> get props => [id, url, isVideo];
 }

@@ -23,6 +23,8 @@ class Order {
     required this.totemId,
     required this.needsChange,
     required this.changeAmount,
+    required this.isScheduled,
+    this.scheduledFor,
 
     required this.products,
 
@@ -42,6 +44,8 @@ class Order {
   final int? totemId;
   final bool needsChange;
   final int? changeAmount;
+  final bool isScheduled;
+  final DateTime? scheduledFor;
 
   final List<OrderProduct> products;
 
@@ -61,8 +65,9 @@ class Order {
       charge: json['charge'] != null ? Charge.fromJson(json['charge']) : null,
       totemId: json['totem_id'],
       needsChange: json['needs_change'] ?? false,
-      changeAmount: json['change_amount'],
-     // nullable
+      changeAmount: json['change_amount'] != null ? (json['change_amount'] as num).toInt() : null,
+      isScheduled: json['is_scheduled'] ?? false,
+      scheduledFor: json['scheduled_for'] != null ? DateTime.parse(json['scheduled_for']) : null,
       products: (json['products'] as List<dynamic>?)
           ?.map<OrderProduct>((c) => OrderProduct.fromJson(c))
           .toList() ?? [],

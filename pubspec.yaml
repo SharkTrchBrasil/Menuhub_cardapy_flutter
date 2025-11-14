@@ -1,5 +1,5 @@
 name: totem
-description: "A new Flutter project."
+des0cription: "A new Flutter project."
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
@@ -60,6 +60,8 @@ dependencies:
   shimmer:
   smooth_page_indicator: ^1.2.0+3  # ✅ ADICIONAR
   video_player: ^2.8.2
+  geolocator: ^13.0.1
+  share_plus: ^10.1.2  # ✅ NOVO: Compartilhamento de produtos
 
 
 

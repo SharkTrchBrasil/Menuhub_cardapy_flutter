@@ -8,7 +8,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
-import '../../../helpers/navigation_helper.dart';
 
 class RecommendedProductsSection extends StatelessWidget {
   final List<Product> recommendedProducts;
@@ -100,49 +99,47 @@ class _RecommendedProductTileState extends State<RecommendedProductTile> {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
 
-    // ✅ 6. VERIFICAÇÃO DE VARIANTES MAIS ROBUSTA
-    final hasRequiredVariants = widget.product.variantLinks.any((link) => link.minSelectedOptions > 0);
+    // ✅ Verifica se tem QUALQUER variante (para mostrar ícone correto)
+    final hasAnyVariants = widget.product.variantLinks.isNotEmpty;
 
     return SizedBox(
       width: 120,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: CachedNetworkImage(
-                  imageUrl: widget.product.coverImageUrl ?? 'https://placehold.co/120/e0e0e0/a0a0a0?text=Sem+Foto',
-                  height: 120,
-                  width: 120,
-                  fit: BoxFit.cover,
+      child: GestureDetector(
+        onTap: _isLoading ? null : widget.onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: CachedNetworkImage(
+                    imageUrl: widget.product.coverImageUrl ?? 'https://placehold.co/120/e0e0e0/a0a0a0?text=Sem+Foto',
+                    height: 120,
+                    width: 120,
+                    fit: BoxFit.cover,
 
+                  ),
                 ),
-              ),
               Positioned(
                 bottom: 8,
                 right: 8,
                 child: GestureDetector(
                   onTap: _isLoading
                       ? null
-                      : () async {
-                    // Se tem variantes obrigatórias, navega para a página do produto
-                    if (hasRequiredVariants) {
-                      goToProductPage(context, widget.product);
-                      return;
-                    }
-                    // Se não, executa a ação de adicionar ao carrinho
+                      : () {
+                    // ✅ Previne propagação do evento para o tile pai
+                    // O callback do pai decide se vai para detalhes ou adiciona direto
                     setState(() => _isLoading = true);
-                    try {
-                      // ✅ 7. CHAMA A FUNÇÃO DO PAI, QUE CONTÉM A LÓGICA DO CUBIT
-                     // await widget.onTap();
-                    } finally {
+                    widget.onTap();
+                    // Reset loading após delay para feedback visual
+                    Future.delayed(const Duration(milliseconds: 500), () {
                       if (mounted) {
                         setState(() => _isLoading = false);
                       }
-                    }
+                    });
                   },
+                  behavior: HitTestBehavior.opaque, // Previne propagação
                   child: Container(
                     height: 32,
                     width: 32,
@@ -154,8 +151,8 @@ class _RecommendedProductTileState extends State<RecommendedProductTile> {
                     child: _isLoading
                         ? const CupertinoActivityIndicator()
                         : Icon(
-                      // Mostra um ícone de "ver opções" se tiver variantes não obrigatórias
-                        hasRequiredVariants || widget.product.variantLinks.isNotEmpty
+                      // Mostra ícone de "ver opções" se tiver complementos, "add" se for simples
+                        hasAnyVariants
                             ? Icons.more_horiz
                             : Icons.add,
                         size: 20,
@@ -181,6 +178,7 @@ class _RecommendedProductTileState extends State<RecommendedProductTile> {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:nb_utils/nb_utils.dart'; // Certifique-se de que está importado
 import 'package:totem/models/customer.dart';
 import 'package:totem/models/customer_address.dart';
@@ -60,25 +61,63 @@ class CustomerRepository {
     }
   }
 
-  Future<Either<String, Customer>> updateCustomerInfo(int customerId, String name, String phone) async {
+  Future<Either<String, Customer>> updateCustomerInfo(
+    int customerId,
+    String name,
+    String phone, {
+    String? email,
+  }) async {
     try {
-      final response = await _dio.patch('/customer/$customerId', data: {
+      final data = <String, dynamic>{
         'name': name,
         'phone': phone,
-      });
+      };
+      if (email != null && email.isNotEmpty) {
+        data['email'] = email;
+      }
 
-      // Assuming your API returns the updated customer data directly in response.data
+      final response = await _dio.patch('/customer/$customerId', data: data);
+
       final updatedCustomer = Customer.fromJson(response.data);
       print('Cliente atualizado no backend: ${updatedCustomer.name}, ${updatedCustomer.phone}');
-      return Right(updatedCustomer); // Return the updated customer wrapped in Right
+      return Right(updatedCustomer);
     } on DioException catch (e) {
-      // Extract a meaningful error message from the DioException
-      final errorMessage = e.response?.data['message'] ?? 'Erro desconhecido ao atualizar cliente.';
+      final errorMessage = e.response?.data['detail'] ?? 
+                          e.response?.data['message'] ?? 
+                          'Erro desconhecido ao atualizar cliente.';
       print('Erro ao atualizar cliente: $errorMessage');
-      return Left(errorMessage); // Return the error message wrapped in Left
+      return Left(errorMessage);
     } catch (e) {
-      // Catch any other unexpected errors
       print('Erro inesperado ao atualizar cliente: $e');
+      return Left('Erro inesperado: $e');
+    }
+  }
+
+  Future<Either<String, Customer>> uploadCustomerPhoto(
+    int customerId,
+    XFile imageFile,
+  ) async {
+    try {
+      final formData = FormData.fromMap({
+        'photo': await MultipartFile.fromFile(
+          imageFile.path,
+          filename: imageFile.name,
+        ),
+      });
+
+      final response = await _dio.post(
+        '/customer/$customerId/photo',
+        data: formData,
+      );
+
+      final updatedCustomer = Customer.fromJson(response.data);
+      return Right(updatedCustomer);
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['detail'] ?? 
+                          e.response?.data['message'] ?? 
+                          'Erro ao fazer upload da foto.';
+      return Left(errorMessage);
+    } catch (e) {
       return Left('Erro inesperado: $e');
     }
   }

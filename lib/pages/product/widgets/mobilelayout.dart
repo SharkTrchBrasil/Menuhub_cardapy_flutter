@@ -1,16 +1,22 @@
 // mobilelayout.dart (Corrigido)
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';  // ✅ NOVO: Para chamar API de compartilhamento
+import 'package:share_plus/share_plus.dart';  // ✅ NOVO: Compartilhamento
+import 'package:totem/core/di.dart';  // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/models/cart_variant.dart';
+import 'package:totem/models/option_group.dart';
 import 'package:totem/pages/product/product_page_cubit.dart';
 import 'package:totem/pages/product/widgets/variant_header_widget.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/themes/ds_theme.dart';
+import 'package:totem/cubit/store_cubit.dart';  // ✅ NOVO: Para obter store
 
 import '../product_page_state.dart';
 
@@ -106,6 +112,40 @@ class _MobileProductPageState extends State<MobileProductPage> {
     }
   }
 
+  // ✅ Método para rolar até próximo grupo obrigatório não selecionado
+  void _scrollToNextRequiredVariant() {
+    if (!mounted) return;
+    final product = widget.productState.product;
+    if (product == null) return;
+    
+    // Encontra o próximo grupo obrigatório que ainda não foi completado
+    int? currentIndex;
+    if (_currentStickyVariant != null) {
+      currentIndex = product.selectedVariants.indexWhere(
+        (v) => v.id == _currentStickyVariant!.id,
+      );
+    }
+    
+    // Procura a partir do grupo atual (ou início se não houver)
+    final startIndex = (currentIndex ?? -1) + 1;
+    for (int i = startIndex; i < product.selectedVariants.length; i++) {
+      final variant = product.selectedVariants[i];
+      if (variant.isRequired && !variant.isValid) {
+        // Encontrou próximo obrigatório não completado
+        final key = _variantKeys[variant.id];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+            alignment: 0.1, // Rola até mostrar 10% do topo do widget
+          );
+          return;
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
@@ -137,6 +177,13 @@ class _MobileProductPageState extends State<MobileProductPage> {
           icon: Icon(Icons.arrow_back, color: widget.theme.primaryColor),
           onPressed: () => context.go('/'),
         ),
+        actions: [
+          // ✅ NOVO: Botão de compartilhamento no AppBar
+          IconButton(
+            icon: Icon(Icons.share, color: widget.theme.primaryColor),
+            onPressed: () => _shareProduct(context, product),
+          ),
+        ],
       )
           : null,
       body: Stack(
@@ -185,6 +232,19 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 ),
               ),
             ),
+          // ✅ NOVO: Botão de compartilhamento (canto superior direito)
+          if (!_showTitleInAppBar)
+            Positioned(
+              top: topPadding + 16,
+              right: 16,
+              child: CircleAvatar(
+                backgroundColor: Colors.black.withOpacity(0.4),
+                child: IconButton(
+                  onPressed: () => _shareProduct(context, product),
+                  icon: const Icon(Icons.share, size: 20, color: Colors.white),
+                ),
+              ),
+            ),
           if (_showTitleInAppBar && _currentStickyVariant != null)
             Positioned(
               top: kToolbarHeight + topPadding,
@@ -201,6 +261,78 @@ class _MobileProductPageState extends State<MobileProductPage> {
         ],
       ),
     );
+  }
+
+  // ✅ NOVO: Método para compartilhar produto
+  Future<void> _shareProduct(BuildContext context, CartProduct product) async {
+    try {
+      final store = context.read<StoreCubit>().state.store;
+      if (store == null || product.product.id == null) return;
+
+      // ✅ NOVO: Chama API para gerar link de compartilhamento seguro com token
+      final dio = getIt<Dio>();
+      final response = await dio.post(
+        '/products/${store.urlSlug}/${product.product.id}/share',
+        data: {
+          'share_type': 'app',  // Tipo de compartilhamento (app, web, etc.)
+          'share_source': 'mobile',  // Origem do compartilhamento (mobile, desktop, etc.)
+          'utm_source': 'totem_app',  // UTM source para rastreamento
+          'utm_medium': 'share',  // UTM medium para rastreamento
+        },
+      );
+
+      final shareUrl = response.data['share_url'] as String;
+      final shareMessage = 'Confira este produto: ${product.product.name}\n$shareUrl';
+
+      // Usa o Share do Flutter
+      final shareResult = await Share.share(
+        shareMessage,
+        subject: product.product.name,
+      );
+
+      // ✅ NOVO: Feedback visual
+      if (shareResult.status == ShareResultStatus.success) {
+        print('✅ Produto compartilhado: ${product.product.id}');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Produto compartilhado com sucesso!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // ✅ CORREÇÃO: Se falhar na API, ainda tenta compartilhar URL básica
+      print('⚠️ Erro ao gerar link de compartilhamento: $e');
+      try {
+        final store = context.read<StoreCubit>().state.store;
+        if (store == null || product.product.id == null) return;
+
+        // Fallback: usa URL básica sem token
+        final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
+        final productUrl = '$baseUrl/app/products/${store.urlSlug}/${product.product.id}';
+        final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
+
+        await Share.share(
+          shareMessage,
+          subject: product.product.name,
+        );
+      } catch (e2) {
+        // ✅ CORREÇÃO: Não bloqueia se houver erro ao compartilhar
+        print('⚠️ Erro ao compartilhar produto: $e2');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erro ao compartilhar produto: ${e2.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildContentColumn(CartProduct product) {
@@ -239,6 +371,79 @@ class _MobileProductPageState extends State<MobileProductPage> {
           ),
         ),
         const SizedBox(height: 26),
+        // ✅ ADICIONADO: Seleção de tamanho para produtos customizáveis (pizza, etc)
+        if (product.category.isCustomizable) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'Tamanho',
+              style: widget.theme.bodyTextStyle.weighted(FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Builder(
+              builder: (context) {
+                final sizeGroup = product.category.optionGroups
+                    .firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+                if (sizeGroup == null || sizeGroup.items.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: sizeGroup.items.map((sizeOption) {
+                    final isSelected = product.selectedSize?.id == sizeOption.id;
+                    return GestureDetector(
+                      onTap: () => context.read<ProductPageCubit>().selectSize(sizeOption),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? widget.theme.primaryColor.withOpacity(0.1)
+                              : Colors.grey.shade100,
+                          border: Border.all(
+                            color: isSelected
+                                ? widget.theme.primaryColor
+                                : Colors.grey.shade300,
+                            width: isSelected ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sizeOption.name,
+                              style: TextStyle(
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected
+                                    ? widget.theme.primaryColor
+                                    : Colors.grey.shade800,
+                              ),
+                            ),
+                            if (sizeOption.description != null && sizeOption.description!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                sizeOption.description!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         if (product.selectedVariants.isNotEmpty) //
           ListView.builder(
             padding: EdgeInsets.zero,
@@ -249,9 +454,16 @@ class _MobileProductPageState extends State<MobileProductPage> {
               final variant = product.selectedVariants[i]; //
               return VariantWidget(
                 key: _variantKeys[variant.id], //
-                onOptionUpdated: (v, o, nq) =>
-                    context.read<ProductPageCubit>().updateOption(v, o, nq), //
+                onOptionUpdated: (v, o, nq) {
+                  context.read<ProductPageCubit>().updateOption(
+                    v, 
+                    o, 
+                    nq,
+                    onUpdateComplete: _scrollToNextRequiredVariant,
+                  );
+                },
                 variant: variant,
+                onScrollToNextRequired: _scrollToNextRequiredVariant,
               );
             },
           ),

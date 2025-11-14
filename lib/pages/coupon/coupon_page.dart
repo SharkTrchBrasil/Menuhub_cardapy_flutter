@@ -94,10 +94,57 @@ class _CouponPageState extends State<CouponPage> {
       }
     } catch (e) {
       if (mounted) {
+        // ✅ FASE 5: Melhora feedback de erro com mensagens mais claras
+        String errorMessage = e.toString().replaceAll('Exception: ', '');
+        
+        // Mapeia mensagens de erro comuns para mensagens mais amigáveis
+        if (errorMessage.toLowerCase().contains('cupom inválido') ||
+            errorMessage.toLowerCase().contains('invalid') ||
+            errorMessage.toLowerCase().contains('não é válido')) {
+          errorMessage = 'Este cupom não é válido para sua compra. Verifique as condições do cupom.';
+        } else if (errorMessage.toLowerCase().contains('expirado') ||
+                   errorMessage.toLowerCase().contains('expired')) {
+          errorMessage = 'Este cupom já expirou. Verifique a data de validade.';
+        } else if (errorMessage.toLowerCase().contains('limite') ||
+                   errorMessage.toLowerCase().contains('limit')) {
+          errorMessage = 'Este cupom atingiu o limite de usos. Tente outro cupom.';
+        } else if (errorMessage.toLowerCase().contains('primeira compra') ||
+                   errorMessage.toLowerCase().contains('first order')) {
+          errorMessage = 'Este cupom é válido apenas para a primeira compra.';
+        } else if (errorMessage.toLowerCase().contains('pedido mínimo') ||
+                   errorMessage.toLowerCase().contains('min subtotal')) {
+          errorMessage = 'O valor do pedido não atende ao valor mínimo exigido por este cupom.';
+        } else if (errorMessage.toLowerCase().contains('não encontrado') ||
+                   errorMessage.toLowerCase().contains('not found')) {
+          errorMessage = 'Cupom não encontrado. Verifique o código digitado.';
+        } else if (errorMessage.isEmpty || errorMessage == 'null') {
+          errorMessage = 'Não foi possível aplicar o cupom. Tente novamente.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Não foi possível aplicar o cupom',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  errorMessage,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
           ),
         );
       }

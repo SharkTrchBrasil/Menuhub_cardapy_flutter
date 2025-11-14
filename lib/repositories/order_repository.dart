@@ -47,4 +47,73 @@ class OrderRepository {
       return Left(e.response?.data['detail'] ?? 'Erro ao buscar pedido');
     }
   }
+
+  Future<Either<String, Order>> getOrderById(int orderId) async {
+    try {
+      final response = await _dio.get('/orders/$orderId');
+      return Right(Order.fromJson(response.data));
+    } on DioException catch (e) {
+      return Left(e.response?.data['detail'] ?? 'Erro ao buscar pedido');
+    }
+  }
+
+  Future<Either<String, void>> submitOrderReview({
+    required String orderPublicId,
+    required int stars,
+    String? comment,
+  }) async {
+    try {
+      await _dio.post(
+        '/reviews/order/$orderPublicId',
+        data: {
+          'stars': stars,
+          'comment': comment,
+        },
+      );
+      return Right(null);
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['detail'] ?? 'Erro ao enviar avaliação';
+      return Left(errorMessage);
+    } catch (e) {
+      return Left('Erro inesperado: $e');
+    }
+  }
+
+  /// ✅ Cancela um pedido
+  Future<Either<String, void>> cancelOrder({
+    required int orderId,
+    String? reason,
+  }) async {
+    try {
+      await _dio.post(
+        '/customer/orders/$orderId/cancel',
+        data: reason ?? 'Cancelado pelo cliente',
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+      return Right(null);
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['detail'] ?? 
+                          e.response?.data['message'] ?? 
+                          'Erro ao cancelar pedido';
+      return Left(errorMessage);
+    } catch (e) {
+      return Left('Erro inesperado: $e');
+    }
+  }
+
+  /// ✅ Obtém lista de pedidos do cliente
+  Future<Either<String, List<Order>>> getCustomerOrders(int customerId) async {
+    try {
+      final response = await _dio.get('/customer/$customerId/orders');
+      final data = response.data as List;
+      final orders = data.map((json) => Order.fromJson(json)).toList();
+      return Right(orders);
+    } on DioException catch (e) {
+      return Left(e.response?.data['detail'] ?? 'Erro ao buscar histórico de pedidos');
+    } catch (e) {
+      return Left('Erro inesperado: $e');
+    }
+  }
 }

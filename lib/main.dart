@@ -25,12 +25,26 @@ import 'core/di.dart';
 import 'cubit/auth_cubit.dart';
 import 'cubit/store_cubit.dart';
 import 'package:web/web.dart' as web;
+import 'utils/performance_optimizer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: 'assets/env');
+  // ✅ Carrega variáveis de ambiente
+  try {
+    await dotenv.load(fileName: 'assets/env');
+    print('✅ Arquivo .env carregado com sucesso');
+    print('   API_URL: ${dotenv.env['API_URL']?.substring(0, 30)}...');
+    print('   FIREBASE_API_KEY: ${dotenv.env['FIREBASE_API_KEY']?.substring(0, 10) ?? "NÃO ENCONTRADO"}...');
+  } catch (e) {
+    print('❌ Erro ao carregar arquivo .env: $e');
+    print('   Certifique-se de que o arquivo assets/env existe e está configurado no pubspec.yaml');
+  }
+  
   setPathUrlStrategy();
+
+  // ✅ Otimizações de performance para Flutter Web
+  PerformanceOptimizer.configureForWeb();
 
   final storage = await HydratedStorage.build(
     storageDirectory: kIsWeb
@@ -40,20 +54,59 @@ void main() async {
 
   HydratedBloc.storage = storage;
 
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8",
-      authDomain: "pdvix-c69fe.firebaseapp.com",
-      projectId: "pdvix-c69fe",
-      storageBucket: "pdvix-c69fe.appspot.com",
-      messagingSenderId: "209909701330",
-      appId: "1:209909701330:web:03ea9f309ce422c35e6b0b",
-      measurementId: "G-R2QQ42E9T7",
-    ),
-  );
+  // ✅ Load Firebase config from .env file
+  final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
+  final firebaseAuthDomain = dotenv.env['FIREBASE_AUTH_DOMAIN'] ?? '';
+  final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
+  final firebaseStorageBucket = dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? '';
+  final firebaseMessagingSenderId = dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '';
+  final firebaseAppId = dotenv.env['FIREBASE_APP_ID'] ?? '';
+  final firebaseMeasurementId = dotenv.env['FIREBASE_MEASUREMENT_ID'] ?? '';
+
+  // ✅ Valida credenciais antes de inicializar
+  if (firebaseApiKey.isEmpty || firebaseProjectId.isEmpty || firebaseAppId.isEmpty) {
+    print('⚠️ Firebase credentials not found in .env.');
+    print('   Required variables: FIREBASE_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_APP_ID');
+    print('   Firebase initialization will be skipped.');
+    print('   Google Sign-In will not be available.');
+  } else {
+    try {
+      print('🔥 [Firebase] Inicializando Firebase...');
+      print('   API Key: ${firebaseApiKey.substring(0, 10)}...');
+      print('   Project ID: $firebaseProjectId');
+      print('   Auth Domain: $firebaseAuthDomain');
+      
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: firebaseApiKey,
+          authDomain: firebaseAuthDomain,
+          projectId: firebaseProjectId,
+          storageBucket: firebaseStorageBucket,
+          messagingSenderId: firebaseMessagingSenderId,
+          appId: firebaseAppId,
+          measurementId: firebaseMeasurementId.isEmpty ? null : firebaseMeasurementId,
+        ),
+      );
+      
+      // ✅ Verifica se Firebase foi inicializado corretamente
+      final apps = Firebase.apps;
+      if (apps.isNotEmpty) {
+        print('✅ Firebase initialized successfully');
+        print('   App Name: ${apps.first.name}');
+        print('   Options: ${apps.first.options.projectId}');
+      } else {
+        print('⚠️ Firebase apps list is empty after initialization');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Error initializing Firebase: $e');
+      print('   Stack: $stackTrace');
+      print('   Firebase features will be unavailable.');
+    }
+  }
 
   configureDependencies();
-  await getIt<CustomerController>().loadCustomerFromPrefs();
+  // ✅ Carrega cliente do armazenamento seguro ao invés de SharedPreferences
+  await getIt<CustomerController>().loadCustomerFromSecureStorage();
 
   // --- 🔐 FLUXO DE AUTENTICAÇÃO SEGURO E ROBUSTO ---
   try {

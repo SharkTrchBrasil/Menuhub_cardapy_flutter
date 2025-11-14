@@ -4,7 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/core/extensions.dart';
 
 import '../../../cubit/auth_cubit.dart';
+import '../../../cubit/store_cubit.dart';
 import '../../../models/delivery_type.dart';
+import '../../../helpers/payment_method.dart';
 import '../../address/cubits/address_cubit.dart';
 import '../../address/cubits/delivery_fee_cubit.dart';
 import '../../cart/cart_cubit.dart';
@@ -22,15 +24,28 @@ class BottomBarCheckout extends StatelessWidget {
           builder: (context, feeState) {
             return BlocBuilder<CheckoutCubit, CheckoutState>(
               builder: (context, checkoutState) {
-                // ✅ CORREÇÃO APLICADA AQUI
-                // Calcula a taxa de entrega de forma segura
+                // ✅ P0 - CRÍTICO: Calcula frete corretamente (considerando frete grátis por threshold)
                 double deliveryFee = 0.0;
+                bool isFreeDelivery = false;
                 if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
                   deliveryFee = feeState.deliveryFee;
+                  isFreeDelivery = feeState.isFree ?? false;
+                  // ✅ P0: Se frete grátis, força deliveryFee para 0
+                  if (isFreeDelivery) {
+                    deliveryFee = 0.0;
+                  }
                 }
 
-                // O total do carrinho já vem do backend, somamos a taxa de entrega localmente
-                final grandTotal = (cartState.cart.total / 100.0) + deliveryFee;
+                // ✅ P0 - CRÍTICO: Calcula taxa de pagamento baseada no subtotal (antes do desconto)
+                double paymentFee = 0.0;
+                if (checkoutState.selectedPaymentMethod != null) {
+                  final subtotalInReais = cartState.cart.subtotal / 100.0;
+                  paymentFee = checkoutState.selectedPaymentMethod!.calculateFee(subtotalInReais);
+                }
+
+                // ✅ P0 - CRÍTICO: Total = (subtotal - desconto do cupom) + frete + taxa de pagamento
+                // cart.total já vem do backend com desconto aplicado (subtotal - discount)
+                final grandTotal = (cartState.cart.total / 100.0) + deliveryFee + paymentFee;
                 final isLoading = checkoutState.status == CheckoutStatus.loading;
 
                 return BottomAppBar(
@@ -53,11 +68,13 @@ class BottomBarCheckout extends StatelessWidget {
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12)),
                           onPressed: isLoading ? null : () {
+                            final store = context.read<StoreCubit>().state.store;
                             context.read<CheckoutCubit>().placeOrder(
                               authState: context.read<AuthCubit>().state,
                               cartState: cartState,
                               addressState: context.read<AddressCubit>().state,
                               feeState: feeState,
+                              store: store,
                             );
                           },
                           child: isLoading

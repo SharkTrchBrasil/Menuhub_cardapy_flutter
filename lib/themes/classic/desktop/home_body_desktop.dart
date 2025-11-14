@@ -161,32 +161,23 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.store?.name ?? 'Cardápio'),
-        centerTitle: false,
-        actions: [
-          IconButton(icon: const Icon(Icons.shopping_cart_outlined), onPressed: () {}),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: CustomScrollView(
-        controller: _scrollController,
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(child: _buildMerchantHeader(widget.store)),
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _StickyHeaderDelegate(minHeight: 80, maxHeight: 80, child: _buildStickyFilterBar()),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          SliverToBoxAdapter(child: FeaturedProductList(products: widget.products, categories: widget.categories,)),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          for (final category in widget.categories) ..._buildCategoryGridSection(context, category),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-          SliverToBoxAdapter(child: FooterWidget(store: widget.store, theme: theme)),
-        ],
-      ),
+    // Quando usado como tab, não mostra AppBar - retorna apenas o conteúdo
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: _buildMerchantHeader(widget.store)),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _StickyHeaderDelegate(minHeight: 80, maxHeight: 80, child: _buildStickyFilterBar()),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(child: FeaturedProductList(products: widget.products, categories: widget.categories,)),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        for (final category in widget.categories) ..._buildCategoryGridSection(context, category),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        SliverToBoxAdapter(child: FooterWidget(store: widget.store, theme: theme)),
+      ],
     );
   }
 

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';  // ✅ NOVO: Para chamar API de compartilhamento
+import 'package:share_plus/share_plus.dart';  // ✅ NOVO: Compartilhamento
+import 'package:totem/core/di.dart';  // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
@@ -12,15 +15,19 @@ import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../../cubit/auth_cubit.dart';
+import '../../../cubit/store_cubit.dart';  // ✅ NOVO: Para obter store
 import '../../../models/cart_item.dart';
 import '../../../models/cart_variant.dart';
 import '../../../models/cart_variant_option.dart';
 import '../../../models/update_cart_payload.dart';
 import '../../../widgets/dot_loading.dart';
 import '../../cart/cart_state.dart';
+import '../../../services/pending_cart_service.dart';
+import '../../../core/helpers/side_panel.dart';
+import '../../../pages/signin/signin_page.dart';
 import 'dart:math';
 
-class DesktopProductCard extends StatelessWidget {
+class DesktopProductCard extends StatefulWidget {
   final ProductPageState productState;
   final TextEditingController observationController;
 
@@ -31,10 +38,59 @@ class DesktopProductCard extends StatelessWidget {
   });
 
   @override
+  State<DesktopProductCard> createState() => _DesktopProductCardState();
+}
+
+class _DesktopProductCardState extends State<DesktopProductCard> {
+  final Map<int, GlobalKey> _variantKeys = {};
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicializa keys para variantes
+    if (widget.productState.product != null) {
+      for (final variant in widget.productState.product!.selectedVariants) {
+        _variantKeys[variant.id] = GlobalKey();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // ✅ Método para rolar até próximo grupo obrigatório não selecionado (desktop)
+  void _scrollToNextRequiredVariant() {
+    if (!mounted) return;
+    final product = widget.productState.product;
+    if (product == null) return;
+    
+    // Procura próximo grupo obrigatório não completado
+    for (int i = 0; i < product.selectedVariants.length; i++) {
+      final variant = product.selectedVariants[i];
+      if (variant.isRequired && !variant.isValid) {
+        final key = _variantKeys[variant.id];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+          return;
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
     final screenSize = MediaQuery.of(context).size;
-    final product = productState.product!;
+    final product = widget.productState.product!;
 
     return ConstrainedBox(
       constraints: BoxConstraints(
@@ -79,7 +135,14 @@ class DesktopProductCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 8),
+                        // ✅ NOVO: Botão de compartilhamento
+                        IconButton(
+                          icon: const Icon(Icons.share, size: 18),
+                          onPressed: () => _shareProduct(context, product),
+                          tooltip: 'Compartilhar',
+                        ),
+                        const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
                           onPressed: () => context.pop(),
@@ -90,6 +153,7 @@ class DesktopProductCard extends StatelessWidget {
                   ),
                   Expanded(
                     child: SingleChildScrollView(
+                      controller: _scrollController,
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,9 +165,25 @@ class DesktopProductCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 24),
                           ],
-                          Text(
-                            product.totalPrice.toCurrency,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          // ✅ NOVO: Preço com unidade quando vendido por peso/volume
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                product.totalPrice.toCurrency,
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                              if (product.product.unit.requiresQuantityInput) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Preço por ${product.product.unit.shortName}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 32),
                           if (product.selectedVariants.isNotEmpty) ...[
@@ -115,8 +195,17 @@ class DesktopProductCard extends StatelessWidget {
                               itemBuilder: (_, i) {
                                 final variant = product.selectedVariants[i];
                                 return VariantWidget(
-                                  onOptionUpdated: (v, o, nq) => context.read<ProductPageCubit>().updateOption(v, o, nq),
+                                  key: _variantKeys[variant.id],
+                                  onOptionUpdated: (v, o, nq) {
+                                    context.read<ProductPageCubit>().updateOption(
+                                      v, 
+                                      o, 
+                                      nq,
+                                      onUpdateComplete: _scrollToNextRequiredVariant,
+                                    );
+                                  },
                                   variant: variant,
+                                  onScrollToNextRequired: _scrollToNextRequiredVariant,
                                 );
                               },
                               separatorBuilder: (_, __) => const SizedBox(height: 40),
@@ -129,7 +218,7 @@ class DesktopProductCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           TextField(
-                            controller: observationController,
+                            controller: widget.observationController,
                             keyboardType: TextInputType.multiline,
                             maxLines: 4,
                             minLines: 3,
@@ -174,30 +263,10 @@ class DesktopProductCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(Icons.remove, color: theme.primaryColor),
-                  onPressed: product.quantity > 1
-                      ? () => context.read<ProductPageCubit>().updateQuantity(product.quantity - 1)
-                      : null,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(product.quantity.toString()),
-                ),
-                IconButton(
-                  icon: Icon(Icons.add, color: theme.primaryColor),
-                  onPressed: () => context.read<ProductPageCubit>().updateQuantity(product.quantity + 1),
-                ),
-              ],
-            ),
-          ),
+          // ✅ NOVO: Widget de quantidade adaptativo (inteira ou decimal)
+          product.product.unit.requiresQuantityInput
+              ? _buildWeightQuantityInput(context, theme, product)
+              : _buildIntegerQuantityInput(context, theme, product),
           const SizedBox(width: 16),
           Expanded(
             child: BlocBuilder<CartCubit, CartState>(
@@ -234,7 +303,7 @@ class DesktopProductCard extends StatelessWidget {
       // Pega o ID da categoria que está dentro do objeto CartProduct
       categoryId: product.category.id!,
       quantity: product.quantity,
-      note: observationController.text.trim(),
+      note: widget.observationController.text.trim(),
       sizeName: product.selectedSize?.name,
       variants: product.selectedVariants.map((cartVariant) {
         final selectedOptions = cartVariant.cartOptions.where((option) => option.quantity > 0).toList();
@@ -252,16 +321,191 @@ class DesktopProductCard extends StatelessWidget {
       }).whereType<CartItemVariant>().toList(),
     );
 
-    // A lógica de login e pop permanece a mesma
-    if (authState.status == AuthStatus.success) {
+    Future<void> updateAndPop() async {
       await cartCubit.updateItem(payload);
-      if (context.mounted) context.pop();
+      if (context.mounted) {
+        // ✅ Fecha a tela de detalhes do produto e navega para home
+        if (context.canPop()) {
+          context.pop(); // Fecha tela de detalhes
+        }
+        // Navega para home (garante que estamos na home após adicionar)
+        context.go('/');
+      }
+    }
+
+    if (authState.status == AuthStatus.success) {
+      await updateAndPop();
     } else {
-      if (context.canPop()) context.pop();
-      await Future.delayed(const Duration(milliseconds: 100));
-      final loginSuccess = await context.push<bool>('/onboarding');
+      // ✅ Salva payload pendente antes de pedir login
+      await PendingCartService.savePendingCartItem(payload);
+      
+      // ✅ Usa showResponsiveSidePanel ao invés de navegar
+      final loginSuccess = await showResponsiveSidePanel<bool>(
+        context,
+        const OnboardingPage(),
+      );
+      
+      // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
+      // e depois vamos fechar a tela e navegar para home
       if (loginSuccess == true && context.mounted) {
-        context.go('/product/${product.product.name.toSlug()}/${product.product.id}', extra: product.product);
+        // Aguarda um pouco para garantir que o item foi adicionado
+        await Future.delayed(const Duration(milliseconds: 500));
+        // Fecha a tela de detalhes do produto
+        if (context.canPop()) {
+          context.pop(); // Fecha tela de detalhes
+        }
+        // Navega para home
+        context.go('/');
+      }
+    }
+  }
+  
+  // ✅ NOVO: Widget de quantidade inteira (para produtos normais)
+  Widget _buildIntegerQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.remove, color: theme.primaryColor),
+            onPressed: product.quantity > 1
+                ? () => context.read<ProductPageCubit>().updateQuantity(product.quantity - 1)
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(product.quantity.toString()),
+          ),
+          IconButton(
+            icon: Icon(Icons.add, color: theme.primaryColor),
+            onPressed: () => context.read<ProductPageCubit>().updateQuantity(product.quantity + 1),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // ✅ NOVO: Widget de quantidade decimal (para kg/litros)
+  Widget _buildWeightQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+    final cubit = context.read<ProductPageCubit>();
+    final currentWeight = product.weightQuantity ?? 0.5; // Valor padrão: 0.5 kg/L
+    final unitName = product.product.unit.shortName;
+    
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(Icons.remove, color: theme.primaryColor),
+            onPressed: currentWeight > 0.1
+                ? () => cubit.updateWeightQuantity((currentWeight - 0.1).clamp(0.1, 100.0))
+                : null,
+          ),
+          SizedBox(
+            width: 80,
+            child: TextField(
+              controller: TextEditingController(text: currentWeight.toStringAsFixed(2)),
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                suffixText: unitName,
+                suffixStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+              onSubmitted: (value) {
+                final parsed = double.tryParse(value.replaceAll(',', '.'));
+                if (parsed != null && parsed > 0) {
+                  cubit.updateWeightQuantity(parsed.clamp(0.01, 100.0));
+                }
+              },
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.add, color: theme.primaryColor),
+            onPressed: () => cubit.updateWeightQuantity((currentWeight + 0.1).clamp(0.1, 100.0)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ NOVO: Método para compartilhar produto
+  Future<void> _shareProduct(BuildContext context, CartProduct product) async {
+    try {
+      final store = context.read<StoreCubit>().state.store;
+      if (store == null || product.product.id == null) return;
+
+      // ✅ NOVO: Chama API para gerar link de compartilhamento seguro com token
+      final dio = getIt<Dio>();
+      final response = await dio.post(
+        '/products/${store.urlSlug}/${product.product.id}/share',
+        data: {
+          'share_type': 'app',  // Tipo de compartilhamento (app, web, etc.)
+          'share_source': 'desktop',  // Origem do compartilhamento (mobile, desktop, etc.)
+          'utm_source': 'totem_app',  // UTM source para rastreamento
+          'utm_medium': 'share',  // UTM medium para rastreamento
+        },
+      );
+
+      final shareUrl = response.data['share_url'] as String;
+      final shareMessage = 'Confira este produto: ${product.product.name}\n$shareUrl';
+
+      // Usa o Share do Flutter
+      final shareResult = await Share.share(
+        shareMessage,
+        subject: product.product.name,
+      );
+
+      // ✅ NOVO: Feedback visual
+      if (shareResult.status == ShareResultStatus.success) {
+        print('✅ Produto compartilhado: ${product.product.id}');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Produto compartilhado com sucesso!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // ✅ CORREÇÃO: Se falhar na API, ainda tenta compartilhar URL básica
+      print('⚠️ Erro ao gerar link de compartilhamento: $e');
+      try {
+        final store = context.read<StoreCubit>().state.store;
+        if (store == null || product.product.id == null) return;
+
+        // Fallback: usa URL básica sem token
+        final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
+        final productUrl = '$baseUrl/app/products/${store.urlSlug}/${product.product.id}';
+        final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
+
+        await Share.share(
+          shareMessage,
+          subject: product.product.name,
+        );
+      } catch (e2) {
+        // ✅ CORREÇÃO: Não bloqueia se houver erro ao compartilhar
+        print('⚠️ Erro ao compartilhar produto: $e2');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erro ao compartilhar produto: ${e2.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     }
   }

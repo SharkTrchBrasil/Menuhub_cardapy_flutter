@@ -28,6 +28,7 @@ class StoreCardData extends StatelessWidget {
     if (store == null) {
       return SliverAppBar(
         expandedHeight: isDesktop ? 250 : 220,
+        pinned: false,
         backgroundColor: theme.sidebarBackgroundColor,
         // Mostra um loading simples enquanto os dados não chegam
         flexibleSpace: const Center(
@@ -50,7 +51,7 @@ class StoreCardData extends StatelessWidget {
 
     return SliverAppBar(
       expandedHeight: isDesktop ? 250 : 220,
-
+      pinned: false,
       elevation: 0.5,
       backgroundColor: theme.sidebarBackgroundColor,
       flexibleSpace: LayoutBuilder(
@@ -73,6 +74,33 @@ class StoreCardData extends StatelessWidget {
                     color: Colors.grey,
                     height: double.infinity,
                     child: const Icon(Icons.store, size: 100, color: Colors.white54),
+                  ),
+                ),
+              ),
+              // Botão de busca sobre a imagem
+              Positioned(
+                top: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.search, color: Colors.black87),
+                      onPressed: () {
+                        GoRouter.of(context).push('/search');
+                      },
+                    ),
                   ),
                 ),
               ),

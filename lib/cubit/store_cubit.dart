@@ -10,6 +10,8 @@ import 'package:totem/repositories/realtime_repository.dart';
 import '../models/banners.dart';
 import '../models/store.dart';
 import '../models/rating_summary.dart';
+import '../core/di.dart';
+import '../pages/address/cubits/delivery_fee_cubit.dart';
 
 class StoreCubit extends Cubit<StoreState> {
   StoreCubit(this._realtimeRepository) : super(StoreState()) {
@@ -44,6 +46,13 @@ class StoreCubit extends Cubit<StoreState> {
       if (state.selectedCategory == null && storeData.categories.isNotEmpty) {
         print('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
         emit(state.copyWith(selectedCategory: storeData.categories.first));
+      }
+
+      // ✅ INICIALIZA TIPO DE ENTREGA PADRÃO
+      try {
+        getIt<DeliveryFeeCubit>().initializeWithStore(storeData);
+      } catch (_) {
+        // Ignora se não conseguir inicializar (pode não estar disponível ainda)
       }
     });
 

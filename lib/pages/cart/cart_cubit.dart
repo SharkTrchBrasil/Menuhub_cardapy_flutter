@@ -59,16 +59,22 @@ class CartCubit extends Cubit<CartState> {
     // Não emitimos 'loading' para a UI não piscar a cada item adicionado.
     emit(state.copyWith(isUpdating: true));
     try {
+      print('🛒 [CartCubit] Atualizando item: productId=${payload.productId}, categoryId=${payload.categoryId}, quantity=${payload.quantity}');
+      print('   Variants: ${payload.variants?.length ?? 0}');
+      print('   Note: ${payload.note ?? "sem observação"}');
+      
       final updatedCart = await _realtimeRepository.updateCartItem(payload);
+      print('✅ [CartCubit] Item atualizado com sucesso. Carrinho tem ${updatedCart.items.length} itens.');
       emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
-    } catch (e) {
-      print("Erro ao atualizar item: $e");
+    } catch (e, stackTrace) {
+      print("❌ [CartCubit] Erro ao atualizar item: $e");
+      print("   Stack trace: $stackTrace");
       // Re-busca o carrinho para garantir consistência após um erro.
       await fetchCart();
       // Finalmente, remove o estado de 'isUpdating'
       emit(state.copyWith(isUpdating: false));
       // Re-lança o erro para a UI poder mostrá-lo (ex: com um SnackBar)
-      throw e;
+      throw Exception('Erro interno ao atualizar item: ${e.toString()}');
     }
   }
 

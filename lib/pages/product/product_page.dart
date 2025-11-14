@@ -20,11 +20,15 @@ import '../../models/cart_item.dart';
 import '../../models/cart_variant.dart';
 import '../../models/cart_variant_option.dart';
 import '../../models/update_cart_payload.dart';
+import '../../services/pending_cart_service.dart';
 import '../../widgets/dot_loading.dart';
 import '../cart/cart_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../cubit/store_state.dart';
 import '../cart/cart_state.dart' as CartCubitState;
+import '../../services/store_status_service.dart';
+import '../../core/helpers/side_panel.dart';
+import '../../pages/signin/signin_page.dart';
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
@@ -35,6 +39,7 @@ class ProductPage extends StatefulWidget {
 
 class _ProductPageState extends State<ProductPage> {
   final TextEditingController observationController = TextEditingController();
+  bool _controllerInitialized = false;
 
   @override
   void dispose() {
@@ -65,8 +70,12 @@ class _ProductPageState extends State<ProductPage> {
         color: Colors.transparent,
         child: BlocConsumer<ProductPageCubit, ProductPageState>(
           listener: (context, state) {
-            if (state.product != null && observationController.text != (state.product!.note ?? '')) {
-              observationController.text = state.product!.note ?? '';
+            // ✅ CORREÇÃO: Só atualiza o controller na primeira inicialização
+            // Preserva o texto digitado pelo usuário durante mudanças de quantidade
+            if (state.product != null && !_controllerInitialized) {
+              final currentNote = state.product!.note ?? '';
+              observationController.text = currentNote;
+              _controllerInitialized = true;
             }
           },
           builder: (context, productState) {
@@ -162,6 +171,23 @@ class _ProductPageState extends State<ProductPage> {
     final authState = context.read<AuthCubit>().state;
     final cartCubit = context.read<CartCubit>();
     final product = productState.product!;
+    final store = context.read<StoreCubit>().state.store;
+
+    // ✅ VALIDAÇÃO: Verifica se pode adicionar ao carrinho
+    if (!StoreStatusService.canAddToCart(store)) {
+      final status = StoreStatusService.validateStoreStatus(store);
+      final message = StoreStatusService.getFriendlyMessage(status);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
 
     // ✅ CORREÇÃO FINAL APLICADA AQUI
     final payload = UpdateCartItemPayload(
@@ -189,21 +215,39 @@ class _ProductPageState extends State<ProductPage> {
 
     Future<void> updateAndPop() async {
       await cartCubit.updateItem(payload);
-      if (context.mounted && context.canPop()) {
-        context.pop();
+      if (context.mounted) {
+        // ✅ Fecha a tela de detalhes do produto e navega para home
+        if (context.canPop()) {
+          context.pop(); // Fecha tela de detalhes
+        }
+        // Navega para home (garante que estamos na home após adicionar)
+        context.go('/');
       }
     }
 
     if (authState.status == AuthStatus.success) {
       await updateAndPop();
     } else {
-      if (context.canPop()) {
-        context.pop();
-      }
-      await Future.delayed(const Duration(milliseconds: 100));
-      final loginSuccess = await context.push<bool>('/onboarding');
+      // ✅ Salva payload pendente antes de pedir login
+      await PendingCartService.savePendingCartItem(payload);
+      
+      // ✅ Usa showResponsiveSidePanel ao invés de navegar
+      final loginSuccess = await showResponsiveSidePanel<bool>(
+        context,
+        const OnboardingPage(),
+      );
+      
+      // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
+      // e depois vamos fechar a tela e navegar para home
       if (loginSuccess == true && context.mounted) {
-        context.go('/product/${product.product.name.toSlug()}/${product.product.id}', extra: product.product);
+        // Aguarda um pouco para garantir que o item foi adicionado
+        await Future.delayed(const Duration(milliseconds: 500));
+        // Fecha a tela de detalhes do produto
+        if (context.canPop()) {
+          context.pop(); // Fecha tela de detalhes
+        }
+        // Navega para home
+        context.go('/');
       }
     }
   }

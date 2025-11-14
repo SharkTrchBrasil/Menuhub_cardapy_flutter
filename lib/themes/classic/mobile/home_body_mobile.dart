@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
@@ -7,6 +8,7 @@ import 'package:totem/themes/classic/widgets/store_card.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
+import '../../../cubit/auth_cubit.dart';
 
 class HomeBodyMobile extends StatefulWidget {
   final List<BannerModel> banners;
@@ -30,24 +32,61 @@ class HomeBodyMobile extends StatefulWidget {
 
 class _HomeBodyMobileState extends State<HomeBodyMobile> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _stickySearchController = TextEditingController();
   final Map<int, GlobalKey> _categoryKeys = {};
   final Map<int, double> _categoryOffsets = {};
+  List<Product> _filteredProducts = [];
+  bool _showStickySearch = false;
 
   @override
   void initState() {
     super.initState();
     _initializeKeys();
+    _initializeFilteredProducts();
     _scrollController.addListener(_onScroll);
+    _searchController.addListener(_onSearchChanged);
+    _stickySearchController.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
   }
 
   @override
   void didUpdateWidget(HomeBodyMobile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.categories != oldWidget.categories) {
+    if (widget.categories != oldWidget.categories || widget.products != oldWidget.products) {
       _initializeKeys();
+      _initializeFilteredProducts();
       WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
     }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _searchController.removeListener(_onSearchChanged);
+    _stickySearchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _stickySearchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _initializeFilteredProducts() {
+    _filteredProducts = widget.products;
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.isNotEmpty ? _searchController.text : _stickySearchController.text;
+    setState(() {
+      if (query.isEmpty) {
+        _filteredProducts = widget.products;
+      } else {
+        _filteredProducts = widget.products.where((product) {
+          return product.name.toLowerCase().contains(query.toLowerCase());
+        }).toList();
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => _calculateCategoryOffsets());
+    });
   }
 
   void _initializeKeys() {
@@ -59,23 +98,14 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
     }
   }
 
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   void _calculateCategoryOffsets() {
     _categoryOffsets.clear();
     for (var entry in _categoryKeys.entries) {
       final key = entry.value;
       if (key.currentContext != null) {
         final renderBox = key.currentContext!.findRenderObject() as RenderBox;
-        // Pega a posição do widget em relação ao topo da tela
         final position = renderBox.localToGlobal(Offset.zero);
-        // Ajusta pela posição atual do scroll e pela altura da appbar/statusbar
-        final offset = position.dy + _scrollController.offset - kToolbarHeight - MediaQuery.of(context).padding.top;
+        final offset = position.dy + _scrollController.offset - MediaQuery.of(context).padding.top;
         _categoryOffsets[entry.key] = offset;
       }
     }
@@ -87,19 +117,24 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
       Scrollable.ensureVisible(
         key!.currentContext!,
         duration: const Duration(milliseconds: 300),
-        alignment: 0.0, // Alinha ao topo
+        alignment: 0.0,
         curve: Curves.easeInOut,
       );
     }
   }
 
   void _onScroll() {
-    _calculateCategoryOffsets(); // Recalcula em cada scroll para precisão
+    _calculateCategoryOffsets();
     final currentScrollOffset = _scrollController.offset;
+    
+    // Controla a visibilidade da busca sticky
+    setState(() {
+      _showStickySearch = currentScrollOffset > 50;
+    });
+    
     Category? newSelectedCategory;
 
-    // Altura da barra de categorias + um pequeno buffer
-    const stickyHeaderHeight = 70.0;
+    final stickyHeaderHeight = _showStickySearch ? 112.0 : 60.0;
     final selectionPoint = currentScrollOffset + stickyHeaderHeight;
 
     for (var category in widget.categories) {
@@ -112,12 +147,10 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
       }
     }
 
-    // Lógica para o final do scroll
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100) {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100 && widget.categories.isNotEmpty) {
       newSelectedCategory = widget.categories.last;
     }
 
-    // Dispara o callback apenas se a categoria mudou
     if (widget.selectedCategory?.id != newSelectedCategory?.id) {
       widget.onCategorySelected(newSelectedCategory);
     }
@@ -126,68 +159,107 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          const StoreCardData(),
-          const SliverToBoxAdapter(child: SizedBox(height: 80)),
-          SliverToBoxAdapter(child: FeaturedProductGrid(products: widget.products, categories:widget.categories)),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _StickyHeaderDelegate(
-              minHeight: 60,
-              maxHeight: 60,
-              child: Container(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                alignment: Alignment.centerLeft,
-                child: _buildHorizontalCategories(),
-              ),
-            ),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                final category = widget.categories[index];
-                final key = _categoryKeys[category.id];
-
-                // ✅ CORREÇÃO APLICADA AQUI
-                // Filtra os produtos usando a nova estrutura 'categoryLinks'.
-                final productsInCategory = widget.products
-                    .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
-                    .toList();
-
-                if (productsInCategory.isEmpty) return const SizedBox.shrink();
-
-                return Container(
-                  key: key,
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                        child: Text(
-                          category.name,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      ...productsInCategory.map((product) => ProductItem(
-                        product: product,
-                        onTap: () => goToProductPage(context, product), category: category,
-                      )),
-                    ],
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              const StoreCardData(),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              SliverToBoxAdapter(child: FeaturedProductGrid(products: _filteredProducts, categories: widget.categories)),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyHeaderDelegate(
+                  minHeight: _showStickySearch ? 120 : 60,
+                  maxHeight: _showStickySearch ? 120 : 60,
+                  child: Container(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: _showStickySearch
+                        ? Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: TextField(
+                                  controller: _stickySearchController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Buscar no cardápio...',
+                                    prefixIcon: const Icon(Icons.search),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade200,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: _buildHorizontalCategories(),
+                              ),
+                            ],
+                          )
+                        : _buildHorizontalCategories(),
                   ),
-                );
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final category = widget.categories[index];
+                    final key = _categoryKeys[category.id];
+
+                    final productsInCategory = _filteredProducts
+                        .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
+                        .toList();
+
+                    if (productsInCategory.isEmpty) return const SizedBox.shrink();
+
+                    return Container(
+                      key: key,
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                            child: Text(
+                              category.name,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          ...productsInCategory.map((product) => ProductItem(
+                            product: product,
+                            onTap: () => goToProductPage(context, product),
+                            category: category,
+                          )),
+                        ],
+                      ),
+                    );
+                  },
+                  childCount: widget.categories.length,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            ],
+          ),
+          Positioned(
+            bottom: 15,
+            left: 16,
+            right: 16,
+            child: BlocBuilder<AuthCubit, AuthState>(
+              builder: (context, authState) {
+                if (authState.customer != null) {
+                  return const SizedBox.shrink();
+                }
+                return const _LoginPromoCard();
               },
-              childCount: widget.categories.length,
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
         ],
       ),
     );
@@ -221,10 +293,10 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                         : Theme.of(context).textTheme.bodyLarge?.color,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
-                  height: 3,
+                  height: 2,
                   width: 24,
                   decoration: BoxDecoration(
                     color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
@@ -236,6 +308,56 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
           ),
         );
       },
+    );
+  }
+}
+
+class _LoginPromoCard extends StatelessWidget {
+  const _LoginPromoCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      margin: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Explore mais com sua conta MenuHub',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  GestureDetector(
+                    onTap: () {
+                      context.push('/onboarding');
+                    },
+                    child: Text(
+                      'Entrar ou cadastrar-se',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -258,8 +380,10 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   double get maxExtent => maxHeight;
+
   @override
   double get minExtent => minHeight;
+
   @override
   bool shouldRebuild(_StickyHeaderDelegate oldDelegate) =>
       maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;

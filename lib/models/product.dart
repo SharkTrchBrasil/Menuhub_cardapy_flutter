@@ -47,6 +47,57 @@ enum ProductStatus {
         return ProductStatus.UNKNOWN;
     }
   }
+
+  String toApiString() => name;
+}
+
+enum ProductUnit {
+  UNIT,
+  KILOGRAM,
+  LITER,
+  GRAM,
+  MILLILITER;
+
+  static ProductUnit fromString(String? value) {
+    switch (value) {
+      case 'UNIT':
+        return ProductUnit.UNIT;
+      case 'KILOGRAM':
+        return ProductUnit.KILOGRAM;
+      case 'LITER':
+        return ProductUnit.LITER;
+      case 'GRAM':
+        return ProductUnit.GRAM;
+      case 'MILLILITER':
+        return ProductUnit.MILLILITER;
+      default:
+        return ProductUnit.UNIT;
+    }
+  }
+
+  String toApiString() => name;
+
+  bool get requiresQuantityInput {
+    return this == ProductUnit.KILOGRAM ||
+        this == ProductUnit.LITER ||
+        this == ProductUnit.GRAM ||
+        this == ProductUnit.MILLILITER;
+  }
+
+  String get shortName {
+    switch (this) {
+      case ProductUnit.UNIT:
+        return 'un';
+      case ProductUnit.KILOGRAM:
+        return 'kg';
+      case ProductUnit.LITER:
+        return 'L';
+      case ProductUnit.GRAM:
+        return 'g';
+      case ProductUnit.MILLILITER:
+        return 'ml';
+    }
+  }
 }
 
 class Product extends Equatable {
@@ -78,6 +129,9 @@ class Product extends Equatable {
   final bool featured;
   final String cashbackType;
   final int cashbackValue;
+  
+  // ✅ NOVO: Unidade de medida do produto
+  final ProductUnit unit;
 
   const Product({
     this.id,
@@ -96,6 +150,7 @@ class Product extends Equatable {
     this.featured = false,
     this.cashbackType = 'none',
     this.cashbackValue = 0,
+    this.unit = ProductUnit.UNIT,
   });
 
   // Helper para obter a imagem de capa
@@ -141,6 +196,7 @@ class Product extends Equatable {
       featured: json['featured'] ?? false,
       cashbackType: json['cashback_type'] ?? 'none',
       cashbackValue: json['cashback_value'] ?? 0,
+      unit: ProductUnit.fromString(json['unit']),
     );
   }
 
@@ -161,7 +217,30 @@ class Product extends Equatable {
         calculatedStock = null,
         featured = false,
         cashbackType = 'none',
-        cashbackValue = 0;
+        cashbackValue = 0,
+        unit = ProductUnit.UNIT;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'status': status.toApiString(),
+      'store_id': storeId,
+      'product_type': productType.toApiString(),
+      'gallery_images': images.map((img) => img.toJson()).toList(),
+      'video_url': videoUrl,
+      'category_links': categoryLinks.map((link) => link.toJson()).toList(),
+      'variant_links': variantLinks.map((link) => link.toJson()).toList(),
+      'prices': prices.map((p) => p.toJson()).toList(),
+      'rating': rating?.toMap(),
+      'calculated_stock': calculatedStock,
+      'featured': featured,
+      'cashback_type': cashbackType,
+      'cashback_value': cashbackValue,
+      'unit': unit.toApiString(),
+    };
+  }
 
   @override
   List<Object?> get props => [
@@ -181,5 +260,6 @@ class Product extends Equatable {
     featured,
     cashbackType,
     cashbackValue,
+    unit,
   ];
 }

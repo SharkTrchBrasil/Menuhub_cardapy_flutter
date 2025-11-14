@@ -1,5 +1,7 @@
 // Em: lib/pages/product/product_page_cubit.dart
 
+import 'dart:ui';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:collection/collection.dart';
 import 'package:totem/models/cart_product.dart';
@@ -133,8 +135,15 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     final updatedProduct = state.product!.copyWith(quantity: newQuantity);
     emit(state.copyWith(product: updatedProduct, status: PageStatusSuccess(updatedProduct)));
   }
+  
+  // ✅ NOVO: Método para atualizar quantidade decimal (kg/litros)
+  void updateWeightQuantity(double newWeightQuantity) {
+    if (state.product == null || newWeightQuantity <= 0) return;
+    final updatedProduct = state.product!.copyWith(weightQuantity: newWeightQuantity);
+    emit(state.copyWith(product: updatedProduct, status: PageStatusSuccess(updatedProduct)));
+  }
 
-  void updateOption(CartVariant variant, CartVariantOption option, int newQuantity) {
+  void updateOption(CartVariant variant, CartVariantOption option, int newQuantity, {VoidCallback? onUpdateComplete}) {
     if (state.product == null) return;
     final updatedVariant = variant.updateOption(option, newQuantity);
     final newVariantsList = state.product!.selectedVariants.map((v) {
@@ -142,6 +151,12 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     }).toList();
     final newProductState = state.product!.copyWith(selectedVariants: newVariantsList);
     emit(state.copyWith(product: newProductState, status: PageStatusSuccess(newProductState)));
+    
+    // ✅ Callback para auto-scroll após atualização
+    if (onUpdateComplete != null) {
+      // Usa um pequeno delay para garantir que a UI foi atualizada
+      Future.delayed(const Duration(milliseconds: 300), onUpdateComplete);
+    }
   }
 
   void selectSize(OptionItem size) {

@@ -8,6 +8,8 @@ class StoreNeighborhood  implements SelectableItem {
     this.deliveryFee = 0,
     this.freeDelivery = false,
     this.isActive = true,
+    this.latitude,
+    this.longitude,
   });
 
   final int? id;
@@ -16,6 +18,8 @@ class StoreNeighborhood  implements SelectableItem {
   final double deliveryFee;
   final bool freeDelivery;
   final bool isActive;
+  final double? latitude;
+  final double? longitude;
 
   factory StoreNeighborhood.fromJson(Map<String, dynamic> json) {
     // delivery_fee pode ser int ou double, converter para double
@@ -34,6 +38,8 @@ class StoreNeighborhood  implements SelectableItem {
       deliveryFee: deliveryFeeDouble,
       freeDelivery: json['free_delivery'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 
@@ -45,10 +51,10 @@ class StoreNeighborhood  implements SelectableItem {
       'delivery_fee': deliveryFee,
       'free_delivery': freeDelivery,
       'is_active': isActive,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
     };
   }
-
-
 
   StoreNeighborhood copyWith({
     int? id,
@@ -57,6 +63,8 @@ class StoreNeighborhood  implements SelectableItem {
     double? deliveryFee,
     bool? freeDelivery,
     bool? isActive,
+    double? Function()? latitude,
+    double? Function()? longitude,
   }) {
     return StoreNeighborhood(
       id: id ?? this.id,
@@ -65,14 +73,15 @@ class StoreNeighborhood  implements SelectableItem {
       deliveryFee: deliveryFee ?? this.deliveryFee,
       freeDelivery: freeDelivery ?? this.freeDelivery,
       isActive: isActive ?? this.isActive,
+      latitude: latitude != null ? latitude() : this.latitude,
+      longitude: longitude != null ? longitude() : this.longitude,
     );
   }
 
   @override
   String toString() {
-    return 'StoreNeighborhood(id: $id, name: $name, deliveryFee: $deliveryFee, freeDelivery: $freeDelivery, isActive: $isActive, cityId: $cityId)';
+    return 'StoreNeighborhood(id: $id, name: $name, deliveryFee: $deliveryFee, freeDelivery: $freeDelivery, isActive: $isActive, cityId: $cityId, latitude: $latitude, longitude: $longitude)';
   }
-
 
   @override
   String get title => name;
