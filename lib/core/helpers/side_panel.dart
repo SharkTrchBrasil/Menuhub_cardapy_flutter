@@ -9,11 +9,15 @@ Future<T?> showResponsiveSidePanel<T>(
   bool useFullScreenOnDesktop = false,
   bool showCloseButton = true,
 }) {
+  print('📱 [SidePanel] showResponsiveSidePanel chamado');
   final bool isMobile = ResponsiveBuilder.isMobile(context);
   final bool isDesktop = ResponsiveBuilder.isDesktop(context);
+  
+  print('📱 [SidePanel] isMobile: $isMobile, isDesktop: $isDesktop');
 
   // ✅ MOBILE ou DESKTOP FULL SCREEN = modal full screen
   if (isMobile || useFullScreenOnDesktop) {
+    print('📱 [SidePanel] Abrindo modal full screen para mobile');
     return Navigator.of(context, rootNavigator: true).push<T>(
       PageRouteBuilder(
         opaque: false,

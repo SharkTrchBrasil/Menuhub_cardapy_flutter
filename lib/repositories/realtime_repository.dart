@@ -9,6 +9,7 @@ import 'package:socket_io_client/socket_io_client.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/store.dart';
 import 'package:totem/models/payment_method.dart';
+import 'package:totem/models/image_model.dart';
 import 'package:totem/models/store_hour.dart';
 import 'package:totem/models/scheduled_pause.dart';
 import 'package:totem/models/store_operation_config.dart';
@@ -29,6 +30,8 @@ import '../models/rating_summary.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import '../models/update_cart_payload.dart';
+import '../models/notification.dart';
+import '../services/urgent_notification_service.dart';
 import 'auth_repository.dart';
 
 
@@ -150,6 +153,28 @@ class RealtimeRepository {
       _renewConnectionTokenAndReconnect();
     });
 
+    // ✅ NOVO: Listener para notificações urgentes
+    _socket.on('urgent_notifications', (data) {
+      print('🚨 Notificações urgentes recebidas!');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final List notificationsData = payload['notifications'] as List;
+        
+        final List<NotificationItem> notifications = notificationsData
+            .map((json) => NotificationItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+        
+        print('📢 Processando ${notifications.length} notificações urgentes');
+        
+        // Processa notificações urgentes
+        final urgentService = UrgentNotificationService();
+        urgentService.processUrgentNotifications(notifications);
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar notificações urgentes: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
     _socket.on('initial_state_loaded', (data) {
       print('🎉 Estado inicial carregado recebido!');
       print('📊 Tipo de dados recebidos: ${data.runtimeType}');
@@ -244,16 +269,30 @@ class RealtimeRepository {
 
 
     // ✅ P1: EVENTOS DE DADOS DO BACKEND com suporte a delta updates
-    _socket.on('products_update', (data) {
+    // ✅ CORREÇÃO: Escuta 'products_updated' (com 'd') que é o evento emitido pelo backend
+    _socket.on('products_updated', (data) {
       print('📦 Produtos atualizados recebidos');
       
-      // ✅ P1: Processa delta update se for mensagem delta
-      if (data is Map && data.containsKey('type') && data['type'] == 'delta_update') {
-        _handleDeltaUpdate(data as Map<String, dynamic>);
-      } else {
-        // Atualização completa
-        final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
-        productsController.add(products);
+      try {
+        // ✅ Processa payload do backend que vem como Map com 'products' e 'categories'
+        if (data is Map && data.containsKey('products')) {
+          final List<dynamic> productsJson = data['products'] as List<dynamic>;
+          final List<Product> products = productsJson.map((json) => Product.fromJson(json)).toList();
+          productsController.add(products);
+          print('✅ ${products.length} produtos atualizados no totem');
+        } else if (data is Map && data.containsKey('type') && data['type'] == 'delta_update') {
+          // ✅ P1: Processa delta update se for mensagem delta
+          _handleDeltaUpdate(data as Map<String, dynamic>);
+        } else if (data is List) {
+          // ✅ Compatibilidade: Se vier como lista direta
+          final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
+          productsController.add(products);
+        } else {
+          print('⚠️ Formato de dados de produtos_updated não reconhecido: ${data.runtimeType}');
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar products_updated: $e');
+        print('📍 StackTrace: $stackTrace');
       }
     });
 
@@ -432,6 +471,21 @@ class RealtimeRepository {
         final profile = payload['profile'] as Map<String, dynamic>?;
         if (profile == null) return;
 
+        // ✅ CORREÇÃO: Atualiza logo e banner quando image_path ou banner_path são fornecidos
+        // O backend já envia as URLs completas em image_path e banner_path
+        ImageModel? updatedImage;
+        ImageModel? updatedBanner;
+        
+        if (profile['image_path'] != null && (profile['image_path'] as String).isNotEmpty) {
+          updatedImage = ImageModel(url: profile['image_path'] as String);
+          print('   └─ Logo atualizada: ${profile['image_path']}');
+        }
+        
+        if (profile['banner_path'] != null && (profile['banner_path'] as String).isNotEmpty) {
+          updatedBanner = ImageModel(url: profile['banner_path'] as String);
+          print('   └─ Banner atualizado: ${profile['banner_path']}');
+        }
+
         // Atualiza apenas os campos de perfil
         final updatedStore = currentStore.copyWith(
           name: profile['name'] ?? currentStore.name,
@@ -448,10 +502,13 @@ class RealtimeRepository {
           instagram: profile['instagram'] ?? currentStore.instagram,
           facebook: profile['facebook'] ?? currentStore.facebook,
           tiktok: profile['tiktok'] ?? currentStore.tiktok,
+          // ✅ CORREÇÃO: Atualiza logo e banner quando fornecidos
+          image: updatedImage ?? currentStore.image,
+          banner: updatedBanner ?? currentStore.banner,
         );
 
         storeController.add(updatedStore);
-        print('✅ [TOTEM] Perfil da loja atualizado');
+        print('✅ [TOTEM] Perfil da loja atualizado (incluindo logo e banner)');
       } catch (e, stackTrace) {
         print('❌ Erro ao processar store_profile_updated: $e');
         print('📍 StackTrace: $stackTrace');
@@ -484,67 +541,6 @@ class RealtimeRepository {
         storeController.add(updatedStore);
         print('✅ [TOTEM] Cupons atualizados (${coupons.length} cupons)');
       } catch (e, stackTrace) {
-        print('❌ Erro ao processar coupons_updated: $e');
-        print('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('delivery_fee_rules_updated', (data) {
-      print('🚚 [TOTEM] delivery_fee_rules_updated recebido');
-      try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          print('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
-          return;
-        }
-
-        // ✅ ENTERPRISE: Parse das regras de frete com validação
-        final rulesData = payload['delivery_fee_rules'] as List<dynamic>?;
-        if (rulesData == null) {
-          print('⚠️ delivery_fee_rules não encontrado no payload');
-          return;
-        }
-
-        final rules = rulesData
-            .map((e) {
-              try {
-                return DeliveryFeeRule.fromJson(e as Map<String, dynamic>);
-              } catch (e) {
-                print('⚠️ Erro ao parsear regra de frete: $e');
-                return null;
-              }
-            })
-            .whereType<DeliveryFeeRule>()
-            .toList();
-
-        // ✅ ENTERPRISE: Atualiza apenas as regras de frete
-        final updatedStore = currentStore.copyWith(
-          deliveryFeeRules: rules,
-        );
-
-        storeController.add(updatedStore);
-        print('✅ [TOTEM] Regras de frete atualizadas (${rules.length} regras ativas)');
-        
-        // ✅ DEBUG: Loga tipos de regras
-        final ruleTypes = rules.map((r) => r.ruleType).toSet();
-        print('   └─ Tipos de regras: ${ruleTypes.join(", ")}');
-        
-        // ✅ ENTERPRISE: Notifica listeners que as regras foram atualizadas
-        // Isso permitirá que a tela de endereço recalcule o frete automaticamente
-        // A tela de endereço já escuta mudanças no StoreCubit, então o recálculo acontecerá automaticamente
-      } catch (e, stackTrace) {
-        print('❌ Erro ao processar delivery_fee_rules_updated: $e');
-        print('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('store_internationalization_updated', (data) {
-      print('🌐 [TOTEM] store_internationalization_updated recebido');
-      try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
@@ -817,10 +813,73 @@ class RealtimeRepository {
       _processStoreUpdate(data);
     });
 
-    _socket.on('products_update', (data) {
-      print('📦 Produtos atualizados recebidos');
-      final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
-      productsController.add(products);
+    // ✅ ADICIONADO: Listener para store_profile_updated (logo/banner) após reconexão
+    _socket.on('store_profile_updated', (data) {
+      print('👤 [TOTEM] store_profile_updated recebido (após reconexão)');
+      try {
+        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final storeId = payload['store_id'] as int?;
+        if (storeId == null) return;
+
+        final currentStore = storeController.value;
+        if (currentStore.id != storeId) return;
+
+        final profile = payload['profile'] as Map<String, dynamic>?;
+        if (profile == null) return;
+
+        ImageModel? updatedImage;
+        ImageModel? updatedBanner;
+        
+        if (profile['image_path'] != null && (profile['image_path'] as String).isNotEmpty) {
+          updatedImage = ImageModel(url: profile['image_path'] as String);
+        }
+        
+        if (profile['banner_path'] != null && (profile['banner_path'] as String).isNotEmpty) {
+          updatedBanner = ImageModel(url: profile['banner_path'] as String);
+        }
+
+        final updatedStore = currentStore.copyWith(
+          name: profile['name'] ?? currentStore.name,
+          phone: profile['phone'] ?? currentStore.phone,
+          description: profile['description'] ?? currentStore.description,
+          urlSlug: profile['url_slug'] ?? currentStore.urlSlug,
+          zip_code: profile['zip_code'] ?? currentStore.zip_code,
+          street: profile['street'] ?? currentStore.street,
+          number: profile['number'] ?? currentStore.number,
+          neighborhood: profile['neighborhood'] ?? currentStore.neighborhood,
+          complement: profile['complement'] ?? currentStore.complement,
+          city: profile['city'] ?? currentStore.city,
+          state: profile['state'] ?? currentStore.state,
+          instagram: profile['instagram'] ?? currentStore.instagram,
+          facebook: profile['facebook'] ?? currentStore.facebook,
+          tiktok: profile['tiktok'] ?? currentStore.tiktok,
+          image: updatedImage ?? currentStore.image,
+          banner: updatedBanner ?? currentStore.banner,
+        );
+
+        storeController.add(updatedStore);
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar store_profile_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    // ✅ CORREÇÃO: Escuta 'products_updated' (com 'd') que é o evento emitido pelo backend
+    _socket.on('products_updated', (data) {
+      print('📦 Produtos atualizados recebidos (após reconexão)');
+      try {
+        if (data is Map && data.containsKey('products')) {
+          final List<dynamic> productsJson = data['products'] as List<dynamic>;
+          final List<Product> products = productsJson.map((json) => Product.fromJson(json)).toList();
+          productsController.add(products);
+        } else if (data is List) {
+          final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
+          productsController.add(products);
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao processar products_updated: $e');
+        print('📍 StackTrace: $stackTrace');
+      }
     });
 
     _socket.on('order_update', (data) {

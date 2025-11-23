@@ -9,11 +9,10 @@ class MainTabController extends ChangeNotifier {
 
   void changeTab(int index) {
     // ✅ Permite mudar mesmo para a mesma tab (para garantir sincronização)
-    // Isso resolve o bug onde o home não funciona após limpar carrinho
-    if (index >= 0 && index < 4) {
+    // Apenas 3 tabs: Home (0), Notificações (1), Cardápio (2)
+    if (index >= 0 && index < 3) {
       _currentIndex = index;
       // ✅ Sempre notifica para garantir sincronização, mesmo se for a mesma tab
-      // Isso resolve problemas quando o estado fica inconsistente após operações como clearCart
       notifyListeners();
     }
   }
@@ -24,8 +23,7 @@ class MainTabController extends ChangeNotifier {
   }
 
   void goToHome() => changeTab(0);
-  void goToCart() => changeTab(1);
-  void goToOrders() => changeTab(2);
-  void goToProfile() => changeTab(3);
+  void goToNotifications() => changeTab(1);
+  void goToMenu() => changeTab(2);
 }
 

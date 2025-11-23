@@ -3,17 +3,21 @@
 import 'package:equatable/equatable.dart';
 import 'package:totem/models/option_item.dart';
 
-// ✅ ENUM ADICIONADO: Define os tipos de grupos de opções
+// ✅ ENUM: Define os tipos de grupos de opções
+// Mapeia com o backend: SIZE, GENERIC
 enum OptionGroupType {
-  size,
-  flavor,
-  other;
+  size,    // Mapeia para "SIZE" do backend
+  generic, // Mapeia para "GENERIC" do backend (Massa, Borda)
+  flavor,  // Não usado mais (compatibilidade)
+  other;   // Fallback
 
   static OptionGroupType fromString(String? value) {
-    switch (value?.toLowerCase()) {
-      case 'size':
+    switch (value?.toUpperCase()) {
+      case 'SIZE':
         return OptionGroupType.size;
-      case 'flavor':
+      case 'GENERIC':
+        return OptionGroupType.generic;
+      case 'FLAVOR':
         return OptionGroupType.flavor;
       default:
         return OptionGroupType.other;

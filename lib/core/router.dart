@@ -20,7 +20,7 @@ import '../pages/checkout/checkout_page.dart';
 import '../pages/coupon/coupon_page.dart';
 import '../pages/not_found/error_505_Page.dart';
 import '../pages/order/order_confirmation_page.dart';
-import '../pages/product/product_page.dart';
+import '../pages/product/product_page_adaptive.dart';
 import '../pages/product/product_page_cubit.dart';
 import '../pages/signin/signin_page.dart'; // ✅ Importe a OnboardingPage
 import '../pages/store/store_details.dart';
@@ -33,6 +33,7 @@ import '../pages/orders/order_review_page.dart';
 import '../pages/auth/email_auth_page.dart';
 import '../pages/auth/reset_password_page.dart';
 import '../pages/search/search_page.dart';
+import '../pages/delivery_persons/delivery_persons_page.dart';
 import '../repositories/realtime_repository.dart';
 import '../repositories/storee_repository.dart';
 import '../pages/home/simple_home_page.dart';
@@ -202,7 +203,7 @@ GoRouter createGoRouter() {
                       initialProduct: initialProduct,
                       cartItemToEdit: cartItemToEdit,
                     ),
-                    child: const ProductPage(),
+                    child: const ProductPageAdaptive(),
                   );
 
                   if (isDesktop) {
@@ -302,6 +303,39 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'search',
                 builder: (context, state) => const SearchPage(),
+              ),
+              // ✅ NOVO: Rotas para configurações de entregas, entregadores e horários
+              GoRoute(
+                path: 'stores/:storeId/settings/hours',
+                builder: (context, state) {
+                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  if (storeId == null) {
+                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                  }
+                  // Redireciona para store-details na aba de informações (onde há horários)
+                  return const StoreDetails(initialTabIndex: 1);
+                },
+              ),
+              GoRoute(
+                path: 'stores/:storeId/settings/shipping',
+                builder: (context, state) {
+                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  if (storeId == null) {
+                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                  }
+                  // Redireciona para store-details na aba de informações (onde há configurações de entrega)
+                  return const StoreDetails(initialTabIndex: 1);
+                },
+              ),
+              GoRoute(
+                path: 'stores/:storeId/delivery-persons',
+                builder: (context, state) {
+                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  if (storeId == null) {
+                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                  }
+                  return DeliveryPersonsPage(storeId: storeId);
+                },
               ),
             ],
           ),

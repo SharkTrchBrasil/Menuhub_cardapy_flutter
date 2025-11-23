@@ -290,9 +290,9 @@ class _CouponPageState extends State<CouponPage> {
 
 
                                     const SizedBox(height: 4),
-                                    if (coupon.product != null)
+                                    if (coupon.targetProductId != null)
                                       Text(
-                                        'Apenas para ${coupon.product!.name}',
+                                        'Apenas para produto específico',
                                         style: theme.smallTextStyle
                                             .colored(theme.onCardColor.withOpacity(0.8)),
                                       )

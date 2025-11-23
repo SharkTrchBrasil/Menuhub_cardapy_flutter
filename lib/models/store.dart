@@ -8,6 +8,7 @@ import 'package:totem/models/store_operation_config.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/coupon.dart';
 import 'package:totem/models/delivery_fee_rule.dart';
+import 'package:totem/models/delivery_config.dart'; // ✅ NOVO
 import '../core/extensions.dart';
 import 'delivery_options.dart';
 import 'image_model.dart';
@@ -43,6 +44,7 @@ class Store {
     this.scheduledPauses = const [],
     this.coupons = const [],
     this.deliveryFeeRules = const [],
+    this.deliveryConfig, // ✅ NOVO v2.0
     this.latitude,
     this.longitude,
     this.deliveryRadiusKm,
@@ -81,6 +83,7 @@ class Store {
   final List<ScheduledPause> scheduledPauses;
   final List<Coupon> coupons;
   final List<DeliveryFeeRule> deliveryFeeRules;
+  final DeliveryConfig? deliveryConfig; // ✅ NOVO v2.0
 
   // Coordenadas da loja (para cálculo de raio)
   final double? latitude;
@@ -150,6 +153,9 @@ class Store {
           ?.map((e) => DeliveryFeeRule.fromJson(e as Map<String, dynamic>))
           .toList() ??
           [],
+      deliveryConfig: json['delivery_config'] != null
+          ? DeliveryConfig.fromJson(json['delivery_config'] as Map<String, dynamic>)
+          : null, // ✅ NOVO v2.0
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       deliveryRadiusKm: (json['delivery_radius_km'] as num?)?.toDouble(),
@@ -187,6 +193,7 @@ class Store {
     List<ScheduledPause>? scheduledPauses,
     List<Coupon>? coupons,
     List<DeliveryFeeRule>? deliveryFeeRules,
+    DeliveryConfig? deliveryConfig, // ✅ NOVO v2.0
     double? latitude,
     double? longitude,
     double? deliveryRadiusKm,
@@ -222,6 +229,7 @@ class Store {
       scheduledPauses: scheduledPauses ?? this.scheduledPauses,
       coupons: coupons ?? this.coupons,
       deliveryFeeRules: deliveryFeeRules ?? this.deliveryFeeRules,
+      deliveryConfig: deliveryConfig ?? this.deliveryConfig, // ✅ NOVO v2.0
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       deliveryRadiusKm: deliveryRadiusKm ?? this.deliveryRadiusKm,

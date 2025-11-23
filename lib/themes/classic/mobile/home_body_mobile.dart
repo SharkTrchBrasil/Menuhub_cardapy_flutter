@@ -9,6 +9,10 @@ import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
 import '../../../cubit/auth_cubit.dart';
+import '../../../pages/cart/cart_cubit.dart';
+import '../../../pages/cart/cart_state.dart';
+import '../../../core/extensions.dart';
+import '../../../themes/ds_theme_switcher.dart';
 
 class HomeBodyMobile extends StatefulWidget {
   final List<BannerModel> banners;
@@ -247,6 +251,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ],
           ),
+          // ✅ CORREÇÃO: Card flutuante - mostra login quando não logado, carrinho quando logado
           Positioned(
             bottom: 15,
             left: 16,
@@ -254,8 +259,10 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
             child: BlocBuilder<AuthCubit, AuthState>(
               builder: (context, authState) {
                 if (authState.customer != null) {
-                  return const SizedBox.shrink();
+                  // ✅ Quando logado, mostra card de carrinho
+                  return const _CartFloatingCard();
                 }
+                // ✅ Quando não logado, mostra card de login
                 return const _LoginPromoCard();
               },
             ),
@@ -324,7 +331,6 @@ class _LoginPromoCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
-
           children: [
             Expanded(
               child: Column(
@@ -358,6 +364,108 @@ class _LoginPromoCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ✅ NOVO: Card flutuante de carrinho (mostra quando logado)
+class _CartFloatingCard extends StatelessWidget {
+  const _CartFloatingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<DsThemeSwitcher>().theme;
+    
+    return BlocBuilder<CartCubit, CartState>(
+      builder: (context, cartState) {
+        final cart = cartState.cart;
+        
+        // ✅ Não mostra se o carrinho estiver vazio
+        if (cart.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        
+        final totalInReais = cart.total / 100.0;
+        final itemCount = cart.items.length;
+        
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          margin: EdgeInsets.zero,
+          color: theme.cartBackgroundColor,
+          child: InkWell(
+            onTap: () => context.push('/cart'),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  // Ícone do carrinho
+                  Icon(
+                    Icons.shopping_bag,
+                    color: theme.primaryColor,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  // Informações do carrinho
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Total sem a entrega',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.cartTextColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              totalInReais.toCurrency(),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: theme.onBackgroundColor,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '/ $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: theme.cartTextColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Botão "Ver sacola"
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Ver sacola',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

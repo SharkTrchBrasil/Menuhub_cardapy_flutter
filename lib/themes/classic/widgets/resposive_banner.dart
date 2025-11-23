@@ -65,7 +65,20 @@ class _ResponsiveBannerCarouselState extends State<ResponsiveBannerCarousel> {
                       return Center(child: CircularProgressIndicator());
                     },
                     errorBuilder: (context, error, stackTrace) {
-                      return Center(child: Icon(Icons.error));
+                      return Container(
+                        height: height,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(borderRadius),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.image_not_supported,
+                            size: 50,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
                     },
                   ),
                 );

@@ -63,41 +63,54 @@ class _StoreDetailsState extends State<StoreDetails>
                 onPressed: () => context.pop(),
               ),
 
-              expandedHeight: 350,
+              expandedHeight: 400, // ✅ Aumentado para acomodar conteúdo
               flexibleSpace: FlexibleSpaceBar(
-                background: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                background: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
+                            flex: 1,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(store.name ?? 'Nome da Loja',
-                                    style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold)),
+                                Text(
+                                  store.name ?? 'Nome da Loja',
+                                  style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 const SizedBox(height: 4),
                                 if (store.store_operation_config?.deliveryMinOrder != null)
                                   Text(
                                     'Pedido mínimo: R\$ ${store.store_operation_config!.deliveryMinOrder!.toStringAsFixed(2)}',
                                     style: const TextStyle(fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 const SizedBox(height: 12),
                                 if (store.ratingsSummary != null)
-                                  Row(
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: [
                                       Text(
                                         store.ratingsSummary!.averageRating
                                             .toStringAsFixed(1),
                                         style: const TextStyle(fontSize: 16),
                                       ),
-                                      const SizedBox(width: 8),
                                       Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: List.generate(5, (index) {
                                           final starIndex = index + 1;
                                           return Icon(
@@ -112,10 +125,16 @@ class _StoreDetailsState extends State<StoreDetails>
                                           );
                                         }),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '(${store.ratingsSummary!.totalRatings} avaliações)',
-                                        style: const TextStyle(fontSize: 14),
+                                      // ✅ Removido Flexible - Wrap não suporta Flexible
+                                      // Usando Text com constraints via SizedBox para limitar largura
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 150),
+                                        child: Text(
+                                          '(${store.ratingsSummary!.totalRatings} avaliações)',
+                                          style: const TextStyle(fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -123,13 +142,34 @@ class _StoreDetailsState extends State<StoreDetails>
                             ),
                           ),
                           const SizedBox(width: 16),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              store.image?.url ?? 'https://images.ctfassets.net/kugm9fp9ib18/3aHPaEUU9HKYSVj1CTng58/d6750b97344c1dc31bdd09312d74ea5b/menu-default-image_220606_web.png',
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
+                          // ✅ Imagem com tamanho fixo para evitar overflow
+                          SizedBox(
+                            width: 80,
+                            height: 80,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                store.image?.url ?? 'https://images.ctfassets.net/kugm9fp9ib18/3aHPaEUU9HKYSVj1CTng58/d6750b97344c1dc31bdd09312d74ea5b/menu-default-image_220606_web.png',
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                // ✅ Tratamento de erro - mostra placeholder se falhar
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    width: 80,
+                                    height: 80,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade300,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.store,
+                                      size: 40,
+                                      color: Colors.grey,
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                           ),
                         ],
@@ -139,7 +179,8 @@ class _StoreDetailsState extends State<StoreDetails>
                         AppReviewRatingWidget(
                           ratingsSummary: store.ratingsSummary!,
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

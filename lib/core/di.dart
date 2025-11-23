@@ -21,6 +21,7 @@ import '../pages/checkout/checkout_cubit.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/storee_repository.dart';
 import '../repositories/delivery_repository.dart';
+import '../repositories/notification_repository.dart';
 
 final getIt = GetIt.instance;
 
@@ -117,6 +118,7 @@ void configureDependencies() {
   getIt.registerLazySingleton<CustomerRepository>(() => CustomerRepository(getIt()));
   getIt.registerLazySingleton<OrderRepository>(() => OrderRepository(getIt()));
   getIt.registerLazySingleton<DeliveryFeeRepository>(() => DeliveryFeeRepository(getIt()));
+  getIt.registerLazySingleton<NotificationRepository>(() => NotificationRepository(getIt(), getIt()));
 
   // Cubits
   getIt.registerLazySingleton<AddressCubit>(() => AddressCubit(customerRepository: getIt()));

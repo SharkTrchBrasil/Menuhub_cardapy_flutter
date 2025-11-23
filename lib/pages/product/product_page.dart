@@ -7,7 +7,7 @@ import 'package:totem/core/extensions.dart';
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/pages/product/product_page_cubit.dart';
 import 'package:totem/pages/product/product_page_state.dart';
-import 'package:totem/pages/product/widgets/desktoplayout.dart';
+import 'package:totem/pages/product/widgets/desktop/desktop_product_card.dart';
 import 'package:totem/pages/product/widgets/mobilelayout.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/models/page_status.dart';
@@ -104,10 +104,14 @@ class _ProductPageState extends State<ProductPage> {
                     }
                     return Stack(
                       children: [
+                        // ✅ Backdrop escuro como no iFood
                         GestureDetector(
                           onTap: () => context.pop(),
-                          child: Container(color: Colors.transparent),
+                          child: Container(
+                            color: Colors.black.withOpacity(0.5), // ✅ Backdrop escuro
+                          ),
                         ),
+                        // ✅ Card centralizado - estilo iFood
                         Center(
                           child: DesktopProductCard(
                             productState: productState,
@@ -153,10 +157,27 @@ class _ProductPageState extends State<ProductPage> {
                     ? 'Salvar ${product.totalPrice.toCurrency}'
                     : 'Adicionar ${product.totalPrice.toCurrency}';
 
+                // ✅ DEBUG: Verifica por que o botão pode estar desabilitado
+                final isButtonDisabled = cartState.isUpdating || !product.isValid;
+                
+                // ✅ Log detalhado para debug
+                if (isButtonDisabled) {
+                  print('⚠️ [ProductPage] Botão desabilitado:');
+                  print('   - isUpdating: ${cartState.isUpdating}');
+                  print('   - isValid: ${product.isValid}');
+                  print('   - product: ${product.product.name}');
+                  print('   - quantity: ${product.quantity}');
+                }
+                
                 return DsPrimaryButton(
-                  onPressed: cartState.isUpdating || !product.isValid
+                  onPressed: isButtonDisabled
                       ? null
-                      : () => _onConfirm(context, productState),
+                      : () {
+                          print('🛒 [ProductPage] ✅ Botão "Adicionar" clicado!');
+                          print('   - Produto: ${product.product.name}');
+                          print('   - Quantidade: ${product.quantity}');
+                          _onConfirm(context, productState);
+                        },
                   child: cartState.isUpdating ? const DotLoading() : Text(buttonText),
                 );
               },
@@ -168,13 +189,18 @@ class _ProductPageState extends State<ProductPage> {
   }
 
   void _onConfirm(BuildContext context, ProductPageState productState) async {
+    print('🛒 [ProductPage] _onConfirm chamado!');
+    
     final authState = context.read<AuthCubit>().state;
     final cartCubit = context.read<CartCubit>();
     final product = productState.product!;
     final store = context.read<StoreCubit>().state.store;
 
+    print('🔐 [ProductPage] Estado de autenticação: customer=${authState.customer != null}, status=${authState.status}');
+
     // ✅ VALIDAÇÃO: Verifica se pode adicionar ao carrinho
     if (!StoreStatusService.canAddToCart(store)) {
+      print('⚠️ [ProductPage] Loja não permite adicionar ao carrinho');
       final status = StoreStatusService.validateStoreStatus(store);
       final message = StoreStatusService.getFriendlyMessage(status);
       if (context.mounted) {
@@ -225,29 +251,54 @@ class _ProductPageState extends State<ProductPage> {
       }
     }
 
-    if (authState.status == AuthStatus.success) {
+    // ✅ CORREÇÃO: Verifica se o usuário está logado (customer != null)
+    // Isso é mais confiável que verificar apenas o status
+    final isLoggedIn = authState.customer != null;
+    
+    if (isLoggedIn) {
+      // ✅ Usuário está logado, adiciona ao carrinho diretamente
       await updateAndPop();
     } else {
+      // ✅ Usuário NÃO está logado - abre sidepanel com login
+      print('🔐 [ProductPage] Usuário não logado. Abrindo sidepanel de login...');
+      
       // ✅ Salva payload pendente antes de pedir login
       await PendingCartService.savePendingCartItem(payload);
       
       // ✅ Usa showResponsiveSidePanel ao invés de navegar
-      final loginSuccess = await showResponsiveSidePanel<bool>(
-        context,
-        const OnboardingPage(),
-      );
-      
-      // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
-      // e depois vamos fechar a tela e navegar para home
-      if (loginSuccess == true && context.mounted) {
-        // Aguarda um pouco para garantir que o item foi adicionado
-        await Future.delayed(const Duration(milliseconds: 500));
-        // Fecha a tela de detalhes do produto
-        if (context.canPop()) {
-          context.pop(); // Fecha tela de detalhes
+      // No mobile e desktop, abre um modal full screen com o login
+      try {
+        final loginSuccess = await showResponsiveSidePanel<bool>(
+          context,
+          const OnboardingPage(),
+          useFullScreenOnDesktop: true, // ✅ Força full screen no desktop também
+        );
+        
+        print('🔐 [ProductPage] Resultado do login: $loginSuccess');
+        
+        // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
+        // e depois vamos fechar a tela e navegar para home
+        if (loginSuccess == true && context.mounted) {
+          print('✅ [ProductPage] Login bem-sucedido. Aguardando processamento do item...');
+          // Aguarda um pouco para garantir que o item foi adicionado
+          await Future.delayed(const Duration(milliseconds: 500));
+          // Fecha a tela de detalhes do produto
+          if (context.canPop()) {
+            context.pop(); // Fecha tela de detalhes
+          }
+          // Navega para home
+          context.go('/');
         }
-        // Navega para home
-        context.go('/');
+      } catch (e) {
+        print('❌ [ProductPage] Erro ao abrir sidepanel de login: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao abrir tela de login. Tente novamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

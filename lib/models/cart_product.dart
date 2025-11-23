@@ -7,6 +7,8 @@ import 'package:totem/models/category.dart';
 import 'package:totem/models/option_group.dart';
 import 'package:totem/models/option_item.dart';
 import 'package:totem/models/cart_variant.dart';
+import 'package:totem/models/cart_variant_option.dart';
+import 'package:totem/helpers/enums/displaymode.dart';
 
 class CartProduct extends Equatable {
   // PROPRIEDADES DE ORIGEM (IMUTÁVEIS)
@@ -47,20 +49,73 @@ class CartProduct extends Equatable {
 
   // Construtor de fábrica para iniciar a configuração de um produto
   factory CartProduct.fromProduct(Product product, Category category) {
-    final variants = product.variantLinks
-        .map((link) => CartVariant.fromProductVariantLink(link))
-        .toList();
-
-    // ✅ INÍCIO DA CORREÇÃO
-    // Se o produto for customizável, pré-seleciona o primeiro tamanho como padrão.
+    // ✅ CORREÇÃO: Para categorias customizáveis (pizzas), converte optionGroups em variants
+    List<CartVariant> variants;
     OptionItem? defaultSize;
+    
     if (category.isCustomizable) {
-      defaultSize = category.optionGroups
-          .firstWhereOrNull((g) => g.groupType == OptionGroupType.size)
-          ?.items
-          .firstOrNull;
+      // 1. Pré-seleciona o primeiro tamanho como padrão
+      final sizeGroup = category.optionGroups
+          .firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+      defaultSize = sizeGroup?.items.firstOrNull;
+      
+      // 2. Converte TODOS os grupos (incluindo Tamanho) em variants
+      // O backend precisa do tamanho como variant para buscar o FlavorPrice
+      variants = category.optionGroups
+          .map((group) {
+            // Converte OptionGroup em CartVariant
+            final activeItems = group.items.where((item) => item.isActive).toList();
+            final cartOptions = activeItems
+                .asMap()
+                .entries
+                .map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  
+                  // ✅ Lógica de pré-seleção:
+                  // - Se é grupo de tamanho (SIZE): sempre pré-seleciona o primeiro
+                  // - Se é grupo obrigatório (minSelection > 0): pré-seleciona o primeiro
+                  final isSizeGroup = group.groupType == OptionGroupType.size;
+                  final isRequired = group.minSelection > 0;
+                  final initialQuantity = (isSizeGroup || (isRequired && index == 0)) ? 1 : 0;
+                  
+                  // Converte OptionItem em CartVariantOption
+                  return CartVariantOption(
+                    id: item.id ?? 0,
+                    name: item.name,
+                    price: item.price,
+                    trackInventory: false,
+                    stockQuantity: 0,
+                    isActuallyAvailable: item.isActive,
+                    description: item.description,
+                    imageUrl: item.image?.url,
+                    quantity: initialQuantity, // Pré-seleciona tamanho ou obrigatórios
+                  );
+                })
+                .toList();
+            
+            // Determina UIDisplayMode baseado em min/max selection
+            final displayMode = group.maxSelection == 1 
+                ? UIDisplayMode.SINGLE  // Radio (Massa, Borda)
+                : UIDisplayMode.MULTIPLE; // Checkbox (múltipla escolha)
+            
+            return CartVariant(
+              id: group.id ?? 0,
+              name: group.name,
+              uiDisplayMode: displayMode,
+              minSelectedOptions: group.minSelection,
+              maxSelectedOptions: group.maxSelection,
+              maxTotalQuantity: null,
+              cartOptions: cartOptions,
+            );
+          })
+          .toList();
+    } else {
+      // Para produtos normais, usa variantLinks do produto
+      variants = product.variantLinks
+          .map((link) => CartVariant.fromProductVariantLink(link))
+          .toList();
     }
-    // ✅ FIM DA CORREÇÃO
 
     return CartProduct(
       product: product,

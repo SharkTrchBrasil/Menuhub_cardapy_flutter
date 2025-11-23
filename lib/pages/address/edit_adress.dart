@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:either_dart/either.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,9 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/models/store_city.dart';
-import 'package:totem/models/store_neig.dart';
 import 'package:totem/pages/address/widgets/clean_text_field.dart';
 import 'package:totem/services/geolocation_service.dart';
+import 'package:totem/services/reverse_geocoding_service.dart';
 
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../cubit/store_cubit.dart';
@@ -36,12 +37,17 @@ class _EditAddressPageState extends State<EditAddressPage> {
   late final TextEditingController _neighborhoodTextController;
 
   StoreCity? _selectedCity;
-  StoreNeighborhood? _selectedNeighborhood;
   late String _selectedLabel;
   late bool _noComplement;
   double? _latitude;
   double? _longitude;
   bool _isGettingLocation = false;
+  
+  // ✅ NOVO: Dados do endereço vindos do mapa (não editáveis)
+  String? _mapStreet;
+  String? _mapNeighborhood;
+  String? _mapCity;
+  String? _mapState;
 
   @override
   void initState() {
@@ -53,7 +59,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
     final store = context.read<StoreCubit>().state.store;
     _currentAddress = widget.addressToEdit ?? CustomerAddress.empty();
 
-    _streetController = TextEditingController(text: _currentAddress.street);
+    // ✅ ATUALIZADO: Número, complemento, referência e bairro (quando necessário) são editáveis
     _numberController = TextEditingController(text: _currentAddress.number);
     _complementController = TextEditingController(text: _currentAddress.complement);
     _referenceController = TextEditingController(text: _currentAddress.reference);
@@ -63,6 +69,20 @@ class _EditAddressPageState extends State<EditAddressPage> {
     _noComplement = _currentAddress.complement == null || _currentAddress.complement!.isEmpty;
     _latitude = _currentAddress.latitude;
     _longitude = _currentAddress.longitude;
+    
+    // ✅ NOVO: Preenche dados do mapa se já tiver endereço (modo edição)
+    if (widget.addressToEdit != null) {
+      _mapStreet = _currentAddress.street;
+      _mapNeighborhood = _currentAddress.neighborhood;
+      _mapCity = _currentAddress.city;
+      _mapState = ''; // Estado pode não estar no modelo
+      
+      // Se tiver coordenadas, pode fazer reverse geocoding para atualizar dados do mapa
+      if (_latitude != null && _longitude != null) {
+        // Faz reverse geocoding em background para atualizar dados do mapa
+        _reverseGeocodeAddress(_latitude!, _longitude!);
+      }
+    }
 
     // Se for novo endereço, tenta pegar localização automaticamente
     if (widget.addressToEdit == null) {
@@ -73,13 +93,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
       if (_currentAddress.cityId != null) {
         try {
           _selectedCity = store.cities.firstWhere((c) => c.id == _currentAddress.cityId);
-          if (_currentAddress.neighborhoodId != null) {
-            _selectedNeighborhood = _selectedCity!.neighborhoods.firstWhere((n) => n.id == _currentAddress.neighborhoodId);
-          }
         } catch (e) {
-          print("Aviso: Cidade/bairro do endereço salvo não encontrado nas regras da loja. $e");
+          print("Aviso: Cidade do endereço salvo não encontrado nas regras da loja. $e");
           _selectedCity = null;
-          _selectedNeighborhood = null;
         }
       }
     } else if (widget.addressToEdit == null && store != null && store.cities.length == 1) {
@@ -89,11 +105,12 @@ class _EditAddressPageState extends State<EditAddressPage> {
 
   @override
   void dispose() {
-    _streetController.dispose();
     _numberController.dispose();
     _complementController.dispose();
     _referenceController.dispose();
     _neighborhoodTextController.dispose();
+    _complementController.dispose();
+    _referenceController.dispose();
     super.dispose();
   }
 
@@ -115,20 +132,11 @@ class _EditAddressPageState extends State<EditAddressPage> {
       );
     }
 
-    // ✅ CRÍTICO: Verificar se há regra neighborhood_fee ATIVA (não apenas deliveryScope antigo)
-    final hasNeighborhoodFeeRule = store.deliveryFeeRules.any(
-      (r) => r.ruleType == 'neighborhood_fee' && r.isActive,
-    );
-    // Fallback para compatibilidade com sistema antigo
-    final deliveryScopeIsNeighborhood = store.store_operation_config?.deliveryScope == 'neighborhood';
-    final requiresNeighborhoodSelection = hasNeighborhoodFeeRule || deliveryScopeIsNeighborhood;
-
-    // ✅ CRÍTICO: Verificar se frete por km/raio requer coordenadas
-    final requiresCoordinates = store.deliveryFeeRules.any(
-      (r) => r.isActive && (r.ruleType == 'per_km' || r.ruleType == 'radius'),
-    );
+    // ✅ ATUALIZADO: Padrão iFood - endereço vem do mapa, cliente só digita número, complemento e referência
 
     return Scaffold(
+      // ✅ NOVO: Remove bordas do Scaffold quando está dentro de um Dialog
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(isNewAddress ? 'Novo Endereço' : 'Editar Endereço'),
         centerTitle: true,
@@ -140,7 +148,10 @@ class _EditAddressPageState extends State<EditAddressPage> {
           onPressed: () => context.pop(),
         ),
       ),
-      body: SingleChildScrollView(
+      body: ClipRRect(
+        // ✅ NOVO: Garante que o conteúdo respeite as bordas arredondadas do Dialog
+        borderRadius: BorderRadius.circular(20),
+        child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Form(
           key: _formKey,
@@ -148,37 +159,13 @@ class _EditAddressPageState extends State<EditAddressPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 16),
-              _buildSectionTitle(context, 'Localização'),
-              const SizedBox(height: 16),
-
-              // ✅ CRÍTICO: Mostrar aviso se coordenadas são obrigatórias
-              if (requiresCoordinates)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'É necessário capturar sua localização para calcular o frete.',
-                            style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // Botão para pegar localização atual
-              if (_latitude == null || _longitude == null)
+              
+              // ✅ NOVO: Exibe endereço completo do mapa no topo (estilo iFood)
+              if (_mapStreet != null && _mapStreet!.isNotEmpty)
+                _buildAddressDisplay(context),
+              
+              // ✅ NOVO: Botão para confirmar localização no mapa (se não tiver endereço)
+              if (_mapStreet == null || _mapStreet!.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: OutlinedButton.icon(
@@ -188,81 +175,86 @@ class _EditAddressPageState extends State<EditAddressPage> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.my_location),
-                    label: Text(_isGettingLocation ? 'Obtendo localização...' : 'Usar minha localização'),
+                        : const Icon(Icons.map),
+                    label: Text(_isGettingLocation ? 'Obtendo endereço...' : 'Confirmar localização no mapa'),
                     onPressed: _isGettingLocation ? null : _getCurrentLocation,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
                   ),
                 ),
+              
+              const SizedBox(height: 24),
+              _buildSectionTitle(context, 'Detalhes do endereço'),
+              const SizedBox(height: 16),
 
-              if (_latitude != null && _longitude != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade200),
+              // ✅ NOVO: Campo de bairro (apenas se o mapa NÃO encontrou)
+              // Quando o mapa encontra, o bairro aparece apenas no header
+              if (_mapNeighborhood == null || _mapNeighborhood!.isEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bairro',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurface.withOpacity(0.9),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Localização capturada: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
-                            style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _neighborhoodTextController,
+                      validator: (value) {
+                        // ✅ CRÍTICO: Obrigatório se o mapa não encontrou o bairro
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Informar o bairro';
+                        }
+                        return null;
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Digite o bairro',
+                        filled: true,
+                        fillColor: colors.surfaceVariant.withOpacity(0.3),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          // ✅ Borda vermelha quando obrigatório
+                          borderSide: const BorderSide(
+                            color: Colors.red,
+                            width: 1,
                           ),
                         ),
-                        TextButton(
-                          onPressed: _getCurrentLocation,
-                          child: const Text('Atualizar'),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          // ✅ Borda vermelha ao focar
+                          borderSide: const BorderSide(
+                            color: Colors.red,
+                            width: 2,
+                          ),
                         ),
-                      ],
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 1),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 2),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
                     ),
-                  ),
+                    // ✅ Mensagem de erro abaixo do campo (estilo iFood)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 4),
+                      child: Text(
+                        'Informar o bairro',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.red,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-
-              CleanSelectionFormField<StoreCity>(
-                initialValue: _selectedCity,
-                title: 'Cidade',
-                fetch: () async => Right(store.cities),
-                onChanged: (city) => setState(() {
-                  _selectedCity = city;
-                  _selectedNeighborhood = null;
-                  _neighborhoodTextController.clear();
-                }),
-                validator: (v) => v == null ? 'Selecione uma cidade' : null,
-              ),
-              const SizedBox(height: 16),
-
-              if (requiresNeighborhoodSelection)
-                CleanSelectionFormField<StoreNeighborhood>(
-                  title: 'Bairro',
-                  initialValue: _selectedNeighborhood,
-                  fetch: () async => Right(_selectedCity?.neighborhoods ?? []),
-                  onChanged: (neighborhood) => setState(() => _selectedNeighborhood = neighborhood),
-                  validator: (v) => v == null ? 'Selecione um bairro' : null,
-                )
-              else
-                CleanTextField(
-                  controller: _neighborhoodTextController,
-                  title: 'Bairro',
-                  hint: 'Digite seu bairro',
-                  validator: (v) => (v == null || v.isEmpty) ? 'Campo obrigatório' : null,
-                ),
-
-              const SizedBox(height: 24),
-              _buildSectionTitle(context, 'Endereço'),
-              const SizedBox(height: 16),
-
-              CleanTextField(
-                controller: _streetController,
-                title: 'Rua/Avenida',
-                hint: 'Nome da rua ou avenida',
-                validator: (v) => (v == null || v.isEmpty) ? 'Campo obrigatório' : null,
-              ),
-              const SizedBox(height: 16),
 
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,7 +275,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
                     child: CleanTextField(
                       controller: _complementController,
                       title: 'Complemento',
-                      hint: 'Apto, Bloco, Casa',
+                      hint: 'Apartamento/Bloco/Casa',
                       enabled: !_noComplement,
                       validator: (value) {
                         if (!_noComplement && (value == null || value.isEmpty)) {
@@ -347,8 +339,125 @@ class _EditAddressPageState extends State<EditAddressPage> {
             ],
           ),
         ),
+        ),
       ),
 
+    );
+  }
+
+  // ✅ NOVO: Widget para exibir endereço completo do mapa (estilo iFood)
+  Widget _buildAddressDisplay(BuildContext context) {
+    final theme = Theme.of(context);
+    final addressLine = _mapStreet ?? '';
+    final cityLine = _mapNeighborhood != null && _mapNeighborhood!.isNotEmpty
+        ? '$_mapNeighborhood, $_mapCity'
+        : _mapCity ?? '';
+    final stateLine = _mapState != null && _mapState!.isNotEmpty ? ' - $_mapState' : '';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on, color: theme.colorScheme.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  addressLine,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (cityLine.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 28),
+              child: Text(
+                '$cityLine$stateLine',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.edit_location_alt, size: 16),
+            label: const Text('Alterar localização no mapa'),
+            onPressed: () async {
+              // ✅ NOVO: Abre o mapa para o usuário escolher a localização
+              final store = context.read<StoreCubit>().state.store;
+              if (store == null) return;
+              
+              final result = await context.push<Map<String, dynamic>>(
+                '/address-map',
+                extra: {
+                  'initialLatitude': _latitude,
+                  'initialLongitude': _longitude,
+                  'addressDescription': _mapStreet,
+                  'store': store,
+                },
+              );
+              
+              if (result != null && mounted) {
+                // ✅ CRÍTICO: Atualiza endereço quando o usuário escolhe nova localização no mapa
+                setState(() {
+                  _latitude = result['latitude'] as double;
+                  _longitude = result['longitude'] as double;
+                  _mapStreet = result['formData']['street'] as String?;
+                  _mapNeighborhood = result['formData']['neighborhood'] as String?;
+                  _mapCity = result['formData']['city'] as String?;
+                  _mapState = result['formData']['state'] as String?;
+                  
+                  // Atualiza campos editáveis
+                  if (result['formData']['number'] != null) {
+                    _numberController.text = result['formData']['number'] as String? ?? '';
+                  }
+                  if (result['formData']['complement'] != null) {
+                    _complementController.text = result['formData']['complement'] as String? ?? '';
+                  }
+                  if (result['formData']['reference'] != null) {
+                    _referenceController.text = result['formData']['reference'] as String? ?? '';
+                  }
+                  
+                  // ✅ CRÍTICO: Atualiza bairro - se não encontrou, limpa para mostrar o campo
+                  if (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) {
+                    _neighborhoodTextController.text = _mapNeighborhood!;
+                  } else {
+                    _neighborhoodTextController.clear();
+                  }
+                  
+                  // Atualiza cidade selecionada
+                  final cityName = result['formData']['city'] as String?;
+                  if (cityName != null && cityName.isNotEmpty) {
+                    final matchingCity = store.cities.firstWhereOrNull(
+                      (c) => c.name.toLowerCase() == cityName.toLowerCase(),
+                    );
+                    if (matchingCity != null) {
+                      _selectedCity = matchingCity;
+                    }
+                  }
+                });
+              }
+            },
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -405,26 +514,33 @@ class _EditAddressPageState extends State<EditAddressPage> {
       return;
     }
 
-    // ✅ CRÍTICO: Verificar se há regra neighborhood_fee ATIVA
-    final storeState = context.read<StoreCubit>().state.store;
-    final hasNeighborhoodFeeRule = storeState?.deliveryFeeRules.any(
-      (r) => r.ruleType == 'neighborhood_fee' && r.isActive,
-    ) ?? false;
-    // Fallback para compatibilidade com sistema antigo
-    final deliveryScopeIsNeighborhood = storeState?.store_operation_config?.deliveryScope == 'neighborhood';
-    final requiresNeighborhoodSelection = hasNeighborhoodFeeRule || deliveryScopeIsNeighborhood;
+    // ✅ ATUALIZADO: Valida se tem endereço do mapa
+    if (_mapStreet == null || _mapStreet!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('É necessário confirmar a localização no mapa primeiro.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
 
+    // ✅ ATUALIZADO: Usa dados do mapa (não editáveis) + dados digitados pelo cliente
     final finalAddress = _currentAddress.copyWith(
       label: _selectedLabel.isNotEmpty ? _selectedLabel : 'Endereço',
-      street: _streetController.text.trim(),
+      street: _mapStreet!,
       number: _numberController.text.trim(),
       complement: _noComplement ? '' : _complementController.text.trim(),
       reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
-      city: _selectedCity!.name,
-      cityId: _selectedCity!.id,
+      city: _mapCity ?? (_selectedCity?.name ?? ''),
+      cityId: _selectedCity?.id,
 
-      neighborhood: requiresNeighborhoodSelection ? _selectedNeighborhood!.name : _neighborhoodTextController.text.trim(),
-      neighborhoodId: requiresNeighborhoodSelection ? _selectedNeighborhood!.id : null,
+      // ✅ CRÍTICO: Usa bairro do mapa se encontrou, senão usa o que o cliente digitou
+      neighborhood: (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) 
+          ? _mapNeighborhood! 
+          : _neighborhoodTextController.text.trim(),
+      neighborhoodId: null, // ✅ ATUALIZADO: Não usa mais neighborhood_id
       isFavorite: _selectedLabel.isNotEmpty,
       latitude: () => _latitude,
       longitude: () => _longitude,
@@ -435,26 +551,16 @@ class _EditAddressPageState extends State<EditAddressPage> {
   }
 
   Future<void> _getCurrentLocation() async {
-    setState(() => _isGettingLocation = true);
-
     final position = await GeolocationService.getCurrentPosition();
 
     if (position != null) {
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        _isGettingLocation = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Localização capturada com sucesso!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      // ✅ NOVO: Faz reverse geocoding para preencher endereço automaticamente do mapa
+      await _reverseGeocodeAddress(position.latitude, position.longitude);
     } else {
       setState(() => _isGettingLocation = false);
 
@@ -464,6 +570,95 @@ class _EditAddressPageState extends State<EditAddressPage> {
             content: Text('Não foi possível obter sua localização. Permita o acesso à localização nas configurações.'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  /// ✅ NOVO: Faz reverse geocoding para preencher endereço do mapa (incluindo bairro)
+  Future<void> _reverseGeocodeAddress(double latitude, double longitude) async {
+    setState(() => _isGettingLocation = true);
+    
+    try {
+      final addressData = await ReverseGeocodingService.getAddressFromCoordinates(
+        latitude: latitude,
+        longitude: longitude,
+      );
+
+      if (addressData != null && mounted) {
+        final store = context.read<StoreCubit>().state.store;
+        if (store == null) {
+          setState(() => _isGettingLocation = false);
+          return;
+        }
+
+        setState(() {
+          // ✅ CRÍTICO: Preenche dados do mapa (não editáveis)
+          _mapStreet = addressData['street'] as String? ?? '';
+          
+          // ✅ CRÍTICO: Atualiza bairro - se não encontrar, deixa null para mostrar o campo
+          final neighborhoodFromMap = addressData['neighborhood'] as String?;
+          if (neighborhoodFromMap != null && neighborhoodFromMap.trim().isNotEmpty) {
+            _mapNeighborhood = neighborhoodFromMap.trim();
+            _neighborhoodTextController.text = _mapNeighborhood!;
+          } else {
+            // ✅ CRÍTICO: Se não encontrou bairro, limpa e deixa null para mostrar o campo
+            _mapNeighborhood = null;
+            _neighborhoodTextController.clear();
+          }
+          
+          _mapCity = addressData['city'] as String? ?? '';
+          _mapState = addressData['state'] as String? ?? '';
+
+          // Preenche número se estiver vazio (pode vir do geocoding)
+          if (_numberController.text.trim().isEmpty && addressData['number'] != null) {
+            _numberController.text = addressData['number'] as String;
+          }
+
+          // Preenche cidade selecionada se não tiver
+          if (_selectedCity == null && _mapCity != null && _mapCity!.isNotEmpty) {
+            final matchingCity = store.cities.firstWhereOrNull(
+              (c) => c.name.toLowerCase() == _mapCity!.toLowerCase(),
+            );
+            if (matchingCity != null) {
+              _selectedCity = matchingCity;
+            }
+          }
+          
+          _isGettingLocation = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Endereço obtido do mapa com sucesso!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        setState(() => _isGettingLocation = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Não foi possível obter o endereço. Tente novamente.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isGettingLocation = false);
+      print('⚠️ Erro ao fazer reverse geocoding: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao obter endereço. Verifique sua conexão e tente novamente.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }

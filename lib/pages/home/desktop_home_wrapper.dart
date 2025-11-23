@@ -1,35 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:totem/core/responsive_builder.dart';
-import 'package:totem/widgets/desktop_navigation.dart';
+import 'package:totem/pages/home/desktop/desktop_home_with_appbar.dart';
 import 'simple_home_page.dart';
 
-/// Wrapper para desktop que inclui navegação lateral e conteúdo
+/// Wrapper para desktop que usa AppBar horizontal estilo iFood
 class DesktopHomeWrapper extends StatelessWidget {
   const DesktopHomeWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
     if (!ResponsiveBuilder.isDesktop(context)) {
-      // Se não for desktop, retorna apenas o conteúdo
+      // Se não for desktop, retorna apenas o conteúdo mobile
       return const SimpleHomePage();
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Conteúdo principal (ajustado para sidebar)
-          Positioned(
-            left: 80,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: const SimpleHomePage(),
-          ),
-          // Navegação lateral desktop
-          const DesktopNavigation(),
-        ],
-      ),
-    );
+    // Desktop usa AppBar horizontal estilo iFood (sem sidebar)
+    return const DesktopHomeWithAppBar();
   }
 }
 

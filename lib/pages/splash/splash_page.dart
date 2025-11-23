@@ -8,6 +8,7 @@ import 'package:totem/themes/ds_theme.dart';
 import '../../core/di.dart';
 import '../../themes/ds_theme_switcher.dart';
 import '../../widgets/dot_loading.dart';
+import '../../widgets/menuhub_logo_animated.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -42,13 +43,21 @@ class _SplashPageState extends State<SplashPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Seu logo aqui
-              const SizedBox(height: 24),
+              // Logo animada do Menuhub
+              MenuhubLogoAnimated(
+                size: 120,
+                color: theme.primaryColor,
+                showText: true,
+              ),
+              const SizedBox(height: 48),
               const DotLoading(),
               const SizedBox(height: 16),
               Text(
                 'Carregando cardápio...',
-                style: TextStyle(color: theme.onBackgroundColor),
+                style: TextStyle(
+                  color: theme.onBackgroundColor,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),

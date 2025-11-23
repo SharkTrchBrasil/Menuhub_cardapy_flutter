@@ -4,14 +4,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/cart_state.dart';
+import 'package:totem/services/urgent_notification_service.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
-import '../cart/cart_tab_page.dart';
-import '../home/home_tab_page.dart';
-import '../orders/orders_tab_page.dart';
-import '../profile/profile_tab_page.dart';
+import '../home/home_tab_page_adaptive.dart';
+import '../orders/orders_tab_page_adaptive.dart';
+import '../profile/profile_tab_page_adaptive.dart';
 import 'main_tab_controller.dart';
 
 /// Página principal com sistema de tabs usando IndexedStack
@@ -36,12 +34,11 @@ class _MainTabPageState extends State<MainTabPage> {
     _tabController = MainTabController();
     _tabController.addListener(_onTabChanged);
     
-    // Inicializa tabs de forma lazy (cria apenas quando necessário)
+    // ✅ CORREÇÃO: 3 tabs: Home, Pedidos, Perfil (removido Notificações e Cardápio)
     _tabs = [
-      const HomeTabPage(key: PageStorageKey('home_tab')),
-      const CartTabPage(key: PageStorageKey('cart_tab')),
-      const OrdersTabPage(key: PageStorageKey('orders_tab')),
-      const ProfileTabPage(key: PageStorageKey('profile_tab')),
+      const HomeTabPageAdaptive(key: PageStorageKey('home_tab')),
+      const OrdersTabPageAdaptive(key: PageStorageKey('orders_tab')),
+      const ProfileTabPageAdaptive(key: PageStorageKey('profile_tab')),
     ];
   }
 
@@ -83,32 +80,43 @@ class _MainTabPageState extends State<MainTabPage> {
 
     // Mobile: usa tabs com IndexedStack
     // Desktop: não deve usar este widget (usa rotas)
-    return ChangeNotifierProvider.value(
-      value: _tabController,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            // Conteúdo principal com IndexedStack
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 65, // Espaço para bottom nav
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: _tabs,
-              ),
+    return MultiBlocProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: _tabController),
+      ],
+      child: Builder(
+        builder: (context) {
+          // ✅ NOVO: Define contexto para o serviço de notificações urgentes
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            UrgentNotificationService().setContext(context);
+          });
+          
+          return Scaffold(
+            body: Stack(
+              children: [
+                // Conteúdo principal com IndexedStack
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 65, // Espaço para bottom nav
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _tabs,
+                  ),
+                ),
+                
+                // Bottom Navigation Bar para mobile
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildBottomNavigationBar(context, theme),
+                ),
+              ],
             ),
-            
-            // Bottom Navigation Bar para mobile
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _buildBottomNavigationBar(context, theme),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -136,30 +144,22 @@ class _MainTabPageState extends State<MainTabPage> {
                 context,
                 icon: EvaIcons.homeOutline,
                 activeIcon: EvaIcons.home,
-                label: 'Home',
+                label: 'Início',
                 index: 0,
               ),
               _buildNavItem(
                 context,
                 icon: EvaIcons.shoppingBagOutline,
                 activeIcon: EvaIcons.shoppingBag,
-                label: 'Carrinho',
-                index: 1,
-                badge: _buildCartBadge(context),
-              ),
-              _buildNavItem(
-                context,
-                icon: EvaIcons.fileTextOutline,
-                activeIcon: EvaIcons.fileText,
                 label: 'Pedidos',
-                index: 2,
+                index: 1,
               ),
               _buildNavItem(
                 context,
                 icon: EvaIcons.personOutline,
                 activeIcon: EvaIcons.person,
                 label: 'Perfil',
-                index: 3,
+                index: 2,
               ),
             ],
           ),
@@ -231,37 +231,6 @@ class _MainTabPageState extends State<MainTabPage> {
     );
   }
 
-  Widget? _buildCartBadge(BuildContext context) {
-    return BlocBuilder<CartCubit, CartState>(
-      buildWhen: (previous, current) =>
-          previous.cart.items.length != current.cart.items.length,
-      builder: (context, state) {
-        final itemCount = state.cart.items.length;
-        if (itemCount == 0) return const SizedBox.shrink();
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          constraints: const BoxConstraints(
-            minWidth: 16,
-            minHeight: 16,
-          ),
-          child: Text(
-            itemCount > 99 ? '99+' : '$itemCount',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        );
-      },
-    );
-  }
 
   Widget _buildDesktopNavigation(BuildContext context, theme) {
     return Positioned(
@@ -297,17 +266,8 @@ class _MainTabPageState extends State<MainTabPage> {
                 context,
                 icon: EvaIcons.shoppingBagOutline,
                 activeIcon: EvaIcons.shoppingBag,
-                label: 'Carrinho',
-                index: 1,
-                badge: _buildCartBadge(context),
-              ),
-              const SizedBox(height: 16),
-              _buildDesktopNavItem(
-                context,
-                icon: EvaIcons.fileTextOutline,
-                activeIcon: EvaIcons.fileText,
                 label: 'Pedidos',
-                index: 2,
+                index: 1,
               ),
               const SizedBox(height: 16),
               _buildDesktopNavItem(
@@ -315,7 +275,7 @@ class _MainTabPageState extends State<MainTabPage> {
                 icon: EvaIcons.personOutline,
                 activeIcon: EvaIcons.person,
                 label: 'Perfil',
-                index: 3,
+                index: 2,
               ),
             ],
           ),

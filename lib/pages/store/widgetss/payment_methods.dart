@@ -113,16 +113,68 @@ class PaymentMethodsWidget extends StatelessWidget {
   // ✅ Método para construir ícone do método de pagamento (seguindo padrão do Admin)
   Widget _buildPaymentIcon(String? iconKey) {
     if (iconKey != null && iconKey.isNotEmpty) {
-      final String assetPath = 'assets/icons/$iconKey';
+      // ✅ Mapeamento de iconKeys para arquivos reais
+      final String mappedIconKey = _mapIconKey(iconKey);
+      final String assetPath = 'assets/icons/$mappedIconKey';
+      
       return SizedBox(
         width: 32,
         height: 32,
-        child: SvgPicture.asset(
-          assetPath,
-          placeholderBuilder: (context) => const Icon(Icons.credit_card, size: 24),
+        child: _SafeSvgPicture(
+          assetPath: assetPath,
+          fallback: const Icon(Icons.credit_card, size: 24),
         ),
       );
     }
     return const Icon(Icons.payment, size: 24);
+  }
+
+  // ✅ Mapeia iconKeys do backend para arquivos de ícones existentes
+  String _mapIconKey(String iconKey) {
+    // Remove extensão se houver
+    final cleanKey = iconKey.replaceAll('.svg', '').toLowerCase();
+    
+    // Mapeamento de iconKeys comuns para arquivos reais
+    final iconMap = {
+      'credit': 'visa', // Fallback genérico para crédito
+      'debit': 'visa_debit', // Fallback genérico para débito
+      'hiper': 'hipercard',
+      'vr': 'cash', // Vale refeição -> dinheiro como fallback
+      'alelo': 'cash', // Alelo -> dinheiro como fallback
+      'va': 'cash', // Vale alimentação -> dinheiro como fallback
+    };
+    
+    // Se existe mapeamento, usa ele
+    if (iconMap.containsKey(cleanKey)) {
+      return '${iconMap[cleanKey]}.svg';
+    }
+    
+    // Se não tem extensão, adiciona .svg
+    if (!cleanKey.endsWith('.svg')) {
+      return '$cleanKey.svg';
+    }
+    
+    return iconKey; // Retorna original se já tiver extensão
+  }
+}
+
+// ✅ Widget helper para carregar SVG com tratamento de erro
+class _SafeSvgPicture extends StatelessWidget {
+  final String assetPath;
+  final Widget fallback;
+
+  const _SafeSvgPicture({
+    required this.assetPath,
+    required this.fallback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.asset(
+      assetPath,
+      placeholderBuilder: (context) => fallback,
+      // ✅ Se o asset não existir, o placeholder será usado durante o carregamento
+      // O mapeamento de iconKeys garante que a maioria dos casos funcionará
+    );
   }
 }

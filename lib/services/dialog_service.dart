@@ -25,9 +25,15 @@ class DialogService {
       }) {
     return showDialog(
       context: context,
-      builder: (_) => EditAddressPage(
-
-        addressToEdit: addressToEdit,
+      // ✅ NOVO: Bordas arredondadas estilo iFood
+      barrierColor: Colors.black54,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20), // ✅ Bordas arredondadas
+        ),
+        child: EditAddressPage(
+          addressToEdit: addressToEdit,
+        ),
       ),
     );
   }

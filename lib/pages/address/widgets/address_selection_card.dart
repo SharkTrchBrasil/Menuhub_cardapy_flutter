@@ -171,11 +171,18 @@ class AddressDisplayAndSelection extends StatelessWidget {
 
     showDialog(
       context: context,
+      // ✅ NOVO: Bordas arredondadas estilo iFood
+      barrierColor: Colors.black54,
       builder: (_) {
-        return BlocProvider.value(
-          value: context.read<AddressCubit>(), // Pega o Cubit que JÁ EXISTE no context da página
-          child: EditAddressPage(
-            addressToEdit: addressToEdit,
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20), // ✅ Bordas arredondadas
+          ),
+          child: BlocProvider.value(
+            value: context.read<AddressCubit>(), // Pega o Cubit que JÁ EXISTE no context da página
+            child: EditAddressPage(
+              addressToEdit: addressToEdit,
+            ),
           ),
         );
       },

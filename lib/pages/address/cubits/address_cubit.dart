@@ -22,8 +22,13 @@ class AddressCubit extends Cubit<AddressState> {
       final result = await customerRepository.getCustomerAddresses(customerId);
 
       if (result.isLeft) {
-        final error = result.left;
-        // emit(state.copyWith(status: AddressStatus.error, errorMessage: error));
+        // ✅ CORREÇÃO: Emite estado de erro para não ficar em loading infinito
+        // result.left é void, então usamos uma mensagem padrão
+        emit(state.copyWith(
+          status: AddressStatus.error,
+          errorMessage: 'Erro ao carregar endereços.',
+          addresses: const [], // Lista vazia em caso de erro
+        ));
       } else {
         final addresses = result.right;
 

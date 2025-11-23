@@ -92,86 +92,119 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final screenSize = MediaQuery.of(context).size;
     final product = widget.productState.product!;
 
+    // ✅ Layout igual ao iFood: mais largo e alto
+    // iFood usa aproximadamente 90% da largura e 85% da altura
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxWidth: min(screenSize.width * 0.90, 800),
-        maxHeight: min(screenSize.height * 0.90, 600),
+        maxWidth: min(screenSize.width * 0.90, 1200), // ✅ Aumentado de 800 para 1200px
+        maxHeight: min(screenSize.height * 0.85, 800), // ✅ Aumentado de 600 para 800px
+        minWidth: 600, // ✅ Largura mínima para garantir legibilidade
+        minHeight: 500, // ✅ Altura mínima
       ),
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
+        elevation: 4, // ✅ Sombra sutil como no iFood
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // ✅ Imagem à esquerda - proporção similar ao iFood (40% da largura)
             Expanded(
-              flex: 5,
-              child: CachedNetworkImage(
-                imageUrl: product.product.coverImageUrl ?? '',
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+              flex: 4,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 300),
+                child: CachedNetworkImage(
+                  imageUrl: product.product.coverImageUrl ?? '',
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey.shade200,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                  ),
+                ),
               ),
             ),
+            // ✅ Conteúdo à direita - proporção similar ao iFood (60% da largura)
             Expanded(
-              flex: 5,
+              flex: 6,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ✅ Header com título e botões - estilo iFood
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(32, 24, 24, 20),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              product.product.name.toUpperCase(),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          child: Text(
+                            product.product.name,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 20, // ✅ Aumentado de 14 para 20
+                              fontWeight: FontWeight.bold,
+                              height: 1.3,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        // ✅ NOVO: Botão de compartilhamento
+                        const SizedBox(width: 12),
+                        // ✅ NOVO: Botão de compartilhamento - estilo iFood
                         IconButton(
-                          icon: const Icon(Icons.share, size: 18),
+                          icon: const Icon(Icons.share, size: 20),
                           onPressed: () => _shareProduct(context, product),
                           tooltip: 'Compartilhar',
+                          padding: const EdgeInsets.all(8),
+                          constraints: const BoxConstraints(),
                         ),
                         const SizedBox(width: 8),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 18),
+                          icon: const Icon(Icons.close, size: 20),
                           onPressed: () => context.pop(),
                           tooltip: 'Fechar',
+                          padding: const EdgeInsets.all(8),
+                          constraints: const BoxConstraints(),
                         ),
                       ],
                     ),
                   ),
+                  // ✅ Conteúdo scrollável - estilo iFood
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // ✅ Descrição do produto - estilo iFood
                           if (product.product.description != null && product.product.description!.isNotEmpty) ...[
                             Text(
                               product.product.description!,
-                              style: TextStyle(fontSize: 16, color: Colors.grey.shade700, height: 1.5),
+                              style: TextStyle(
+                                fontSize: 15, // ✅ Ajustado para melhor legibilidade
+                                color: Colors.grey.shade700,
+                                height: 1.6, // ✅ Aumentado line height
+                              ),
                             ),
                             const SizedBox(height: 24),
                           ],
-                          // ✅ NOVO: Preço com unidade quando vendido por peso/volume
+                          // ✅ Preço - estilo iFood (maior e mais destacado)
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 product.totalPrice.toCurrency,
-                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 28, // ✅ Aumentado de 20 para 28
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               if (product.product.unit.requiresQuantityInput) ...[
                                 const SizedBox(height: 4),
@@ -333,29 +366,54 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       }
     }
 
-    if (authState.status == AuthStatus.success) {
+    // ✅ CORREÇÃO: Verifica se o usuário está logado (customer != null)
+    // Isso é mais confiável que verificar apenas o status
+    final isLoggedIn = authState.customer != null;
+    
+    if (isLoggedIn) {
+      // ✅ Usuário está logado, adiciona ao carrinho diretamente
       await updateAndPop();
     } else {
+      // ✅ Usuário NÃO está logado - abre sidepanel com login
+      print('🔐 [DesktopProductCard] Usuário não logado. Abrindo sidepanel de login...');
+      
       // ✅ Salva payload pendente antes de pedir login
       await PendingCartService.savePendingCartItem(payload);
       
       // ✅ Usa showResponsiveSidePanel ao invés de navegar
-      final loginSuccess = await showResponsiveSidePanel<bool>(
-        context,
-        const OnboardingPage(),
-      );
-      
-      // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
-      // e depois vamos fechar a tela e navegar para home
-      if (loginSuccess == true && context.mounted) {
-        // Aguarda um pouco para garantir que o item foi adicionado
-        await Future.delayed(const Duration(milliseconds: 500));
-        // Fecha a tela de detalhes do produto
-        if (context.canPop()) {
-          context.pop(); // Fecha tela de detalhes
+      // No mobile e desktop, abre um modal full screen com o login
+      try {
+        final loginSuccess = await showResponsiveSidePanel<bool>(
+          context,
+          const OnboardingPage(),
+          useFullScreenOnDesktop: true, // ✅ Força full screen no desktop também
+        );
+        
+        print('🔐 [DesktopProductCard] Resultado do login: $loginSuccess');
+        
+        // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
+        // e depois vamos fechar a tela e navegar para home
+        if (loginSuccess == true && context.mounted) {
+          print('✅ [DesktopProductCard] Login bem-sucedido. Aguardando processamento do item...');
+          // Aguarda um pouco para garantir que o item foi adicionado
+          await Future.delayed(const Duration(milliseconds: 500));
+          // Fecha a tela de detalhes do produto
+          if (context.canPop()) {
+            context.pop(); // Fecha tela de detalhes
+          }
+          // Navega para home
+          context.go('/');
         }
-        // Navega para home
-        context.go('/');
+      } catch (e) {
+        print('❌ [DesktopProductCard] Erro ao abrir sidepanel de login: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao abrir tela de login. Tente novamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

@@ -33,90 +33,268 @@ class OrdersTabPage extends StatelessWidget {
         }
         return cubit;
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Meus Pedidos'),
-          centerTitle: !isDesktop,
-          automaticallyImplyLeading: false,
-        ),
-        body: BlocBuilder<ProfileCubit, ProfileState>(
-          buildWhen: (previous, current) =>
-              previous.status != current.status ||
-              previous.filteredOrders.length != current.filteredOrders.length,
-          builder: (context, state) {
-            if (state.status == ProfileStatus.loading) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      // ✅ CORREÇÃO: Remove Scaffold para evitar conflito com MainTabPage
+      child: SafeArea(
+        child: Column(
+          children: [
+            // ✅ Header com título e filtros
+            _buildHeader(context),
+            
+            // ✅ Tabs de status (Novo, Preparo, Pronto)
+            _buildStatusTabs(context),
+            
+            // ✅ Conteúdo principal
+            Expanded(
+              child: BlocBuilder<ProfileCubit, ProfileState>(
+                buildWhen: (previous, current) =>
+                    previous.status != current.status ||
+                    previous.filteredOrders.length != current.filteredOrders.length,
+                builder: (context, state) {
+                  if (state.status == ProfileStatus.loading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-            if (state.status == ProfileStatus.error) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, size: 64, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text(
-                      state.errorMessage ?? 'Erro ao carregar pedidos',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        final customer =
-                            context.read<ProfileCubit>().state.customer;
-                        if (customer != null) {
-                          context
-                              .read<ProfileCubit>()
-                              .loadOrderHistory(customer.id!);
-                        }
-                      },
-                      child: const Text('Tentar novamente'),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            final orders = state.filteredOrders;
-
-            if (orders.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.shopping_bag_outlined,
-                        size: 64, color: Colors.grey.shade400),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Nenhum pedido encontrado',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade700,
+                  if (state.status == ProfileStatus.error) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                          const SizedBox(height: 16),
+                          Text(
+                            state.errorMessage ?? 'Erro ao carregar pedidos',
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                              final customer =
+                                  context.read<ProfileCubit>().state.customer;
+                              if (customer != null) {
+                                context
+                                    .read<ProfileCubit>()
+                                    .loadOrderHistory(customer.id!);
+                              }
+                            },
+                            child: const Text('Tentar novamente'),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Seus pedidos aparecerão aqui',
-                      style: TextStyle(color: Colors.grey.shade500),
-                    ),
-                  ],
-                ),
-              );
-            }
+                    );
+                  }
 
-            return Column(
-              children: [
-                _buildFilters(context, state),
-                Expanded(
-                  child: isDesktop
+                  final orders = state.filteredOrders;
+
+                  if (orders.isEmpty) {
+                    return _buildEmptyState(context);
+                  }
+
+                  return isDesktop
                       ? _buildDesktopGrid(orders)
-                      : _buildMobileList(orders),
-                ),
-              ],
-            );
-          },
+                      : _buildMobileList(orders);
+                },
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Pedidos',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          // ✅ Informações adicionais (tempo de entrega, pedido mínimo)
+          _buildInfoChips(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChips() {
+    return Row(
+      children: [
+        _buildInfoChip(
+          icon: Icons.access_time,
+          label: 'Tempo de Entrega',
+          value: '30-60min',
+          color: Colors.orange,
+        ),
+        const SizedBox(width: 8),
+        _buildInfoChip(
+          icon: Icons.shopping_cart,
+          label: 'Pedido Mínimo',
+          value: 'R\$ 20,00',
+          color: Colors.red,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusTabs(BuildContext context) {
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      buildWhen: (previous, current) =>
+          previous.filteredOrderStatus != current.filteredOrderStatus,
+      builder: (context, state) {
+        final selectedStatus = state.filteredOrderStatus;
+
+        return Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              bottom: BorderSide(color: Colors.grey.shade200),
+            ),
+          ),
+          child: Row(
+            children: [
+              _buildStatusTab(
+                context,
+                label: 'Novo',
+                status: 'PENDING',
+                isSelected: selectedStatus == 'PENDING',
+              ),
+              _buildStatusTab(
+                context,
+                label: 'Preparo',
+                status: 'PREPARING',
+                isSelected: selectedStatus == 'PREPARING',
+              ),
+              _buildStatusTab(
+                context,
+                label: 'Pronto',
+                status: 'READY',
+                isSelected: selectedStatus == 'READY',
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusTab(
+    BuildContext context, {
+    required String label,
+    required String status,
+    required bool isSelected,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          context.read<ProfileCubit>().filterOrdersByStatus(
+                isSelected ? null : status,
+              );
+        },
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected
+                  ? Theme.of(context).primaryColor
+                  : Colors.grey.shade600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.shopping_cart_outlined,
+              size: 60,
+              color: Colors.orange.shade300,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Nenhum pedido',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Não há pedidos Novos Pedidos',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -144,68 +322,6 @@ class OrdersTabPage extends StatelessWidget {
       itemBuilder: (context, index) {
         return _OrderCard(order: orders[index]);
       },
-    );
-  }
-
-  Widget _buildFilters(BuildContext context, ProfileState state) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar pedido...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: state.searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () =>
-                            context.read<ProfileCubit>().searchOrders(''),
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onChanged: (value) =>
-                  context.read<ProfileCubit>().searchOrders(value),
-            ),
-          ),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (status) {
-              context.read<ProfileCubit>().filterOrdersByStatus(
-                    status == 'Todos' ? null : status,
-                  );
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'Todos', child: Text('Todos')),
-              const PopupMenuItem(value: 'PENDING', child: Text('Pendente')),
-              const PopupMenuItem(
-                  value: 'CONFIRMED', child: Text('Confirmado')),
-              const PopupMenuItem(
-                  value: 'PREPARING', child: Text('Preparando')),
-              const PopupMenuItem(value: 'READY', child: Text('Pronto')),
-              const PopupMenuItem(
-                  value: 'OUT_FOR_DELIVERY', child: Text('Saiu para entrega')),
-              const PopupMenuItem(value: 'DELIVERED', child: Text('Entregue')),
-              const PopupMenuItem(value: 'CANCELED', child: Text('Cancelado')),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

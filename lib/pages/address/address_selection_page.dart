@@ -108,6 +108,7 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
       // Mostra o botão apenas se a entrega estiver habilitada e selecionada
       _selectedType == DeliveryType.delivery && deliveryEnabled
           ? FloatingActionButton(
+        heroTag: 'address_selection_fab',  // ✅ CORREÇÃO: Tag única para evitar conflito de Hero
         onPressed: () => _showEditAddressModal(),
         tooltip: 'Adicionar Novo Endereço',
         child: const Icon(Icons.add),
