@@ -18,11 +18,39 @@ class FlavorPrice extends Equatable {
   });
 
   factory FlavorPrice.fromJson(Map<String, dynamic> json) {
+    // Handle price being int or double (if backend sends decimals)
+    final num? priceNum = json['price'];
+    int priceInCents = 0;
+    if (priceNum != null) {
+      if (priceNum is double) {
+        // If it's a large double (e.g. 4550.0), assume it's already cents
+        if (priceNum > 1000) {
+          priceInCents = priceNum.round();
+        } else {
+          // Small double (e.g. 45.50), assume Reais -> convert to cents
+          priceInCents = (priceNum * 100).round();
+        }
+      } else {
+        // If it's int, assume it's already cents
+        priceInCents = priceNum.toInt();
+      }
+    }
+
+    // Handle is_available being bool or int (0/1)
+    bool available = true;
+    if (json['is_available'] != null) {
+      if (json['is_available'] is bool) {
+        available = json['is_available'];
+      } else if (json['is_available'] is int) {
+        available = json['is_available'] == 1;
+      }
+    }
+
     return FlavorPrice(
       id: json['id'],
       sizeOptionId: json['size_option_id'],
-      price: json['price'],
-      isAvailable: json['is_available'] ?? true,
+      price: priceInCents,
+      isAvailable: available,
       posCode: json['pos_code'],
     );
   }

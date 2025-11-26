@@ -8,6 +8,12 @@ import 'package:totem/models/flavor_price.dart';
 import 'package:totem/models/product_variant_link.dart';
 import 'package:totem/models/rating_summary.dart';
 
+// ✅ NOVOS IMPORTS
+import 'package:totem/models/availability_model.dart';
+import 'package:totem/core/enums/available_type.dart';
+import 'package:totem/core/enums/foodtags.dart';
+import 'package:totem/core/enums/beverage.dart';
+
 
 // Enums alinhados com o admin
 enum ProductType {
@@ -124,6 +130,12 @@ class Product extends Equatable {
 
   // Estoque (simplificado para o cliente)
   final int? calculatedStock;
+  
+  // ✅ NOVO: Controle de estoque detalhado
+  final bool controlStock;
+  final int minStock;
+  final int maxStock;
+  final int stockQuantity;
 
   // Campos que raramente são usados diretamente no cliente, mas vêm no JSON
   final bool featured;
@@ -132,6 +144,12 @@ class Product extends Equatable {
   
   // ✅ NOVO: Unidade de medida do produto
   final ProductUnit unit;
+
+  // ✅ NOVO: Campos de disponibilidade e tags
+  final AvailabilityType availabilityType;
+  final List<ScheduleRule> schedules;
+  final Set<FoodTag> dietaryTags;
+  final Set<BeverageTag> beverageTags;
 
   const Product({
     this.id,
@@ -147,10 +165,18 @@ class Product extends Equatable {
     this.prices = const [],
     this.rating,
     this.calculatedStock,
+    this.controlStock = false,
+    this.minStock = 0,
+    this.maxStock = 0,
+    this.stockQuantity = 0,
     this.featured = false,
     this.cashbackType = 'none',
     this.cashbackValue = 0,
     this.unit = ProductUnit.UNIT,
+    this.availabilityType = AvailabilityType.always,
+    this.schedules = const [],
+    this.dietaryTags = const {},
+    this.beverageTags = const {},
   });
 
   // Helper para obter a imagem de capa
@@ -193,10 +219,35 @@ class Product extends Equatable {
           : null,
 
       calculatedStock: json['calculated_stock'],
+      
+      // ✅ NOVO: Parse de estoque detalhado
+      controlStock: json['control_stock'] ?? false,
+      minStock: json['min_stock'] ?? 0,
+      maxStock: json['max_stock'] ?? 0,
+      stockQuantity: json['stock_quantity'] ?? 0,
+      
       featured: json['featured'] ?? false,
       cashbackType: json['cashback_type'] ?? 'none',
       cashbackValue: json['cashback_value'] ?? 0,
       unit: ProductUnit.fromString(json['unit']),
+
+      // ✅ NOVO: Parse de disponibilidade e tags
+      availabilityType: json['availability_type'] != null
+          ? (json['availability_type'] == 'SCHEDULED' ? AvailabilityType.scheduled : AvailabilityType.always)
+          : AvailabilityType.always,
+      schedules: (json['schedules'] as List<dynamic>? ?? [])
+          .map((scheduleJson) => ScheduleRule.fromJson(scheduleJson))
+          .toList(),
+      
+      dietaryTags: (json['dietary_tags'] as List<dynamic>? ?? [])
+          .map((tagString) => apiValueToFoodTag[tagString])
+          .whereType<FoodTag>()
+          .toSet(),
+      
+      beverageTags: (json['beverage_tags'] as List<dynamic>? ?? [])
+          .map((tagString) => apiValueToBeverageTag[tagString])
+          .whereType<BeverageTag>()
+          .toSet(),
     );
   }
 
@@ -215,10 +266,18 @@ class Product extends Equatable {
         prices = const [],
         rating = null,
         calculatedStock = null,
+        controlStock = false,
+        minStock = 0,
+        maxStock = 0,
+        stockQuantity = 0,
         featured = false,
         cashbackType = 'none',
         cashbackValue = 0,
-        unit = ProductUnit.UNIT;
+        unit = ProductUnit.UNIT,
+        availabilityType = AvailabilityType.always,
+        schedules = const [],
+        dietaryTags = const {},
+        beverageTags = const {};
 
   Map<String, dynamic> toJson() {
     return {
@@ -235,10 +294,19 @@ class Product extends Equatable {
       'prices': prices.map((p) => p.toJson()).toList(),
       'rating': rating?.toMap(),
       'calculated_stock': calculatedStock,
+      'control_stock': controlStock,
+      'min_stock': minStock,
+      'max_stock': maxStock,
+      'stock_quantity': stockQuantity,
       'featured': featured,
       'cashback_type': cashbackType,
       'cashback_value': cashbackValue,
       'unit': unit.toApiString(),
+      // ✅ NOVO: Serialização de disponibilidade e tags
+      'availability_type': availabilityType == AvailabilityType.scheduled ? 'SCHEDULED' : 'ALWAYS',
+      'schedules': schedules.map((schedule) => schedule.toJson()).toList(),
+      'dietary_tags': dietaryTags.map((tag) => foodTagNames[tag]!).toList(),
+      'beverage_tags': beverageTags.map((tag) => beverageTagNames[tag]!).toList(),
     };
   }
 
@@ -257,9 +325,17 @@ class Product extends Equatable {
     prices,
     rating,
     calculatedStock,
+    controlStock,
+    minStock,
+    maxStock,
+    stockQuantity,
     featured,
     cashbackType,
     cashbackValue,
     unit,
+    availabilityType,
+    schedules,
+    dietaryTags,
+    beverageTags,
   ];
 }

@@ -1,42 +1,35 @@
-// lib/repositories/auth_repository.dart
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:totem/models/totem_auth.dart';
 import 'package:uuid/uuid.dart';
+
 import '../controllers/customer_controller.dart';
 import '../core/di.dart';
 import '../models/customer.dart';
+import '../models/totem_auth.dart';
 
 class AuthRepository {
-  AuthRepository(this._dio, this._secureStorage);
-
   final Dio _dio;
   final FlutterSecureStorage _secureStorage;
-  
-  // ✅ Dio separado para refresh token (sem interceptor de autenticação)
   Dio? _refreshDio;
-  
-  // ✅ Lock para evitar múltiplas renovações simultâneas
-  bool _isRefreshing = false;
-  String? _pendingToken;
 
-  // ✅ Chaves de armazenamento
-  static const String _keyTotemToken = 'totem_token';
+  AuthRepository(this._dio, this._secureStorage);
+
+  // Chaves de armazenamento
   static const String _keyAccessToken = 'access_token';
   static const String _keyRefreshToken = 'refresh_token';
   static const String _keyTokenExpiration = 'token_expiration';
+  static const String _keyTotemToken = 'totem_token';
   static const String _keyStoreId = 'store_id';
   static const String _keyStoreUrl = 'store_url';
   static const String _keyStoreName = 'store_name';
-  
+
   /// ✅ Inicializa Dio separado para refresh (sem interceptor)
   Dio _getRefreshDio() {
     if (_refreshDio != null) return _refreshDio!;
-    
+
     // Usa a mesma base URL mas sem interceptores de autenticação
     final apiUrl = _dio.options.baseUrl.replaceAll('/app', '');
     _refreshDio = Dio(BaseOptions(
@@ -48,136 +41,7 @@ class AuthRepository {
     return _refreshDio!;
   }
 
-  /// Handles Google Sign-In process
-  Future<User?> signInWithGoogle() async {
-    try {
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithPopup(
-        GoogleAuthProvider(),
-      );
-      return userCredential.user;
-    } catch (e) {
-      print('❌ Error signing in with Google: $e');
-      return null;
-    }
-  }
-
-  /// ✅ Obtém o access token válido (renova se necessário)
-  Future<String?> getValidAccessToken() async {
-    // ✅ Se já está renovando, aguarda o token pendente
-    if (_isRefreshing && _pendingToken != null) {
-      print('⏳ Aguardando renovação de token em andamento...');
-      // Aguarda até 5 segundos
-      int attempts = 0;
-      while (_isRefreshing && attempts < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        attempts++;
-      }
-      if (_pendingToken != null) {
-        return _pendingToken;
-      }
-    }
-    
-    final accessToken = await _secureStorage.read(key: _keyAccessToken);
-    final expirationStr = await _secureStorage.read(key: _keyTokenExpiration);
-
-    if (accessToken == null || expirationStr == null) {
-      print('⚠️ Nenhum token de acesso encontrado');
-      return null;
-    }
-
-    final expiration = DateTime.parse(expirationStr);
-    final now = DateTime.now();
-
-    // Se faltar menos de 5 minutos para expirar, renova
-    if (expiration.isBefore(now.add(const Duration(minutes: 5)))) {
-      // ✅ Evita múltiplas renovações simultâneas
-      if (_isRefreshing) {
-        print('⏳ Renovação já em andamento, aguardando...');
-        int attempts = 0;
-        while (_isRefreshing && attempts < 50) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          attempts++;
-        }
-        final newToken = await _secureStorage.read(key: _keyAccessToken);
-        return newToken;
-      }
-      
-      print('🔄 Token expirando, renovando...');
-      final refreshed = await _refreshAccessToken();
-      if (refreshed.isRight) {
-        return refreshed.right;
-      } else {
-        print('❌ Falha ao renovar token');
-        return null;
-      }
-    }
-
-    return accessToken;
-  }
-
-  /// ✅ Renova o access token usando o refresh token
-  Future<Either<String, String>> _refreshAccessToken() async {
-    // ✅ Lock para evitar múltiplas renovações simultâneas
-    if (_isRefreshing) {
-      print('⚠️ Renovação já em andamento, aguardando...');
-      int attempts = 0;
-      while (_isRefreshing && attempts < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        attempts++;
-      }
-      final token = await _secureStorage.read(key: _keyAccessToken);
-      return token != null ? Right(token) : const Left('Token não disponível após renovação');
-    }
-    
-    _isRefreshing = true;
-    _pendingToken = null;
-    
-    try {
-      // ✅ Usa Dio separado sem interceptor
-      final refreshDio = _getRefreshDio();
-      
-      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
-
-      if (refreshToken == null) {
-        _isRefreshing = false;
-        return const Left('Refresh token não encontrado');
-      }
-
-      // ✅ Usa refreshDio (sem interceptor) para evitar loop
-      final response = await refreshDio.post(
-        '/auth/refresh',
-        data: {'refresh_token': refreshToken},
-      );
-
-      final newAccessToken = response.data['access_token'] as String;
-      final expiresIn = response.data['expires_in'] as int;
-      final newExpiration = DateTime.now().add(Duration(seconds: expiresIn));
-
-      // Salva novo access token
-      await _secureStorage.write(key: _keyAccessToken, value: newAccessToken);
-      await _secureStorage.write(key: _keyTokenExpiration, value: newExpiration.toIso8601String());
-
-      _pendingToken = newAccessToken;
-      _isRefreshing = false;
-      
-      print('✅ Token renovado com sucesso');
-      return Right(newAccessToken);
-    } on DioException catch (e) {
-      _isRefreshing = false;
-      _pendingToken = null;
-      print('❌ Erro ao renovar token: ${e.message}');
-      print('❌ Status: ${e.response?.statusCode}');
-      print('❌ Response: ${e.response?.data}');
-      return Left(e.message ?? 'Erro desconhecido');
-    } catch (e) {
-      _isRefreshing = false;
-      _pendingToken = null;
-      print('❌ Erro inesperado ao renovar token: $e');
-      return Left('Erro inesperado');
-    }
-  }
-
-  /// ✅ Autentica no backend e obtém JWT tokens
+  /// ✅ MÉTODO PRINCIPAL: Autentica na loja via subdomínio
   Future<Either<String, TotemAuth>> getToken(String storeSlug) async {
     try {
       final totemToken = await getTotemToken();
@@ -208,9 +72,22 @@ class AuthRepository {
     }
   }
 
+  /// Handles Google Sign-In process
+  Future<User?> signInWithGoogle() async {
+    try {
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithPopup(
+        GoogleAuthProvider(),
+      );
+      return userCredential.user;
+    } catch (e) {
+      print('❌ Error signing in with Google: $e');
+      return null;
+    }
+  }
+
   /// ✅ Salva dados de autenticação no secure storage
   Future<void> _saveAuthData(TotemAuth auth) async {
-    await Future.wait([
+    await Future.wait(<Future<void>>[
       _secureStorage.write(key: _keyAccessToken, value: auth.accessToken),
       _secureStorage.write(key: _keyRefreshToken, value: auth.refreshToken),
       _secureStorage.write(key: _keyTokenExpiration, value: auth.expirationTime.toIso8601String()),
@@ -218,6 +95,58 @@ class AuthRepository {
       _secureStorage.write(key: _keyStoreUrl, value: auth.storeUrl),
       _secureStorage.write(key: _keyStoreName, value: auth.storeName),
     ]);
+  }
+
+  /// ✅ Obtém token de acesso válido (renova se necessário)
+  Future<String?> getValidAccessToken() async {
+    final accessToken = await _secureStorage.read(key: _keyAccessToken);
+    final expirationStr = await _secureStorage.read(key: _keyTokenExpiration);
+
+    if (accessToken == null || expirationStr == null) {
+      return null;
+    }
+
+    final expiration = DateTime.tryParse(expirationStr);
+    if (expiration == null) {
+      return null;
+    }
+
+    // Se expirou ou vai expirar em menos de 1 minuto, renova
+    if (expiration.isBefore(DateTime.now().add(const Duration(minutes: 1)))) {
+      print('⏰ Token expirando, renovando...');
+      return await _refreshAccessToken();
+    }
+
+    return accessToken;
+  }
+
+  /// ✅ Renova o token de acesso usando refresh token
+  Future<String?> _refreshAccessToken() async {
+    try {
+      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+      if (refreshToken == null) {
+        print('❌ Refresh token não encontrado');
+        return null;
+      }
+
+      final refreshDio = _getRefreshDio();
+      final response = await refreshDio.post(
+        '/auth/refresh',
+        data: {'refresh_token': refreshToken},
+      );
+
+      final newAccessToken = response.data['access_token'] as String;
+      final newExpiration = DateTime.now().add(const Duration(minutes: 30));
+
+      await _secureStorage.write(key: _keyAccessToken, value: newAccessToken);
+      await _secureStorage.write(key: _keyTokenExpiration, value: newExpiration.toIso8601String());
+
+      print('✅ Token renovado com sucesso');
+      return newAccessToken;
+    } catch (e) {
+      print('❌ Erro ao renovar token: $e');
+      return null;
+    }
   }
 
   /// ✅ Verifica se há autenticação válida
@@ -245,7 +174,7 @@ class AuthRepository {
 
   /// ✅ Faz logout e limpa tokens
   Future<void> logout() async {
-    await Future.wait([
+    await Future.wait(<Future<void>>[
       _secureStorage.delete(key: _keyAccessToken),
       _secureStorage.delete(key: _keyRefreshToken),
       _secureStorage.delete(key: _keyTokenExpiration),
@@ -271,10 +200,10 @@ class AuthRepository {
 
   /// Autentica cliente com Google e salva no backend
   Future<Either<String, Customer>> signInAndSaveCustomerWithGoogle(
-      String? name,
-      String? email,
-      String? photo,
-      ) async {
+    String? name,
+    String? email,
+    String? photo,
+  ) async {
     try {
       final response = await _dio.post(
         '/customer/google',

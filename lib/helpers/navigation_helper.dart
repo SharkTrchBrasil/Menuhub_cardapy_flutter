@@ -5,12 +5,46 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/core/extensions.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:collection/collection.dart';
 
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../models/category.dart';
+
+/// Classe helper para navegação e exibição de dialogs de produtos
+class NavigationHelper {
+  /// Mostra o dialog de produto usando a página de detalhes unificada
+  /// Funciona para todos os tipos de produtos (GENERAL, CUSTOMIZABLE, etc.)
+  static void showProductDialog({
+    required BuildContext context,
+    required Product product,
+    Category? category,
+  }) {
+    // Se categoria não foi passada, tenta encontrar no StoreCubit
+    if (category == null) {
+      final storeState = context.read<StoreCubit>().state;
+      final categoryId = product.categoryLinks.firstOrNull?.categoryId;
+      if (categoryId != null) {
+        category = storeState.categories.firstWhereOrNull((c) => c.id == categoryId);
+      }
+    }
+
+    // Usa o mesmo dialog de produtos GENERAL para todos os tipos, incluindo pizzas
+    goToProductPage(context, product, category: category);
+  }
+}
 
 // Navega para a página de detalhes de um produto para adicioná-lo ao carrinho
-void goToProductPage(BuildContext context, Product product) {
+void goToProductPage(BuildContext context, Product product, {Category? category}) {
+  // Se categoria não foi passada, tenta encontrar no StoreCubit
+  if (category == null) {
+    final storeState = context.read<StoreCubit>().state;
+    final categoryId = product.categoryLinks.firstOrNull?.categoryId;
+    if (categoryId != null) {
+      category = storeState.categories.firstWhereOrNull((c) => c.id == categoryId);
+    }
+  }
+
   final String slug = product.name.toSlug();
 
   // ✅ CORREÇÃO FINAL: Usa o caminho absoluto com a barra inicial '/',
@@ -53,6 +87,3 @@ void goToCart(BuildContext context) {
 
   context.go('/cart');
 }
-
-// A função `goToCartProductPage` foi corretamente removida, pois a lógica
-// foi unificada nas duas funções acima, que são mais claras e seguras.

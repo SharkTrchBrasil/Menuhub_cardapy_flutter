@@ -68,16 +68,26 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     emit(DeliveryFeeLoading(deliveryType: currentDeliveryType));
 
     // ✅ CRÍTICO: Verificar tipo de frete ativo para validar dados necessários
-    // ✅ ATUALIZADO: Removida validação de bairros cadastrados - agora usa apenas coordenadas
+    final hasNeighborhoodFeeRule = store.deliveryFeeRules.any(
+      (r) => r.isActive && r.ruleType == 'neighborhood_fee',
+    );
     final requiresCoordinates = store.deliveryFeeRules.any(
       (r) => r.isActive && (r.ruleType == 'per_km' || r.ruleType == 'radius'),
     );
 
-    // ✅ CRÍTICO: Validar coordenadas quando frete é por km/raio
-    // ✅ ATUALIZADO: Agora sempre requer coordenadas para calcular frete (alinhado com Admin/Backend)
-    if (address.latitude == null || address.longitude == null) {
+    // ✅ CRÍTICO: Validar neighborhood_id quando frete é por bairros
+    if (hasNeighborhoodFeeRule && address.neighborhoodId == null && address.neighborhood?.trim().isEmpty != false) {
       emit(DeliveryFeeError(
-        'É necessário permitir acesso à localização para calcular o frete.',
+        'Selecione um bairro cadastrado para calcular o frete. O frete desta loja é calculado por bairro.',
+        deliveryType: currentDeliveryType,
+      ));
+      return;
+    }
+
+    // ✅ CRÍTICO: Validar coordenadas quando frete é por km/raio
+    if (requiresCoordinates && (address.latitude == null || address.longitude == null)) {
+      emit(DeliveryFeeError(
+        'É necessário permitir acesso à localização para calcular o frete. O frete desta loja é calculado por distância.',
         deliveryType: currentDeliveryType,
       ));
       return;

@@ -18,6 +18,13 @@ import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/themes/ds_theme.dart';
 import 'package:totem/cubit/store_cubit.dart';  // ✅ NOVO: Para obter store
 
+// ✅ NOVOS IMPORTS
+import 'package:totem/core/enums/foodtags.dart';
+import 'package:totem/core/enums/beverage.dart';
+import 'package:totem/core/enums/available_type.dart';
+import 'package:totem/models/availability_model.dart'; // Para TimeShift e ScheduleRule
+import 'package:totem/services/availability_service.dart';
+
 import '../product_page_state.dart';
 
 class MobileProductPage extends StatefulWidget {
@@ -337,6 +344,10 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
   Widget _buildContentColumn(CartProduct product) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculateOffsets());
+    
+    // ✅ Verifica disponibilidade
+    final isAvailable = AvailabilityService.isProductAvailableNow(product.product);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -349,6 +360,76 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 .weighted(FontWeight.w900),
           ),
         ),
+        
+        // ✅ AVISO DE INDISPONIBILIDADE
+        if (!isAvailable)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Produto indisponível no momento',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (product.product.availabilityType == AvailabilityType.scheduled)
+                          const Text(
+                            'Verifique os horários de funcionamento.',
+                            style: TextStyle(color: Colors.red, fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // ✅ TAGS ALIMENTARES E DE BEBIDAS
+        if (product.product.dietaryTags.isNotEmpty || product.product.beverageTags.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...product.product.dietaryTags.map((tag) => Chip(
+                  label: Text(foodTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
+                  backgroundColor: Colors.green.shade50,
+                  labelStyle: TextStyle(color: Colors.green.shade800),
+                  side: BorderSide.none,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                )),
+                ...product.product.beverageTags.map((tag) => Chip(
+                  label: Text(beverageTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
+                  backgroundColor: Colors.blue.shade50,
+                  labelStyle: TextStyle(color: Colors.blue.shade800),
+                  side: BorderSide.none,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                )),
+              ],
+            ),
+          ),
+        ],
+
         if (product.product.description != null && //
             product.product.description!.isNotEmpty) ...[ //
           const SizedBox(height: 8),

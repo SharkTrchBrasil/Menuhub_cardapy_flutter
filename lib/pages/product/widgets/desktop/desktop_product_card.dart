@@ -28,6 +28,12 @@ import '../../../../core/helpers/side_panel.dart';
 import '../../../../pages/signin/signin_page.dart';
 import 'dart:math';
 
+// ✅ NOVOS IMPORTS
+import 'package:totem/core/enums/foodtags.dart';
+import 'package:totem/core/enums/beverage.dart';
+import 'package:totem/core/enums/available_type.dart';
+import 'package:totem/services/availability_service.dart';
+
 class DesktopProductCard extends StatefulWidget {
   final ProductPageState productState;
   final TextEditingController observationController;
@@ -112,6 +118,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final product = widget.productState.product!;
     final originalPrice = _getOriginalPrice(product);
     final promotionalPrice = _getPromotionalPrice(product);
+
+    // ✅ Verifica disponibilidade
+    final isAvailable = AvailabilityService.isProductAvailableNow(product.product);
 
     // ✅ Layout idêntico ao iFood: 50/50 e mais largo
     return ConstrainedBox(
@@ -222,6 +231,75 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                               ),
                             ),
                           ],
+
+                          // ✅ AVISO DE INDISPONIBILIDADE
+                          if (!isAvailable)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.red.shade200),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.info_outline, color: Colors.red),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Produto indisponível no momento',
+                                            style: TextStyle(
+                                              color: Colors.red,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          if (product.product.availabilityType == AvailabilityType.scheduled)
+                                            const Text(
+                                              'Verifique os horários de funcionamento.',
+                                              style: TextStyle(color: Colors.red, fontSize: 12),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // ✅ TAGS ALIMENTARES E DE BEBIDAS
+                          if (product.product.dietaryTags.isNotEmpty || product.product.beverageTags.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ...product.product.dietaryTags.map((tag) => Chip(
+                                    label: Text(foodTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
+                                    backgroundColor: Colors.green.shade50,
+                                    labelStyle: TextStyle(color: Colors.green.shade800),
+                                    side: BorderSide.none,
+                                    visualDensity: VisualDensity.compact,
+                                    padding: EdgeInsets.zero,
+                                  )),
+                                  ...product.product.beverageTags.map((tag) => Chip(
+                                    label: Text(beverageTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
+                                    backgroundColor: Colors.blue.shade50,
+                                    labelStyle: TextStyle(color: Colors.blue.shade800),
+                                    side: BorderSide.none,
+                                    visualDensity: VisualDensity.compact,
+                                    padding: EdgeInsets.zero,
+                                  )),
+                                ],
+                              ),
+                            ),
+                          ],
+
                           // ✅ PREÇO COM DESCONTO - estilo iFood
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
@@ -349,7 +427,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                       ),
                     ),
                   ),
-                  _buildActionBar(context, theme),
+                  _buildActionBar(context, theme, isAvailable),
                 ],
               ),
             ),
@@ -359,7 +437,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     );
   }
 
-  Widget _buildActionBar(BuildContext context, DsTheme theme) {
+  Widget _buildActionBar(BuildContext context, DsTheme theme, bool isAvailable) {
     final productState = context.watch<ProductPageCubit>().state;
     final product = productState.product!;
 
@@ -385,7 +463,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                     : 'Adicionar ${product.totalPrice.toCurrency}';
 
                 return DsPrimaryButton(
-                  onPressed: cartState.isUpdating || !product.isValid
+                  onPressed: cartState.isUpdating || !product.isValid || !isAvailable
                       ? null
                       : () => _onConfirm(context, productState),
                   child: cartState.isUpdating ? const DotLoading() : Text(buttonText),
@@ -608,4 +686,3 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     }
   }
 }
-

@@ -30,19 +30,27 @@ class OptionItem extends Equatable {
     final num? slicesNum = json['slices'];
     final num? maxFlavorsNum = json['max_flavors'];
 
+    // ✅ CORREÇÃO: O backend envia price como Decimal (ex: 12.90)
+    // Converte para centavos (int) multiplicando por 100
+    int priceInCents = 0;
+    if (priceNum != null) {
+      // Se o preço vier como valor decimal (ex: 12.90), converte para centavos
+      // Se vier como centavos (ex: 1290), mantém
+      if (priceNum < 1000 && priceNum != priceNum.toInt()) {
+        // Valor decimal pequeno -> provavelmente em reais, converte para centavos
+        priceInCents = (priceNum * 100).round();
+      } else {
+        priceInCents = priceNum.toInt();
+      }
+    }
+
     return OptionItem(
       id: json['id'],
       name: json['name'] ?? '',
       description: json['description'],
-
-      // ✅ CORREÇÃO FINAL APLICADA AQUI
-      // Converte o preço para 'int', com um fallback para 0 se for nulo.
-      price: priceNum?.toInt() ?? 0,
-
+      price: priceInCents,
       isActive: json['is_active'] ?? true,
       image: json['image_path'] != null ? ImageModel(url: json['image_path']) : null,
-
-      // Converte os outros campos numéricos para 'int?'.
       slices: slicesNum?.toInt(),
       maxFlavors: maxFlavorsNum?.toInt(),
     );

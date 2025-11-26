@@ -164,3 +164,40 @@ class ProductItemGrid extends StatelessWidget {
     );
   }
 }
+
+/// Widget Sliver para exibir lista de produtos em grid
+class ProductGridList extends StatelessWidget {
+  final List<Product> products;
+  final Category category;
+  final Function(Product) onProductTap;
+
+  const ProductGridList({
+    super.key,
+    required this.products,
+    required this.category,
+    required this.onProductTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverGrid(
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 450,
+        mainAxisExtent: 130,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final product = products[index];
+          return ProductItemGrid(
+            product: product,
+            category: category,
+            onTap: () => onProductTap(product),
+          );
+        },
+        childCount: products.length,
+      ),
+    );
+  }
+}

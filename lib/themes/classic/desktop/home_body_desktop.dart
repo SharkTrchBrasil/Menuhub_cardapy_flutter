@@ -1,5 +1,6 @@
 // Versão profissional com scroll dinâmico, atualização dos offsets e detecção do fim da lista
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,13 +9,12 @@ import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/themes/classic/desktop/widgets/fetrured_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/product_grid_list.dart';
-import 'package:totem/themes/classic/widgets/store_card.dart';
+import 'package:totem/themes/classic/desktop/widgets/size_grid_list.dart';
+import 'package:totem/models/option_group.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
-import 'package:totem/widgets/footer.dart';
 import '../../../helpers/navigation_helper.dart';
-import '../../../helpers/store_hours_helper.dart';
+import 'package:totem/helpers/store_hours_helper.dart';
 import '../../../models/store.dart';
-import '../widgets/featured_product.dart';
 
 class HomeBodyDesktop extends StatefulWidget {
   final Store? store;
@@ -172,31 +172,102 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
           delegate: _StickyHeaderDelegate(minHeight: 80, maxHeight: 80, child: _buildStickyFilterBar()),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        SliverToBoxAdapter(child: FeaturedProductList(products: widget.products, categories: widget.categories,)),
+        SliverToBoxAdapter(child: FeaturedProductList(products: widget.products, categories: widget.categories)),
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
         for (final category in widget.categories) ..._buildCategoryGridSection(context, category),
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        SliverToBoxAdapter(child: FooterWidget(store: widget.store, theme: theme)),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
   }
 
+  /// ✅ Constrói as seções de grid de produtos por categoria
   List<Widget> _buildCategoryGridSection(BuildContext context, Category category) {
-    if (category.id == null) return [];
-    final key = _categoryKeys[category.id!];
+    final categoryProducts = _filteredProducts.where((product) {
+      return product.categoryLinks.any((link) => link.categoryId == category.id);
+    }).toList();
 
-    // ✅ CORREÇÃO APLICADA AQUI
-    final productsInCategory = _filteredProducts
-        .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
-        .toList();
+    if (categoryProducts.isEmpty) return [];
 
-    if (productsInCategory.isEmpty) return [];
+    // Lógica para categorias customizáveis (Pizzas)
+    if (category.isCustomizable) {
+      final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+      
+      if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+        final activeSizes = sizeGroup.items.where((s) => s.isActive).toList();
+        
+        if (activeSizes.isEmpty) return [];
 
+
+
+        // Calcula o preço mínimo para cada tamanho
+        final Map<int, int> minPrices = {};
+        for (var size in activeSizes) {
+          int minP = 99999999; // Valor alto inicial
+          bool found = false;
+          
+          for (var product in categoryProducts) {
+            final priceObj = product.prices.firstWhereOrNull((p) => p.sizeOptionId == size.id);
+            if (priceObj != null) {
+              // Ignore isAvailable for "Starting from" display to avoid showing 0.00
+              // if (priceObj.isAvailable) {
+                if (priceObj.price > 0 && priceObj.price < minP) {
+                  minP = priceObj.price;
+                  found = true;
+                }
+              // }
+            }
+          }
+          
+          // Fallback: Se não encontrou preço nos sabores (ou é 0), usa o preço do tamanho
+          if (!found || (found && minP == 0)) {
+            if (size.price > 0) {
+              minP = size.price;
+              found = true;
+            }
+          }
+          
+          minPrices[size.id!] = found ? minP : 0;
+        }
+
+        return [
+          SliverToBoxAdapter(
+            key: _categoryKeys[category.id],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 16),
+              child: Text(
+                category.name,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 60),
+            sliver: SizeGridList(
+              sizes: activeSizes,
+              minPrices: minPrices,
+              onSizeTap: (size) {
+                // Usa o dialog de produtos GENERAL ao invés do específico de pizza
+                // Passa o primeiro produto (sabor) como referência
+                if (categoryProducts.isNotEmpty) {
+                  NavigationHelper.showProductDialog(
+                    context: context,
+                    product: categoryProducts.first,
+                    category: category,
+                  );
+                }
+              },
+            ),
+          ),
+        ];
+      }
+    }
+
+    // Lógica padrão para produtos normais
     return [
       SliverToBoxAdapter(
-        key: key,
+        key: _categoryKeys[category.id],
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(71, 24, 71, 8),
+          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 16),
           child: Text(
             category.name,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
@@ -204,29 +275,27 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
         ),
       ),
       SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 55, vertical: 16),
-        sliver: SliverGrid(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, mainAxisExtent: 140,
-          ),
-          delegate: SliverChildBuilderDelegate(
-                (context, index) {
-              final product = productsInCategory[index];
-              return ProductItemGrid(
-                product: product,
-                onTap: () => goToProductPage(context, product), category: category,
-              );
-            },
-            childCount: productsInCategory.length,
+        padding: const EdgeInsets.symmetric(horizontal: 60),
+        sliver: ProductGridList(
+          products: categoryProducts,
+          category: category,
+          onProductTap: (product) => NavigationHelper.showProductDialog(
+            context: context,
+            product: product,
+            category: category,
           ),
         ),
       ),
     ];
   }
 
+  /// ✅ Constrói o header do merchant (loja)
   Widget _buildMerchantHeader(Store? store) {
-    if (store == null) return const Center(child: CircularProgressIndicator());
-    final statusHelper = StoreStatusHelper(hours: store.hours);
+    if (store == null) {
+      return const SizedBox(height: 300);
+    }
+
+    final statusHelper = StoreStatusHelper(hours: store.hours ?? []);
     final isStoreOpen = statusHelper.isOpen;
     final nextOpeningMessage = statusHelper.statusMessage;
     final storeName = store.name;
@@ -245,9 +314,14 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(bannerUrl, height: 220, width: double.infinity, fit: BoxFit.cover,
+                  child: Image.network(
+                    bannerUrl,
+                    height: 220,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
-                      height: 220, color: Colors.grey.shade300,
+                      height: 220,
+                      color: Colors.grey.shade300,
                       child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
                     ),
                   ),
@@ -255,14 +329,28 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                 if (!isStoreOpen)
                   Positioned.fill(
                     child: Container(
-                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text('LOJA FECHADA', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                            const Text(
+                              'LOJA FECHADA',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
                             const SizedBox(height: 8),
-                            Text(nextOpeningMessage, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                            Text(
+                              nextOpeningMessage,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
                           ],
                         ),
                       ),
@@ -276,20 +364,33 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  CircleAvatar(radius: 32, backgroundImage: NetworkImage(logoUrl), backgroundColor: Colors.grey.shade200),
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundImage: NetworkImage(logoUrl),
+                    backgroundColor: Colors.grey.shade200,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(storeName, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w600)),
+                        Text(
+                          storeName,
+                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(width: 12),
                         Padding(
                           padding: const EdgeInsets.only(top: 12.0),
                           child: Row(
                             children: [
                               const Icon(Icons.star, color: Colors.amber, size: 18),
-                              Text(rating.toStringAsFixed(1), style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.amber)),
+                              Text(
+                                rating.toStringAsFixed(1),
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amber,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -303,7 +404,10 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                     children: [
                       Icon(Icons.monetization_on_outlined, color: Colors.grey.shade600, size: 18),
                       const SizedBox(width: 4),
-                      Text('Pedido mínimo R\$ ${minOrder.toStringAsFixed(2)}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700)),
+                      Text(
+                        'Pedido mínimo R\$ ${minOrder.toStringAsFixed(2)}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
+                      ),
                     ],
                   ),
                 ],
@@ -328,71 +432,71 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
           transitionBuilder: (Widget child, Animation<double> animation) => FadeTransition(opacity: animation, child: child),
           child: !_showCategoryFilterInBar
               ? Row(
-            key: const ValueKey('search_only'),
-            children: [
-              Expanded(
-                flex: 1,
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar no cardápio...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.grey.shade200,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-              const Spacer(),
-            ],
-          )
-              : Row(
-            key: const ValueKey('search_and_categories'),
-            children: [
-              Expanded(
-                flex: 1,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<Category>(
-                      value: widget.selectedCategory,
-                      isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down),
-                      items: widget.categories.map((Category category) {
-                        return DropdownMenuItem<Category>(
-                          value: category,
-                          child: Text(category.name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
-                        );
-                      }).toList(),
-                      onChanged: (Category? newCategory) {
-                        if (newCategory != null) {
-                          widget.onCategorySelected(newCategory);
-                          _scrollToCategory(newCategory.id!);
-                        }
-                      },
+                  key: const ValueKey('search_only'),
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar no cardápio...',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: Colors.grey.shade200,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        ),
+                      ),
                     ),
-                  ),
+                    const Spacer(),
+                  ],
+                )
+              : Row(
+                  key: const ValueKey('search_and_categories'),
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<Category>(
+                            value: widget.selectedCategory,
+                            isExpanded: true,
+                            icon: const Icon(Icons.keyboard_arrow_down),
+                            items: widget.categories.map((Category category) {
+                              return DropdownMenuItem<Category>(
+                                value: category,
+                                child: Text(category.name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                              );
+                            }).toList(),
+                            onChanged: (Category? newCategory) {
+                              if (newCategory != null) {
+                                widget.onCategorySelected(newCategory);
+                                _scrollToCategory(newCategory.id!);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 1,
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar no cardápio...',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: Colors.grey.shade200,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                flex: 1,
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar no cardápio...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.grey.shade200,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -405,12 +509,16 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
 
   const _StickyHeaderDelegate({required this.minHeight, required this.maxHeight, required this.child});
+  
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
+  
   @override
   double get maxExtent => maxHeight;
+  
   @override
   double get minExtent => minHeight;
+  
   @override
   bool shouldRebuild(_StickyHeaderDelegate oldDelegate) =>
       maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;

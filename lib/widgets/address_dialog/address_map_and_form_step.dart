@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:totem/services/reverse_geocoding_service.dart';
 
 /// Step 2: Mapa + Formulário (unificado)
 /// Mostra o mapa com o formulário sobreposto
+/// ✅ ENTERPRISE VERSION - Com correções de bugs críticos
 class AddressMapAndFormStep extends StatefulWidget {
   final double latitude;
   final double longitude;
@@ -18,8 +21,11 @@ class AddressMapAndFormStep extends StatefulWidget {
   final TextEditingController complementController;
   final TextEditingController referenceController;
   final TextEditingController neighborhoodController;
+  final TextEditingController streetController;
   final String favoriteLabel;
   final Function(String) onFavoriteLabelChanged;
+  // ✅ NOVO: Callback para atualizar coordenadas no pai
+  final Function(double lat, double lon)? onCoordinatesChanged;
 
   const AddressMapAndFormStep({
     super.key,
@@ -35,8 +41,10 @@ class AddressMapAndFormStep extends StatefulWidget {
     required this.complementController,
     required this.referenceController,
     required this.neighborhoodController,
+    required this.streetController,
     required this.favoriteLabel,
     required this.onFavoriteLabelChanged,
+    this.onCoordinatesChanged,
   });
 
   @override
@@ -52,14 +60,24 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
   late String _city;
   late String _state;
 
-  // Controller for street field (read-only)
-  late TextEditingController _streetController;
-
   // Flag to show neighborhood field when missing
-  bool get _showNeighborhoodField => _neighborhood.isEmpty;
+  bool get _showNeighborhoodField => widget.neighborhoodController.text.trim().isEmpty;
 
   // UI state – whether the form is visible
   bool _showForm = false;
+  
+  // Loading state for reverse geocoding
+  bool _isLoadingAddress = false;
+  
+  // ✅ CORREÇÃO BUG #1: Error state para retry
+  bool _hasError = false;
+  String _errorMessage = '';
+  
+  // ✅ CORREÇÃO BUG #1: Race condition - cancelamento de requisições
+  int _requestCounter = 0;
+  
+  // ✅ CORREÇÃO BUG #4: Debounce timer
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -71,26 +89,125 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
     _neighborhood = widget.neighborhood;
     _city = widget.city;
     _state = widget.state;
-    _streetController = TextEditingController(text: _street);
+    
+    // Inicializa controllers com valores iniciais
+    widget.streetController.text = _street;
+    widget.neighborhoodController.text = _neighborhood;
   }
 
   @override
   void dispose() {
-    _streetController.dispose();
+    // ✅ CORREÇÃO BUG #4: Cancela timer de debounce
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
-  // Placeholder reverse‑geocode – in a real app you'd call an API.
-  void _updateAddressFromCoordinates() {
-    // Mock implementation: generate fake address components based on coordinates.
+  // ✅ CORREÇÃO BUG #1 e #4: Reverse geocoding com cancelamento e debounce
+  void _onMapTapped(double lat, double lon) {
+    // ✅ CORREÇÃO BUG #5: Não permite mover pin se formulário está aberto
+    if (_showForm) return;
+    
+    // Atualiza coordenadas imediatamente para feedback visual
     setState(() {
-      _street = "Rua ${_latitude.toStringAsFixed(3)}";
-      _neighborhood = "Bairro ${_longitude.toStringAsFixed(3)}";
-      _city = "Cidade Exemplo";
-      _state = "Estado Exemplo";
-      widget.neighborhoodController.text = _neighborhood;
-      _streetController.text = _street;
+      _latitude = lat;
+      _longitude = lon;
     });
+    
+    // ✅ Notifica o pai sobre mudança de coordenadas
+    widget.onCoordinatesChanged?.call(lat, lon);
+    
+    // ✅ CORREÇÃO BUG #4: Cancela timer anterior e cria novo (debounce)
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _updateAddressFromCoordinates(lat, lon);
+    });
+  }
+
+  // ✅ CORREÇÃO BUG #1: Reverse geocoding com cancelamento de requisições
+  Future<void> _updateAddressFromCoordinates(double lat, double lon) async {
+    // Incrementa contador de requisições
+    final currentRequest = ++_requestCounter;
+    
+    print('🔍 [$currentRequest] Iniciando reverse geocoding para: $lat, $lon');
+    
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoadingAddress = true;
+      _hasError = false;
+      _errorMessage = '';
+    });
+    
+    try {
+      final addressData = await ReverseGeocodingService.getAddressFromCoordinates(
+        latitude: lat,
+        longitude: lon,
+      ).timeout(
+        const Duration(seconds: 15), // ✅ CORREÇÃO BUG #6: Timeout explícito
+        onTimeout: () {
+          throw TimeoutException('Tempo esgotado ao buscar endereço');
+        },
+      );
+      
+      // ✅ CORREÇÃO BUG #1: Verifica se esta ainda é a requisição mais recente
+      if (!mounted || currentRequest != _requestCounter) {
+        print('⚠️ [$currentRequest] Requisição cancelada (nova requisição em andamento)');
+        return;
+      }
+      
+      if (addressData != null) {
+        // ✅ CORREÇÃO BUG #11: Usa controllers como fonte única de verdade
+        setState(() {
+          _street = addressData['street'] ?? '';
+          _neighborhood = addressData['neighborhood'] ?? '';
+          _city = addressData['city'] ?? '';
+          _state = addressData['state'] ?? '';
+          
+          // Atualiza os controllers
+          widget.neighborhoodController.text = _neighborhood;
+          widget.streetController.text = _street;
+          _isLoadingAddress = false;
+        });
+        
+        print('✅ [$currentRequest] Endereço atualizado:');
+        print('   Rua: $_street');
+        print('   Bairro: $_neighborhood');
+        print('   Cidade: $_city');
+        print('   Estado: $_state');
+      } else {
+        print('⚠️ [$currentRequest] Nenhum endereço encontrado');
+        if (mounted) {
+          setState(() {
+            _isLoadingAddress = false;
+            _hasError = true;
+            _errorMessage = 'Endereço não encontrado';
+          });
+        }
+      }
+    } on TimeoutException catch (e) {
+      print('❌ [$currentRequest] Timeout: $e');
+      if (mounted && currentRequest == _requestCounter) {
+        setState(() {
+          _isLoadingAddress = false;
+          _hasError = true;
+          _errorMessage = 'Tempo esgotado. Toque para tentar novamente.';
+        });
+      }
+    } catch (e) {
+      print('❌ [$currentRequest] Erro ao buscar endereço: $e');
+      if (mounted && currentRequest == _requestCounter) {
+        setState(() {
+          _isLoadingAddress = false;
+          _hasError = true;
+          _errorMessage = 'Erro ao buscar endereço. Toque para tentar novamente.';
+        });
+      }
+    }
+  }
+  
+  // ✅ CORREÇÃO BUG #10: Retry em caso de erro
+  void _retryGeocoding() {
+    _updateAddressFromCoordinates(_latitude, _longitude);
   }
 
   @override
@@ -111,13 +228,9 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
                 // Bloqueia interação quando o formulário está aberto
                 flags: _showForm ? InteractiveFlag.none : InteractiveFlag.all,
               ),
-              // Tap on the map moves the pin and updates the address.
+              // ✅ CORREÇÃO: Usa método com debounce e cancelamento
               onTap: (tapPosition, point) {
-                setState(() {
-                  _latitude = point.latitude;
-                  _longitude = point.longitude;
-                });
-                _updateAddressFromCoordinates();
+                _onMapTapped(point.latitude, point.longitude);
               },
             ),
             children: [
@@ -159,13 +272,18 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
 
         // ===== PIN + LABEL (só aparece quando formulário está fechado) =====
         if (!_showForm)
-          const Center(
+          Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _PinLabel(),
-                SizedBox(height: 4),
-                _RedPin(),
+                _PinLabel(
+                  isLoading: _isLoadingAddress,
+                  hasError: _hasError,
+                  errorMessage: _errorMessage,
+                  onRetry: _retryGeocoding,
+                ),
+                const SizedBox(height: 4),
+                const _RedPin(),
               ],
             ),
           ),
@@ -234,9 +352,14 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
   }
 
   Widget _buildConfirmButton(BuildContext context) {
+    // ✅ CORREÇÃO BUG #9: Desabilita botão durante loading
+    final isDisabled = _isLoadingAddress || _hasError;
+    
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: isDisabled 
+            ? Colors.grey.shade400 
+            : Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         shape: RoundedRectangleBorder(
@@ -245,15 +368,30 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
         elevation: 2,
         shadowColor: Colors.black.withOpacity(0.3),
       ),
-      onPressed: () {
+      onPressed: isDisabled ? null : () {
         setState(() => _showForm = true);
       },
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          if (_isLoadingAddress) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           Text(
-            'Confirmar localização',
-            style: TextStyle(
+            _isLoadingAddress 
+                ? 'Buscando endereço...' 
+                : _hasError
+                    ? 'Erro ao buscar endereço'
+                    : 'Confirmar localização',
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -268,12 +406,8 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(16),
-          topRight: Radius.circular(16),
-        ),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -317,7 +451,7 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _street,
+          _street.isNotEmpty ? _street : 'Endereço não encontrado',
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -358,10 +492,10 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
               Expanded(
                 flex: 3,
                 child: _buildFormField(
-                  controller: _streetController,
+                  controller: widget.streetController,
                   label: 'Rua',
-                  hintText: '',
-                  isReadOnly: true,
+                  hintText: 'Nome da rua',
+                  isRequired: true, // ✅ CORREÇÃO BUG #8: Rua também é obrigatória
                 ),
               ),
             ],
@@ -378,7 +512,7 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
                 label: 'Número',
                 hintText: '',
                 isNumber: true,
-                isRequired: true, // ✅ Campo obrigatório
+                isRequired: true,
               ),
             ),
             const SizedBox(width: 16),
@@ -601,51 +735,98 @@ class _RedPin extends StatelessWidget {
   }
 }
 
-// Widget do Label acima do pin
+// ✅ CORREÇÃO BUG #10: Widget do Label com suporte a retry
 class _PinLabel extends StatelessWidget {
-  const _PinLabel();
+  final bool isLoading;
+  final bool hasError;
+  final String errorMessage;
+  final VoidCallback? onRetry;
+  
+  const _PinLabel({
+    this.isLoading = false,
+    this.hasError = false,
+    this.errorMessage = '',
+    this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: hasError ? onRetry : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          border: Border.all(
+            color: hasError ? Colors.red.shade300 : Colors.grey.shade300,
+            width: 1,
           ),
-        ],
-        border: Border.all(
-          color: Colors.grey.shade300,
-          width: 1,
         ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Você está aqui?',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade800,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Ajuste a localização',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading) ...[
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Buscando endereço...',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ] else if (hasError) ...[
+              Icon(
+                Icons.error_outline,
+                size: 20,
+                color: Colors.red.shade400,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                errorMessage,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.red.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ] else ...[
+              Text(
+                'Você está aqui?',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade800,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Ajuste a localização',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

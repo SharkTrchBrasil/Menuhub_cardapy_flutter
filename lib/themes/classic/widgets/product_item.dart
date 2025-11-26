@@ -7,6 +7,7 @@ import 'package:totem/core/extensions.dart';
 import 'package:collection/collection.dart';
 import '../../../models/product.dart';
 import '../../../models/category.dart';
+import '../../../services/availability_service.dart';
 
 class ProductItem extends StatelessWidget {
   final Product product;
@@ -47,88 +48,118 @@ class ProductItem extends StatelessWidget {
     final hasPromo = originalPrice != null;
     final discountPercent = hasPromo ? (((originalPrice! - displayPrice) / originalPrice) * 100).round() : 0;
 
+    // ✅ VERIFICAÇÃO DE DISPONIBILIDADE
+    final isAvailable = AvailabilityService.isProductAvailableNow(product);
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: isAvailable ? onTap : null, // Desabilita clique se indisponível
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (product.description != null && product.description!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+      child: Opacity(
+        opacity: isAvailable ? 1.0 : 0.5, // Efeito visual de desabilitado
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      product.description!,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.black87),
+                      product.name,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
+                    if (product.description != null && product.description!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
                       Text(
-                        category.isCustomizable ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        product.description!,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.black87),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (hasPromo) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          originalPrice!.toCurrency,
-                          style: const TextStyle(fontSize: 13, color: Colors.grey, decoration: TextDecoration.lineThrough),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.green[600], borderRadius: BorderRadius.circular(12)),
-                          child: Text(
-                            '-$discountPercent%',
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
                     ],
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (isAvailable) ...[
+                          Text(
+                            category.isCustomizable ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          if (hasPromo) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              originalPrice!.toCurrency,
+                              style: const TextStyle(fontSize: 13, color: Colors.grey, decoration: TextDecoration.lineThrough),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.green[600], borderRadius: BorderRadius.circular(12)),
+                              child: Text(
+                                '-$discountPercent%',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ] else ...[
+                          // Texto de indisponível
+                          const Text(
+                            'Indisponível no momento',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            _buildProductImage(product),
-          ],
+              const SizedBox(width: 16),
+              _buildProductImage(product, isAvailable),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildProductImage(Product product) {
+  Widget _buildProductImage(Product product, bool isAvailable) {
     final coverImageUrl = product.coverImageUrl;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8.0),
-      child: SizedBox(
-        width: 80,
-        height: 80,
-        child: coverImageUrl != null && coverImageUrl.isNotEmpty
-            ? CachedNetworkImage(
-          imageUrl: coverImageUrl,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            color: Colors.grey.shade200,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8.0),
+          child: SizedBox(
+            width: 80,
+            height: 80,
+            child: coverImageUrl != null && coverImageUrl.isNotEmpty
+                ? CachedNetworkImage(
+              imageUrl: coverImageUrl,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                color: Colors.grey.shade200,
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
+              ),
+              errorWidget: (context, url, error) => _buildImagePlaceholder(),
+            )
+                : _buildImagePlaceholder(),
           ),
-          errorWidget: (context, url, error) => _buildImagePlaceholder(),
-        )
-            : _buildImagePlaceholder(),
-      ),
+        ),
+        if (!isAvailable)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              child: const Center(
+                child: Icon(Icons.block, color: Colors.red, size: 30),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
