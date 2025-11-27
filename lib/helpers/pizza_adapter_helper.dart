@@ -100,15 +100,22 @@ class PizzaAdapterHelper {
           return null;
         }
 
-        // Formata o nome com fração (ex: "1/4 Pizza Calabresa")
+        // Formata o nome com fração (ex: "1/2 Calabresa")
         final fraction = maxFlavors > 1 ? '1/$maxFlavors ' : '';
         final displayName = '${fraction}${flavor.name}';
+
+        // ✅ REGRA DO MAIS CARO: Mostra o preço fracionado para exibição
+        // Ex: Pizza Média R$ 39,99 com 2 sabores = exibe "+ R$ 19,99" por sabor
+        // Mas na hora de calcular o total, usa o MAIOR preço cheio
+        final displayPrice = maxFlavors > 1 
+            ? (flavorPrice.price / maxFlavors).round() 
+            : flavorPrice.price;
 
         return OptionItem(
           id: flavor.id,
           name: displayName,
           description: flavor.description,
-          price: flavorPrice.price,
+          price: displayPrice, // ✅ Preço fracionado para exibição
           isActive: true, // ✅ Já filtrado acima, sempre ativo aqui
           image: flavor.coverImageUrl != null ? ImageModel(url: flavor.coverImageUrl!) : null,
         );
@@ -202,7 +209,8 @@ class PizzaAdapterHelper {
         g.groupType != OptionGroupType.size && 
         g.groupType != OptionGroupType.flavor && 
         !g.name.toUpperCase().contains('MASSA') &&
-        !g.name.toUpperCase().contains('BORDA')
+        !g.name.toUpperCase().contains('BORDA') &&
+        g.items.where((i) => i.isActive).isNotEmpty // ✅ Remove grupos sem opções ativas
       ),
     ];
 

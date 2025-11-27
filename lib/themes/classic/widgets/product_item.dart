@@ -106,24 +106,38 @@ class ProductItem extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         if (isAvailable) ...[
-                          Text(
-                            (category.isCustomizable || showAsStartingFrom) ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
                           if (hasPromo) ...[
-                            const SizedBox(width: 8),
+                            // Preço original riscado
                             Text(
                               originalPrice!.toCurrency,
-                              style: const TextStyle(fontSize: 13, color: Colors.grey, decoration: TextDecoration.lineThrough),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade500,
+                                decoration: TextDecoration.lineThrough,
+                                decorationColor: Colors.grey.shade500,
+                              ),
                             ),
                             const SizedBox(width: 8),
+                            // Preço com desconto em verde
+                            Text(
+                              displayPrice.toCurrency,
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green.shade600),
+                            ),
+                            const SizedBox(width: 8),
+                            // Badge de desconto
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.green[600], borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(12)),
                               child: Text(
                                 '-$discountPercent%',
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
+                            ),
+                          ] else ...[
+                            // Preço normal (sem promoção)
+                            Text(
+                              (category.isCustomizable || showAsStartingFrom) ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ] else ...[

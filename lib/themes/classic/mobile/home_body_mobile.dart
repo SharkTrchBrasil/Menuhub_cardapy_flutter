@@ -271,65 +271,92 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                                   ),
                                 ),
                               ),
-                              // ✅ Grid de tamanhos (igual ao desktop)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: activeSizes.map((size) {
-                                    final minPrice = minPrices[size.id] ?? 0;
-                                    return GestureDetector(
-                                      onTap: () {
-                                        if (productsInCategory.isNotEmpty) {
-                                          NavigationHelper.showProductDialog(
-                                            context: context,
-                                            product: productsInCategory.first,
-                                            category: category,
-                                            sizeId: size.id,
-                                          );
-                                        }
-                                      },
-                                      child: Container(
-                                        width: (MediaQuery.of(context).size.width - 56) / 2,
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(color: Colors.grey.shade200),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              size.name,
-                                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                                            ),
-                                            if (size.description?.isNotEmpty == true) ...[
-                                              const SizedBox(height: 4),
+                              // ✅ Lista de tamanhos como cards de produto (igual ProductItem)
+                              ...activeSizes.map((size) {
+                                final minPrice = minPrices[size.id] ?? 0;
+                                // Extrai informações do nome
+                                final slicesMatch = RegExp(r'(\d+)\s*PEDAÇOS?', caseSensitive: false).firstMatch(size.name);
+                                final flavorsMatch = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false).firstMatch(size.name);
+                                final slices = size.slices ?? (slicesMatch != null ? int.tryParse(slicesMatch.group(1)!) : null);
+                                final maxFlavors = size.maxFlavors ?? (flavorsMatch != null ? int.tryParse(flavorsMatch.group(1)!) : null);
+                                
+                                // Monta descrição
+                                final description = [
+                                  if (slices != null) '$slices Pedaços',
+                                  if (maxFlavors != null && maxFlavors > 1) '$maxFlavors Sabores',
+                                ].join(' • ');
+                                
+                                return GestureDetector(
+                                  onTap: () {
+                                    if (productsInCategory.isNotEmpty) {
+                                      NavigationHelper.showProductDialog(
+                                        context: context,
+                                        product: productsInCategory.first,
+                                        category: category,
+                                        sizeId: size.id,
+                                      );
+                                    }
+                                  },
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                                    child: Row(
+                                      children: [
+                                        // Informações do tamanho (igual ProductItem - texto à esquerda)
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
                                               Text(
-                                                size.description!,
-                                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                                maxLines: 1,
+                                                size.name.toUpperCase(),
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                                maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
-                                            ],
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'A partir de ${minPrice.toCurrency}',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.bold,
-                                                color: Theme.of(context).primaryColor,
+                                              if (description.isNotEmpty) ...[
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  description,
+                                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.black87),
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'A partir de ${minPrice.toCurrency}',
+                                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
+                                        const SizedBox(width: 16),
+                                        // Imagem à direita (igual ProductItem)
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: SizedBox(
+                                            width: 80,
+                                            height: 80,
+                                            child: category.image?.url != null
+                                                ? Image.network(
+                                                    category.image!.url,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, __, ___) => Container(
+                                                      color: Colors.grey.shade100,
+                                                      child: Icon(Icons.local_pizza, color: Colors.grey.shade400, size: 32),
+                                                    ),
+                                                  )
+                                                : Container(
+                                                    color: Colors.grey.shade100,
+                                                    child: Icon(Icons.local_pizza, color: Colors.grey.shade400, size: 32),
+                                                  ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         );

@@ -56,7 +56,7 @@ class CheckoutPage extends StatelessWidget {
         // ✅ Inicializa com tipo de entrega atual
         // Se deliveryType for null, inicializa sem filtro para mostrar todos os métodos ativos
         final currentDeliveryType = deliveryFeeCubit.state.deliveryType;
-        print('🔍 [CheckoutPage] Inicializando CheckoutCubit com deliveryType: ${currentDeliveryType?.name ?? "null"}');
+        // ✅ SEGURANÇA: Removido print com dados potencialmente sensíveis
         cubit.initialize(store, deliveryType: currentDeliveryType);
         return cubit;
       },

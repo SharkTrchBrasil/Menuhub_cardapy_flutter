@@ -68,10 +68,15 @@ class CartProduct extends Equatable {
             // ✅ Se não há opções ativas, retorna null (será filtrado depois)
             if (activeItems.isEmpty) return null;
             
+            // ✅ Verifica se é grupo obrigatório com apenas 1 opção
+            final isRequired = group.minSelection > 0;
+            final hasOnlyOneOption = activeItems.length == 1;
+            
             final cartOptions = activeItems
                 .map((item) {
-                  // Para pizzas: NÃO pré-seleciona sabores, massa ou borda
-                  // O usuário deve escolher manualmente cada opção
+                  // ✅ Auto-seleciona se grupo obrigatório tem apenas 1 opção
+                  final shouldAutoSelect = isRequired && hasOnlyOneOption;
+                  
                   return CartVariantOption(
                     id: item.id ?? 0,
                     name: item.name,
@@ -81,7 +86,7 @@ class CartProduct extends Equatable {
                     isActuallyAvailable: true, // Já filtrado acima
                     description: item.description,
                     imageUrl: item.image?.url,
-                    quantity: 0,
+                    quantity: shouldAutoSelect ? 1 : 0, // ✅ Auto-seleciona
                   );
                 })
                 .toList();
@@ -135,16 +140,32 @@ class CartProduct extends Equatable {
       final allFlavorsSelected = flavorGroups.every((g) => g.isValid);
       
       if (flavorGroups.isNotEmpty && allFlavorsSelected) {
-        // ✅ Todos os sabores selecionados - aplica a regra de preço
+        // ✅ REGRA DO MAIS CARO (igual iFood):
+        // Pizza com múltiplos sabores cobra o PREÇO CHEIO DO SABOR MAIS CARO
+        // 
+        // Exemplo: Pizza Grande 4 Sabores
+        // - Catupiry: R$ 70,00 (preço cheio) → exibe "+ R$ 17,50" (70/4)
+        // - Palmito: R$ 38,50 (preço cheio) → exibe "+ R$ 9,62" (38,50/4)
+        // - Calabresa: R$ 48,00 (preço cheio) → exibe "+ R$ 12,00" (48/4)
+        // 
+        // Total = R$ 70,00 (preço cheio do Catupiry, o mais caro)
+        // NÃO soma os fracionados!
+        
         final selectedFlavorPrices = flavorGroups
             .expand((g) => g.cartOptions.where((o) => o.quantity > 0))
             .map((o) => o.price)
             .toList();
         
         if (selectedFlavorPrices.isNotEmpty) {
-          // Retorna o maior preço (estratégia HIGHEST - padrão iFood)
-          // TODO: Usar a estratégia configurada na loja (HIGHEST ou AVERAGE)
-          return selectedFlavorPrices.reduce((a, b) => a > b ? a : b);
+          // ✅ O preço exibido já é fracionado (ex: R$ 17,50 = 70/4)
+          // Para obter o preço cheio, multiplicamos pelo número de sabores
+          final numberOfFlavors = selectedFlavorPrices.length;
+          
+          // ✅ Pega o MAIOR preço fracionado e reconstrói o preço cheio
+          final maxFractionalPrice = selectedFlavorPrices.reduce((a, b) => a > b ? a : b);
+          final fullPriceOfMostExpensive = maxFractionalPrice * numberOfFlavors;
+          
+          return fullPriceOfMostExpensive;
         }
       }
       
@@ -162,6 +183,13 @@ class CartProduct extends Equatable {
 
   // Preço total dos complementos selecionados
   int get variantsPrice {
+    if (category.isCustomizable) {
+      // ✅ Para pizzas: soma apenas bordas, massas e outros extras (NÃO sabores)
+      // Sabores já são calculados no basePrice usando a regra do maior preço
+      return selectedVariants
+          .where((v) => !v.name.toLowerCase().contains('sabor'))
+          .fold(0, (total, variant) => total + variant.totalPrice);
+    }
     return selectedVariants.fold(0, (total, variant) => total + variant.totalPrice);
   }
 
