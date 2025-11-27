@@ -59,37 +59,29 @@ class CartProduct extends Equatable {
           .firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
       defaultSize = sizeGroup?.items.firstOrNull;
       
-      // 2. Converte TODOS os grupos (incluindo Tamanho) em variants
-      // O backend precisa do tamanho como variant para buscar o FlavorPrice
+      // 2. Converte grupos em variants, filtrando opções e grupos inativos
       variants = category.optionGroups
           .map((group) {
-            // Converte OptionGroup em CartVariant
+            // ✅ Filtra apenas opções ativas
             final activeItems = group.items.where((item) => item.isActive).toList();
+            
+            // ✅ Se não há opções ativas, retorna null (será filtrado depois)
+            if (activeItems.isEmpty) return null;
+            
             final cartOptions = activeItems
-                .asMap()
-                .entries
-                .map((entry) {
-                  final index = entry.key;
-                  final item = entry.value;
-                  
-                  // ✅ Lógica de pré-seleção:
-                  // - Se é grupo de tamanho (SIZE): sempre pré-seleciona o primeiro
-                  // - Se é grupo obrigatório (minSelection > 0): pré-seleciona o primeiro
-                  final isSizeGroup = group.groupType == OptionGroupType.size;
-                  final isRequired = group.minSelection > 0;
-                  final initialQuantity = (isSizeGroup || (isRequired && index == 0)) ? 1 : 0;
-                  
-                  // Converte OptionItem em CartVariantOption
+                .map((item) {
+                  // Para pizzas: NÃO pré-seleciona sabores, massa ou borda
+                  // O usuário deve escolher manualmente cada opção
                   return CartVariantOption(
                     id: item.id ?? 0,
                     name: item.name,
                     price: item.price,
                     trackInventory: false,
                     stockQuantity: 0,
-                    isActuallyAvailable: item.isActive,
+                    isActuallyAvailable: true, // Já filtrado acima
                     description: item.description,
                     imageUrl: item.image?.url,
-                    quantity: initialQuantity, // Pré-seleciona tamanho ou obrigatórios
+                    quantity: 0,
                   );
                 })
                 .toList();
@@ -109,6 +101,7 @@ class CartProduct extends Equatable {
               cartOptions: cartOptions,
             );
           })
+          .whereType<CartVariant>() // ✅ Remove grupos nulos (sem opções ativas)
           .toList();
     } else {
       // Para produtos normais, usa variantLinks do produto
@@ -129,14 +122,36 @@ class CartProduct extends Equatable {
 
   // Preço base do item
   int get basePrice {
-    // ✅ CORREÇÃO APLICADA AQUI
-    // Para customizáveis, o preço vem do tamanho selecionado.
+    // Para customizáveis (pizzas), o preço vem dos sabores selecionados
     if (category.isCustomizable) {
-      if (selectedSize == null) return 0; // Segurança: se nenhum tamanho estiver selecionado, o preço é 0.
-      // Busca o preço correspondente ao ID do tamanho nos preços do produto.
-      final priceEntry = product.prices.firstWhereOrNull((p) => p.sizeOptionId == selectedSize!.id);
-      return priceEntry?.price ?? 0;
+      if (selectedSize == null) return 0;
+      
+      // ✅ Encontra os grupos de sabores
+      final flavorGroups = selectedVariants.where((v) => 
+        v.name.toLowerCase().contains('sabor')
+      ).toList();
+      
+      // ✅ Verifica se TODOS os grupos de sabores obrigatórios foram selecionados
+      final allFlavorsSelected = flavorGroups.every((g) => g.isValid);
+      
+      if (flavorGroups.isNotEmpty && allFlavorsSelected) {
+        // ✅ Todos os sabores selecionados - aplica a regra de preço
+        final selectedFlavorPrices = flavorGroups
+            .expand((g) => g.cartOptions.where((o) => o.quantity > 0))
+            .map((o) => o.price)
+            .toList();
+        
+        if (selectedFlavorPrices.isNotEmpty) {
+          // Retorna o maior preço (estratégia HIGHEST - padrão iFood)
+          // TODO: Usar a estratégia configurada na loja (HIGHEST ou AVERAGE)
+          return selectedFlavorPrices.reduce((a, b) => a > b ? a : b);
+        }
+      }
+      
+      // ✅ Se ainda não selecionou todos os sabores, retorna 0 (igual iFood)
+      return 0;
     }
+    
     // Para itens normais, o preço vem do vínculo com a categoria.
     final link = product.categoryLinks.firstWhereOrNull((l) => l.categoryId == category.id);
     if (link != null) {
@@ -148,6 +163,25 @@ class CartProduct extends Equatable {
   // Preço total dos complementos selecionados
   int get variantsPrice {
     return selectedVariants.fold(0, (total, variant) => total + variant.totalPrice);
+  }
+
+  /// ✅ NOVO: Preço "a partir de" para exibição (menor preço dos sabores)
+  /// Usado no cabeçalho do dialog de pizza antes de selecionar os sabores
+  int get startingPrice {
+    if (!category.isCustomizable) return basePrice;
+    
+    // Pega o menor preço dos sabores disponíveis
+    final flavorPrices = selectedVariants
+        .where((v) => v.name.toLowerCase().contains('sabor'))
+        .expand((v) => v.cartOptions)
+        .map((o) => o.price)
+        .where((p) => p > 0)
+        .toList();
+    
+    if (flavorPrices.isNotEmpty) {
+      return flavorPrices.reduce((a, b) => a < b ? a : b);
+    }
+    return 0;
   }
 
   // Preço unitário (base + complementos)

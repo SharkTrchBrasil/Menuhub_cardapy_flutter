@@ -15,15 +15,15 @@ class StoreRepository {
   final Dio _dio;
   final FlutterSecureStorage _secureStorage;
 
-  // ✅ MÉTODO CORRIGIDO: Agora recebe o slug da loja explicitamente.
+  // ✅ CORRIGIDO: Backend usa Host header para identificar a loja
+  // Endpoint: GET /products/{product_id}
   Future<Product> fetchProductDetails({
     required int productId,
-    required String storeSlug, // Parâmetro adicionado
+    required String storeSlug, // Mantido para compatibilidade, mas não usado na URL
   }) async {
     try {
-      // Usa o slug fornecido em vez de buscar no GetIt.
       final response = await _dio.get(
-        '/products/$storeSlug/$productId',
+        '/products/$productId',
         options: Options(headers: {'Accept': 'application/json'}),
       );
       return Product.fromJson(response.data);
@@ -33,21 +33,17 @@ class StoreRepository {
     }
   }
 
-  // ✅ NOVO MÉTODO: A busca de categoria também precisa do slug da loja.
+  // ⚠️ NOTA: Endpoint /categories/{id} não existe no backend
+  // As categorias são carregadas junto com o menu da loja
+  // Este método é mantido para compatibilidade, mas lança exceção
   Future<Category> fetchCategoryDetails({
     required int categoryId,
     required String storeSlug,
   }) async {
-    try {
-      final response = await _dio.get(
-        '/categories/$storeSlug/$categoryId',
-        options: Options(headers: {'Accept': 'application/json'}),
-      );
-      return Category.fromJson(response.data);
-    } catch (e) {
-      debugPrint('Erro ao buscar detalhes da categoria: $e');
-      throw Exception('Não foi possível carregar os detalhes da categoria.');
-    }
+    // Categorias devem ser obtidas do StoreCubit (já carregadas com o menu)
+    throw Exception(
+      'Categoria não encontrada. Use StoreCubit.state.categories para obter categorias já carregadas.'
+    );
   }
 
   Future<Either<void, BannerModel>> getBanners() async {

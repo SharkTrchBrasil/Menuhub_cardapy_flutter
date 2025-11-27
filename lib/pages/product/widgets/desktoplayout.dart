@@ -199,13 +199,25 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                product.totalPrice.toCurrency,
-                                style: const TextStyle(
-                                  fontSize: 28, // ✅ Aumentado de 20 para 28
-                                  fontWeight: FontWeight.bold,
+                              // ✅ Para pizzas: mostra "A partir de" antes de selecionar sabores
+                              if (product.category.isCustomizable && product.totalPrice == 0) ...[
+                                Text(
+                                  'A partir de ${product.startingPrice.toCurrency}',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade700,
+                                  ),
                                 ),
-                              ),
+                              ] else ...[
+                                Text(
+                                  product.totalPrice.toCurrency,
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                               if (product.product.unit.requiresQuantityInput) ...[
                                 const SizedBox(height: 4),
                                 Text(

@@ -31,6 +31,24 @@ class CartVariant {
       ProductVariantLink link, {
         List<CartVariantOption>? options, // <-- Adicione este parâmetro
       }) {
+    
+    // ✅ Filtra apenas opções disponíveis (ativas, com estoque, etc.)
+    final availableOptions = link.variant.options
+        .where((option) => option.canBeSelected)
+        .toList();
+    
+    // ✅ Cria as CartVariantOptions
+    final cartOptions = options ?? availableOptions
+        .map((option) => CartVariantOption.fromVariantOption(option))
+        .toList();
+    
+    // ✅ Auto-seleciona se grupo obrigatório tem apenas 1 opção
+    final isRequired = link.minSelectedOptions > 0;
+    final hasOnlyOneOption = cartOptions.length == 1;
+    
+    final finalOptions = (isRequired && hasOnlyOneOption)
+        ? cartOptions.map((o) => o.copyWith(quantity: 1)).toList()
+        : cartOptions;
 
     return CartVariant(
       id: link.variant.id!,
@@ -39,11 +57,7 @@ class CartVariant {
       minSelectedOptions: link.minSelectedOptions,
       maxSelectedOptions: link.maxSelectedOptions,
       maxTotalQuantity: link.maxTotalQuantity,
-    cartOptions: options ??
-    link.variant.options
-        .map((option) => CartVariantOption.fromVariantOption(option))
-        .toList(),
-
+      cartOptions: finalOptions,
     );
   }
 

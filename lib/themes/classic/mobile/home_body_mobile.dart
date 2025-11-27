@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:collection/collection.dart';
 import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
+import 'package:totem/models/option_group.dart';
 import 'package:totem/themes/classic/widgets/store_card.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
@@ -221,6 +223,120 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
 
                     if (productsInCategory.isEmpty) return const SizedBox.shrink();
 
+                    // ✅ Lógica para categorias customizáveis (Pizzas) - mostra tamanhos primeiro
+                    if (category.isCustomizable) {
+                      final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+                      
+                      if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+                        final activeSizes = sizeGroup.items.where((s) => s.isActive).toList();
+                        
+                        if (activeSizes.isEmpty) return const SizedBox.shrink();
+                        
+                        // Calcula preço mínimo para cada tamanho
+                        final Map<int, int> minPrices = {};
+                        for (var size in activeSizes) {
+                          int minP = 99999999;
+                          bool found = false;
+                          
+                          for (var product in productsInCategory) {
+                            final priceObj = product.prices.firstWhereOrNull((p) => p.sizeOptionId == size.id);
+                            if (priceObj != null && priceObj.price > 0 && priceObj.price < minP) {
+                              minP = priceObj.price;
+                              found = true;
+                            }
+                          }
+                          
+                          if (!found || minP == 0) {
+                            if (size.price > 0) {
+                              minP = size.price;
+                              found = true;
+                            }
+                          }
+                          
+                          minPrices[size.id!] = found ? minP : 0;
+                        }
+                        
+                        return Container(
+                          key: key,
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                                child: Text(
+                                  category.name,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              // ✅ Grid de tamanhos (igual ao desktop)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: activeSizes.map((size) {
+                                    final minPrice = minPrices[size.id] ?? 0;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        if (productsInCategory.isNotEmpty) {
+                                          NavigationHelper.showProductDialog(
+                                            context: context,
+                                            product: productsInCategory.first,
+                                            category: category,
+                                            sizeId: size.id,
+                                          );
+                                        }
+                                      },
+                                      child: Container(
+                                        width: (MediaQuery.of(context).size.width - 56) / 2,
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: Colors.grey.shade200),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              size.name,
+                                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                            ),
+                                            if (size.description?.isNotEmpty == true) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                size.description!,
+                                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'A partir de ${minPrice.toCurrency}',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: Theme.of(context).primaryColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    }
+
+                    // ✅ Lógica padrão para produtos normais
                     return Container(
                       key: key,
                       padding: const EdgeInsets.only(bottom: 16),
@@ -273,11 +389,16 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   }
 
   Widget _buildHorizontalCategories() {
+    // ✅ Filtra categorias que têm produtos
+    final categoriesWithProducts = widget.categories.where((category) {
+      return _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == category.id));
+    }).toList();
+    
     return ListView.builder(
       scrollDirection: Axis.horizontal,
-      itemCount: widget.categories.length,
+      itemCount: categoriesWithProducts.length,
       itemBuilder: (context, index) {
-        final category = widget.categories[index];
+        final category = categoriesWithProducts[index];
         final isSelected = widget.selectedCategory?.id == category.id;
 
         return GestureDetector(

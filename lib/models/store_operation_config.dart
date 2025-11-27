@@ -1,3 +1,22 @@
+/// Estratégia de preço para pizzas com múltiplos sabores
+enum PizzaPricingStrategy {
+  /// Cobra pelo sabor mais caro (padrão iFood)
+  highest,
+  /// Cobra pela média dos sabores
+  average;
+
+  static PizzaPricingStrategy fromString(String? value) {
+    switch (value?.toUpperCase()) {
+      case 'HIGHEST':
+        return PizzaPricingStrategy.highest;
+      case 'AVERAGE':
+      default:
+        return PizzaPricingStrategy.average;
+    }
+  }
+  
+  String toApiString() => name.toUpperCase();
+}
 
 class StoreOperationConfig {
   // --- Configurações Gerais de Operação ---
@@ -13,21 +32,21 @@ class StoreOperationConfig {
   final double? deliveryFee;
   final double? deliveryMinOrder;
   final String? deliveryScope;
-  final bool deliveryPaused; // ✅ NOVO
+  final bool deliveryPaused;
 
   // --- Configurações de Retirada (Pickup/Takeout) ---
   final bool pickupEnabled;
   final int? pickupEstimatedMin;
   final int? pickupEstimatedMax;
   final String? pickupInstructions;
-  final bool pickupPaused; // ✅ NOVO
+  final bool pickupPaused;
 
   // --- Configurações de Consumo no Local (Mesas) ---
   final bool tableEnabled;
   final int? tableEstimatedMin;
   final int? tableEstimatedMax;
   final String? tableInstructions;
-  final bool tablePaused; // ✅ NOVO
+  final bool tablePaused;
 
   // --- Configurações de Impressora ---
   final String? mainPrinterDestination;
@@ -36,6 +55,9 @@ class StoreOperationConfig {
 
   final double? freeDeliveryThreshold;
   final bool scheduledOrdersEnabled;
+  
+  // --- ✅ NOVO: Configuração de preço para pizzas ---
+  final PizzaPricingStrategy pizzaPricingStrategy;
 
   StoreOperationConfig({
     // Gerais
@@ -50,25 +72,27 @@ class StoreOperationConfig {
     this.deliveryFee,
     this.deliveryMinOrder,
     this.deliveryScope = 'neighborhood',
-    this.deliveryPaused = false, // ✅ NOVO
+    this.deliveryPaused = false,
     // Pickup
     this.pickupEnabled = false,
     this.pickupEstimatedMin,
     this.pickupEstimatedMax,
     this.pickupInstructions,
-    this.pickupPaused = false, // ✅ NOVO
+    this.pickupPaused = false,
     // Table
     this.tableEnabled = false,
     this.tableEstimatedMin,
     this.tableEstimatedMax,
     this.tableInstructions,
-    this.tablePaused = false, // ✅ NOVO
+    this.tablePaused = false,
     // Printers
     this.mainPrinterDestination,
     this.kitchenPrinterDestination,
     this.barPrinterDestination,
     this.freeDeliveryThreshold,
     this.scheduledOrdersEnabled = false,
+    // Pizza
+    this.pizzaPricingStrategy = PizzaPricingStrategy.highest,
   });
 
   factory StoreOperationConfig.fromJson(Map<String, dynamic> json) {
@@ -85,25 +109,27 @@ class StoreOperationConfig {
       deliveryFee: (json['delivery_fee'] as num?)?.toDouble(),
       deliveryMinOrder: (json['delivery_min_order'] as num?)?.toDouble(),
       deliveryScope: json['delivery_scope'],
-      deliveryPaused: json['delivery_paused'] ?? false, // ✅ NOVO
+      deliveryPaused: json['delivery_paused'] ?? false,
       // Pickup
       pickupEnabled: json['pickup_enabled'] ?? false,
       pickupEstimatedMin: json['pickup_estimated_min'],
       pickupEstimatedMax: json['pickup_estimated_max'],
       pickupInstructions: json['pickup_instructions'],
-      pickupPaused: json['pickup_paused'] ?? false, // ✅ NOVO
+      pickupPaused: json['pickup_paused'] ?? false,
       // Table
       tableEnabled: json['table_enabled'] ?? false,
       tableEstimatedMin: json['table_estimated_min'],
       tableEstimatedMax: json['table_estimated_max'],
       tableInstructions: json['table_instructions'],
-      tablePaused: json['table_paused'] ?? false, // ✅ NOVO
+      tablePaused: json['table_paused'] ?? false,
       // Printers
       mainPrinterDestination: json['main_printer_destination'],
       kitchenPrinterDestination: json['kitchen_printer_destination'],
       barPrinterDestination: json['bar_printer_destination'],
       freeDeliveryThreshold: (json['free_delivery_threshold'] as num?)?.toDouble(),
       scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
+      // ✅ Pizza pricing strategy
+      pizzaPricingStrategy: PizzaPricingStrategy.fromString(json['pizza_multi_flavor_pricing_strategy']),
     );
   }
 
@@ -139,6 +165,7 @@ class StoreOperationConfig {
     String? barPrinterDestination,
     double? freeDeliveryThreshold,
     bool? scheduledOrdersEnabled,
+    PizzaPricingStrategy? pizzaPricingStrategy,
   }) {
     return StoreOperationConfig(
       isStoreOpen: isStoreOpen ?? this.isStoreOpen,
@@ -167,6 +194,7 @@ class StoreOperationConfig {
       barPrinterDestination: barPrinterDestination ?? this.barPrinterDestination,
       freeDeliveryThreshold: freeDeliveryThreshold ?? this.freeDeliveryThreshold,
       scheduledOrdersEnabled: scheduledOrdersEnabled ?? this.scheduledOrdersEnabled,
+      pizzaPricingStrategy: pizzaPricingStrategy ?? this.pizzaPricingStrategy,
     );
   }
 }

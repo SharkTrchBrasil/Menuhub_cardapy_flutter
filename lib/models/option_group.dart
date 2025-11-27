@@ -6,10 +6,11 @@ import 'package:totem/models/option_item.dart';
 // ✅ ENUM: Define os tipos de grupos de opções
 // Mapeia com o backend: SIZE, GENERIC
 enum OptionGroupType {
-  size,    // Mapeia para "SIZE" do backend
-  generic, // Mapeia para "GENERIC" do backend (Massa, Borda)
-  flavor,  // Não usado mais (compatibilidade)
-  other;   // Fallback
+  size,       // Mapeia para "SIZE" do backend
+  generic,    // Mapeia para "GENERIC" do backend (Massa, Borda)
+  flavor,     // ✅ NOVO: Grupos virtuais de sabores de pizza
+  preference, // ✅ NOVO: Grupo virtual de preferências (massa + borda combinadas)
+  other;      // Fallback
 
   static OptionGroupType fromString(String? value) {
     switch (value?.toUpperCase()) {
@@ -19,6 +20,8 @@ enum OptionGroupType {
         return OptionGroupType.generic;
       case 'FLAVOR':
         return OptionGroupType.flavor;
+      case 'PREFERENCE':
+        return OptionGroupType.preference;
       default:
         return OptionGroupType.other;
     }
@@ -54,7 +57,6 @@ class OptionGroup extends Equatable {
     return OptionGroup(
       id: json['id'] as int?,
       name: json['name'] as String? ?? '',
-      // ✅ PARSE DO NOVO CAMPO
       groupType: OptionGroupType.fromString(json['group_type']),
       minSelection: json['min_selection'] as int? ?? 0,
       maxSelection: json['max_selection'] as int? ?? 1,
@@ -66,7 +68,6 @@ class OptionGroup extends Equatable {
     );
   }
 
-  // TO JSON (para consistência)
   Map<String, dynamic> toJson() {
     return {
       'id': id,

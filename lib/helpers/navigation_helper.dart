@@ -19,6 +19,7 @@ class NavigationHelper {
     required BuildContext context,
     required Product product,
     Category? category,
+    int? sizeId, // ✅ Novo parâmetro
   }) {
     // Se categoria não foi passada, tenta encontrar no StoreCubit
     if (category == null) {
@@ -30,12 +31,12 @@ class NavigationHelper {
     }
 
     // Usa o mesmo dialog de produtos GENERAL para todos os tipos, incluindo pizzas
-    goToProductPage(context, product, category: category);
+    goToProductPage(context, product, category: category, sizeId: sizeId);
   }
 }
 
 // Navega para a página de detalhes de um produto para adicioná-lo ao carrinho
-void goToProductPage(BuildContext context, Product product, {Category? category}) {
+void goToProductPage(BuildContext context, Product product, {Category? category, int? sizeId}) {
   // Se categoria não foi passada, tenta encontrar no StoreCubit
   if (category == null) {
     final storeState = context.read<StoreCubit>().state;
@@ -47,10 +48,13 @@ void goToProductPage(BuildContext context, Product product, {Category? category}
 
   final String slug = product.name.toSlug();
 
-  // ✅ CORREÇÃO FINAL: Usa o caminho absoluto com a barra inicial '/',
-  // exatamente como no seu backup que funcionava. Isso garante que a
-  // navegação funcione de forma consistente, não importa de onde ela seja chamada.
-  context.go('/product/$slug/${product.id}', extra: product);
+  // ✅ Adiciona query param se sizeId existir
+  String location = '/product/$slug/${product.id}';
+  if (sizeId != null) {
+    location += '?size=$sizeId';
+  }
+
+  context.go(location, extra: product);
 }
 
 // Navega para a página de detalhes para EDITAR um item que JÁ ESTÁ no carrinho

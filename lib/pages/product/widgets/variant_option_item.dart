@@ -126,19 +126,121 @@ class VariantOptionItem extends StatelessWidget {
       case UIDisplayMode.SINGLE:
         final selectedOptionIdInGroup = variant.cartOptions.firstWhere(
               (o) => o.quantity > 0,
-          // ✅ PREENCHIMENTO CORRETO AQUI
           orElse: () => CartVariantOption(
-            id: -1, // O valor mais importante: um ID que nunca existirá
-            name: '', // Apenas para preencher, não será mostrado
-            price: 0, // Apenas para preencher
-            trackInventory: false, // Valor padrão
-            stockQuantity: 0, // Valor padrão
-            isActuallyAvailable: false, // Valor padrão
+            id: -1,
+            name: '',
+            price: 0,
+            trackInventory: false,
+            stockQuantity: 0,
+            isActuallyAvailable: false,
           ),
         ).id;
 
-
-
+        final bool isSelectedRadio = option.id == selectedOptionIdInGroup;
+        
+        // ✅ Se tem imagem, usa layout customizado para sabores (estilo iFood)
+        if (option.imageUrl != null && option.imageUrl!.isNotEmpty) {
+          return InkWell(
+            onTap: () => onUpdate(1),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey.shade100),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Informações do sabor
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          option.name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        if (option.description != null && option.description!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            option.description!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (option.price > 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '+ ${option.price.toCurrency}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: theme.primaryColor,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Imagem do sabor
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: CachedNetworkImage(
+                        imageUrl: option.imageUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(color: Colors.grey.shade200),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.local_pizza, color: Colors.grey),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Radio button
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelectedRadio ? theme.primaryColor : Colors.grey.shade400,
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelectedRadio
+                        ? Center(
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.primaryColor,
+                              ),
+                            ),
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        
+        // Radio sem imagem (layout original)
         return RadioListTile<int>(
           title: Text(option.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
           subtitle: _buildSubtitle(),

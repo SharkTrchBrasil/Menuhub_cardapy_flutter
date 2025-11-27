@@ -213,3 +213,4 @@ String _buildSizeDisplayName(OptionItem size) {
   
   return baseName;
 }
+

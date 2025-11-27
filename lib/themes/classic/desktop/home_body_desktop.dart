@@ -10,8 +10,10 @@ import 'package:totem/models/product.dart';
 import 'package:totem/themes/classic/desktop/widgets/fetrured_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/product_grid_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/size_grid_list.dart';
+import 'package:totem/themes/classic/desktop/widgets/store_details_sidepanel.dart';
 import 'package:totem/models/option_group.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
+import 'package:totem/widgets/delivery_info_widget.dart';
 import '../../../helpers/navigation_helper.dart';
 import 'package:totem/helpers/store_hours_helper.dart';
 import '../../../models/store.dart';
@@ -253,6 +255,7 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                     context: context,
                     product: categoryProducts.first,
                     category: category,
+                    sizeId: size.id, // ✅ Passa o ID do tamanho selecionado
                   );
                 }
               },
@@ -397,7 +400,14 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                       ],
                     ),
                   ),
-                  TextButton(onPressed: () {}, child: const Text('Ver mais')),
+                  TextButton(
+                    onPressed: () {
+                      if (store != null) {
+                        StoreDetailsSidePanel.show(context, store);
+                      }
+                    },
+                    child: const Text('Ver mais'),
+                  ),
                   const SizedBox(width: 16),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -435,7 +445,7 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                   key: const ValueKey('search_only'),
                   children: [
                     Expanded(
-                      flex: 1,
+                      flex: 2,
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -449,6 +459,8 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                       ),
                     ),
                     const Spacer(),
+                    // ✅ Widget de entrega (tempo + taxa)
+                    const DeliveryInfoWidget(),
                   ],
                 )
               : Row(
@@ -464,7 +476,9 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                             value: widget.selectedCategory,
                             isExpanded: true,
                             icon: const Icon(Icons.keyboard_arrow_down),
-                            items: widget.categories.map((Category category) {
+                            items: widget.categories
+                                .where((cat) => _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == cat.id)))
+                                .map((Category category) {
                               return DropdownMenuItem<Category>(
                                 value: category,
                                 child: Text(category.name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
@@ -482,7 +496,7 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      flex: 1,
+                      flex: 2,
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -495,6 +509,9 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                         ),
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    // ✅ Widget de entrega (tempo + taxa)
+                    const DeliveryInfoWidget(),
                   ],
                 ),
         ),

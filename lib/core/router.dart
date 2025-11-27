@@ -190,6 +190,9 @@ GoRouter createGoRouter() {
                     return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
                   }
 
+                  // ✅ Extrai sizeId da query string (para pizzas)
+                  final sizeId = int.tryParse(state.uri.queryParameters['size'] ?? '');
+
                   final initialProduct = state.extra is Product ? state.extra as Product : null;
                   final cartItemToEdit = state.extra is CartItem ? state.extra as CartItem : null;
                   final isDesktop = MediaQuery.of(context).size.width >= 768;
@@ -202,6 +205,7 @@ GoRouter createGoRouter() {
                     )..loadProduct(
                       initialProduct: initialProduct,
                       cartItemToEdit: cartItemToEdit,
+                      sizeId: sizeId, // ✅ Passa o sizeId para o cubit
                     ),
                     child: const ProductPageAdaptive(),
                   );

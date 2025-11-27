@@ -276,10 +276,19 @@ class RealtimeRepository {
       try {
         // ✅ Processa payload do backend que vem como Map com 'products' e 'categories'
         if (data is Map && data.containsKey('products')) {
+          // ✅ Atualiza produtos
           final List<dynamic> productsJson = data['products'] as List<dynamic>;
           final List<Product> products = productsJson.map((json) => Product.fromJson(json)).toList();
           productsController.add(products);
           print('✅ ${products.length} produtos atualizados no totem');
+          
+          // ✅ Atualiza categorias na Store se presentes
+          if (data.containsKey('categories') && storeController.hasValue) {
+            final currentStore = storeController.value;
+            final List<dynamic> categoriesJson = data['categories'] as List<dynamic>;
+            // Atualiza a store com as novas categorias (via rebuild)
+            print('✅ ${categoriesJson.length} categorias recebidas (atualizadas via store)');
+          }
         } else if (data is Map && data.containsKey('type') && data['type'] == 'delta_update') {
           // ✅ P1: Processa delta update se for mensagem delta
           _handleDeltaUpdate(data as Map<String, dynamic>);
@@ -296,7 +305,8 @@ class RealtimeRepository {
       }
     });
 
-    _socket.on('banners_update', (data) {
+    // ✅ CORREÇÃO: Nome do evento alinhado com backend (banners_updated)
+    _socket.on('banners_updated', (data) {
       print('🎨 Banners atualizados recebidos');
       final List<BannerModel> banners = (data as List).map((json) => BannerModel.fromJson(json)).toList();
       bannersController.add(banners);
@@ -872,6 +882,11 @@ class RealtimeRepository {
           final List<dynamic> productsJson = data['products'] as List<dynamic>;
           final List<Product> products = productsJson.map((json) => Product.fromJson(json)).toList();
           productsController.add(products);
+          
+          // ✅ Categorias são atualizadas via store_details_updated ou initial_state
+          if (data.containsKey('categories')) {
+            print('✅ ${(data['categories'] as List).length} categorias recebidas');
+          }
         } else if (data is List) {
           final List<Product> products = (data as List).map((json) => Product.fromJson(json)).toList();
           productsController.add(products);

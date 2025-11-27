@@ -216,8 +216,42 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                               ),
                             ),
                           ),
-                          // ✅ DESCRIÇÃO ABAIXO DO TÍTULO - estilo iFood
-                          if (product.product.description != null && product.product.description!.isNotEmpty) ...[
+                          // ✅ REGRAS DE PIZZA OU DESCRIÇÃO - estilo iFood
+                          if (product.category.isCustomizable) ...[
+                            // Mostra regras de cobrança para pizzas
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 20),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Importante:',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'A pizza de mais de 1 sabor será cobrada pelo preço cheio do sabor mais caro.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade600,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else if (product.product.description != null && product.product.description!.isNotEmpty) ...[
+                            // Mostra descrição normal para outros produtos
                             Padding(
                               padding: const EdgeInsets.only(bottom: 20),
                               child: Text(
@@ -327,14 +361,26 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                     ),
                                   ),
                                 ] else ...[
-                                  // Preço normal
-                                  Text(
-                                    product.totalPrice.toCurrency,
-                                    style: const TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
+                                  // ✅ Para pizzas: mostra "A partir de" antes de selecionar sabores
+                                  if (product.category.isCustomizable && product.totalPrice == 0) ...[
+                                    Text(
+                                      'A partir de ${product.startingPrice.toCurrency}',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade700,
+                                      ),
                                     ),
-                                  ),
+                                  ] else ...[
+                                    // Preço normal ou preço final da pizza
+                                    Text(
+                                      product.totalPrice.toCurrency,
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ],
                             ),

@@ -25,11 +25,14 @@ class ProductItem extends StatelessWidget {
   Widget build(BuildContext context) {
     int? displayPrice;
     int? originalPrice;
+    bool showAsStartingFrom = false;
 
     // Lógica de preço para categoria customizável (sabores)
     if (category.isCustomizable) {
       if (product.prices.isNotEmpty) {
-        displayPrice = product.prices.map((p) => p.price).reduce(min);
+        final validPrices = product.prices.where((p) => p.price > 0).map((p) => p.price);
+        displayPrice = validPrices.isNotEmpty ? validPrices.reduce(min) : 0;
+        showAsStartingFrom = true;
       }
     } else {
       // Lógica para categoria geral
@@ -40,6 +43,25 @@ class ProductItem extends StatelessWidget {
           originalPrice = link.price;
         } else {
           displayPrice = link.price;
+        }
+      }
+      
+      // ✅ Se preço é 0, busca menor preço nos grupos de complementos
+      if ((displayPrice == null || displayPrice == 0) && product.variantLinks.isNotEmpty) {
+        int minVariantPrice = 0;
+        for (final variantLink in product.variantLinks) {
+          final variant = variantLink.variant;
+          if (variant.options.isNotEmpty) {
+            for (final option in variant.options) {
+              if (option.resolvedPrice > 0 && (minVariantPrice == 0 || option.resolvedPrice < minVariantPrice)) {
+                minVariantPrice = option.resolvedPrice;
+              }
+            }
+          }
+        }
+        if (minVariantPrice > 0) {
+          displayPrice = minVariantPrice;
+          showAsStartingFrom = true;
         }
       }
     }
@@ -85,7 +107,7 @@ class ProductItem extends StatelessWidget {
                       children: [
                         if (isAvailable) ...[
                           Text(
-                            category.isCustomizable ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
+                            (category.isCustomizable || showAsStartingFrom) ? 'A partir de ${displayPrice.toCurrency}' : displayPrice.toCurrency,
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                           if (hasPromo) ...[

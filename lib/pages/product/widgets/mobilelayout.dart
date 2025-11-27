@@ -430,13 +430,49 @@ class _MobileProductPageState extends State<MobileProductPage> {
           ),
         ],
 
-        if (product.product.description != null && //
-            product.product.description!.isNotEmpty) ...[ //
+        // ✅ REGRAS DE PIZZA OU DESCRIÇÃO
+        if (product.category.isCustomizable) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Importante:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'A pizza de mais de 1 sabor será cobrada pelo preço cheio do sabor mais caro.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else if (product.product.description != null &&
+            product.product.description!.isNotEmpty) ...[
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
-              product.product.description!, //
+              product.product.description!,
               style: widget.theme.bodyTextStyle.colored(Colors.grey.shade600),
             ),
           ),
@@ -444,12 +480,19 @@ class _MobileProductPageState extends State<MobileProductPage> {
         const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            product.totalPrice.toCurrency, //
-            style: widget.theme.displayLargeTextStyle
-                .colored(widget.theme.productTextColor)
-                .weighted(FontWeight.bold),
-          ),
+          child: product.category.isCustomizable && product.totalPrice == 0
+              ? Text(
+                  'A partir de ${product.startingPrice.toCurrency}',
+                  style: widget.theme.displayLargeTextStyle
+                      .colored(Colors.green.shade700)
+                      .weighted(FontWeight.bold),
+                )
+              : Text(
+                  product.totalPrice.toCurrency,
+                  style: widget.theme.displayLargeTextStyle
+                      .colored(widget.theme.productTextColor)
+                      .weighted(FontWeight.bold),
+                ),
         ),
         const SizedBox(height: 26),
         // ✅ ADICIONADO: Seleção de tamanho para produtos customizáveis (pizza, etc)
