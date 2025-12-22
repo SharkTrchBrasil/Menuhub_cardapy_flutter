@@ -9,6 +9,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:totem/core/router.dart';
@@ -23,168 +24,216 @@ import 'controllers/customer_controller.dart';
 import 'controllers/menu_app_controller.dart';
 import 'core/di.dart';
 import 'cubit/auth_cubit.dart';
+import 'cubit/orders_cubit.dart';
 import 'cubit/store_cubit.dart';
 import 'package:web/web.dart' as web;
 import 'utils/performance_optimizer.dart';
 
-void main() async {
+void main() {
+  // ✅ ENTERPRISE: Inicialização Imediata (Splash Screen)
+  // Removemos todos os 'await' antes do runApp para garantir feedback visual instantâneo.
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ✅ Carrega variáveis de ambiente
-  try {
-    await dotenv.load(fileName: 'assets/env');
-    print('✅ Arquivo .env carregado com sucesso');
-    print('   API_URL: ${dotenv.env['API_URL']?.substring(0, 30)}...');
-    print('   FIREBASE_API_KEY: ${dotenv.env['FIREBASE_API_KEY']?.substring(0, 10) ?? "NÃO ENCONTRADO"}...');
-  } catch (e) {
-    print('❌ Erro ao carregar arquivo .env: $e');
-    print('   Certifique-se de que o arquivo assets/env existe e está configurado no pubspec.yaml');
-  }
-  
   setPathUrlStrategy();
+  runApp(const AppBootstrapper());
+}
 
-  // ✅ Otimizações de performance para Flutter Web
-  PerformanceOptimizer.configureForWeb();
+class AppBootstrapper extends StatefulWidget {
+  const AppBootstrapper({super.key});
 
-  final storage = await HydratedStorage.build(
-    storageDirectory: kIsWeb
-        ? HydratedStorage.webStorageDirectory
-        : await getApplicationDocumentsDirectory(),
-  );
+  @override
+  State<AppBootstrapper> createState() => _AppBootstrapperState();
+}
 
-  HydratedBloc.storage = storage;
+class _AppBootstrapperState extends State<AppBootstrapper> {
+  bool _initialized = false;
+  String? _error;
 
-  // ✅ Load Firebase config from .env file
-  final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
-  final firebaseAuthDomain = dotenv.env['FIREBASE_AUTH_DOMAIN'] ?? '';
-  final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
-  final firebaseStorageBucket = dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? '';
-  final firebaseMessagingSenderId = dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '';
-  final firebaseAppId = dotenv.env['FIREBASE_APP_ID'] ?? '';
-  final firebaseMeasurementId = dotenv.env['FIREBASE_MEASUREMENT_ID'] ?? '';
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
 
-  // ✅ Valida credenciais antes de inicializar
-  if (firebaseApiKey.isEmpty || firebaseProjectId.isEmpty || firebaseAppId.isEmpty) {
-    print('⚠️ Firebase credentials not found in .env.');
-    print('   Required variables: FIREBASE_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_APP_ID');
-    print('   Firebase initialization will be skipped.');
-    print('   Google Sign-In will not be available.');
-  } else {
+  Future<void> _initializeApp() async {
     try {
-      print('🔥 [Firebase] Inicializando Firebase...');
-      print('   API Key: ${firebaseApiKey.substring(0, 10)}...');
-      print('   Project ID: $firebaseProjectId');
-      print('   Auth Domain: $firebaseAuthDomain');
+      // ✅ Carrega variáveis de ambiente
+      await dotenv.load(fileName: 'assets/env');
       
-      await Firebase.initializeApp(
-        options: FirebaseOptions(
-          apiKey: firebaseApiKey,
-          authDomain: firebaseAuthDomain,
-          projectId: firebaseProjectId,
-          storageBucket: firebaseStorageBucket,
-          messagingSenderId: firebaseMessagingSenderId,
-          appId: firebaseAppId,
-          measurementId: firebaseMeasurementId.isEmpty ? null : firebaseMeasurementId,
-        ),
+      // ✅ NOVO: Inicializa locale pt_BR para formatação de datas
+      await initializeDateFormatting('pt_BR', null);
+      
+      PerformanceOptimizer.configureForWeb();
+
+      final storage = await HydratedStorage.build(
+        storageDirectory: kIsWeb
+            ? HydratedStorage.webStorageDirectory
+            : await getApplicationDocumentsDirectory(),
       );
       
-      // ✅ Verifica se Firebase foi inicializado corretamente
-      final apps = Firebase.apps;
-      if (apps.isNotEmpty) {
-        print('✅ Firebase initialized successfully');
-        print('   App Name: ${apps.first.name}');
-        print('   Options: ${apps.first.options.projectId}');
-      } else {
-        print('⚠️ Firebase apps list is empty after initialization');
+      HydratedBloc.storage = storage;
+
+      // ✅ Load Firebase config from .env file
+      final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
+      final firebaseAuthDomain = dotenv.env['FIREBASE_AUTH_DOMAIN'] ?? '';
+      final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
+      final firebaseStorageBucket = dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? '';
+      final firebaseMessagingSenderId = dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '';
+      final firebaseAppId = dotenv.env['FIREBASE_APP_ID'] ?? '';
+      final firebaseMeasurementId = dotenv.env['FIREBASE_MEASUREMENT_ID'] ?? '';
+
+      if (firebaseApiKey.isNotEmpty && firebaseProjectId.isNotEmpty) {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: firebaseApiKey,
+            authDomain: firebaseAuthDomain,
+            projectId: firebaseProjectId,
+            storageBucket: firebaseStorageBucket,
+            messagingSenderId: firebaseMessagingSenderId,
+            appId: firebaseAppId,
+            measurementId: firebaseMeasurementId.isEmpty ? null : firebaseMeasurementId,
+          ),
+        );
       }
-    } catch (e, stackTrace) {
-      print('❌ Error initializing Firebase: $e');
-      print('   Stack: $stackTrace');
-      print('   Firebase features will be unavailable.');
+      
+      await configureDependencies();
+      
+      // Carrega dados iniciais essenciais
+      await getIt<CustomerController>().loadCustomerFromSecureStorage();
+      
+      // --- 🔐 FLUXO DE AUTENTICAÇÃO ---
+      try {
+        String storeUrl = _extractStoreUrlFromBrowser();
+        getIt.registerSingleton<String>(storeUrl, instanceName: 'storeUrl');
+        
+        final authRepo = getIt<AuthRepository>();
+        final authResult = await authRepo.getToken(storeUrl);
+        
+        if (authResult.isRight) {
+           final totemAuth = authResult.right;
+           final realtimeRepo = getIt<RealtimeRepository>();
+           await realtimeRepo.initialize(totemAuth.connectionToken);
+           
+           final authCubit = getIt<AuthCubit>();
+           await authCubit.checkInitialAuthStatus();
+           
+           getIt.registerSingleton<bool>(true, instanceName: 'isInitialized');
+           if (kIsWeb) {
+             web.window.dispatchEvent(web.Event('flutter_ready'));
+           }
+        } else {
+          // ✅ SEGURANÇA: Loja não encontrada ou erro de autenticação
+          print('❌ Falha na autenticação: ${authResult.left}');
+          getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
+          getIt.registerSingleton<String>(authResult.left, instanceName: 'authError');
+        }
+      } catch (e) {
+        print("❌ Erro crítico na auth: $e");
+        getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
+        getIt.registerSingleton<String>('Erro ao conectar com a loja', instanceName: 'authError');
+      }
+
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+        });
+      }
+    } catch (e) {
+      print('💥 ERRO CRÍTICO NA INICIALIZAÇÃO: $e');
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
     }
   }
 
-  configureDependencies();
-  // ✅ Carrega cliente do armazenamento seguro ao invés de SharedPreferences
-  await getIt<CustomerController>().loadCustomerFromSecureStorage();
-
-  // --- 🔐 FLUXO DE AUTENTICAÇÃO SEGURO E ROBUSTO ---
-  try {
-    // 1️⃣ Detecta o subdomínio da URL (ou usa padrão)
-    String storeUrl = _extractStoreUrlFromBrowser();
-    getIt.registerSingleton<String>(storeUrl, instanceName: 'storeUrl');
-    print('🏪 Autenticando na loja: $storeUrl');
-
-    // 2️⃣ Pega o repositório de autenticação
-    final authRepo = getIt<AuthRepository>();
-
-    // 3️⃣ Autentica na API REST. Esta chamada agora retorna:
-    //    - Tokens JWT (para o cliente)
-    //    - Um `connection_token` de uso único (para o WebSocket)
-    final authResult = await authRepo.getToken(storeUrl);
-
-    if (authResult.isLeft) {
-      throw Exception('❌ Falha na autenticação HTTP: ${authResult.left}');
-    }
-
-    final totemAuth = authResult.right;
-    print('✅ Autenticado via HTTP com sucesso na loja: ${totemAuth.storeName}');
-
-    // --- ✅ 4. MUDANÇA CRÍTICA ---
-    // Pega o repositório de tempo real e o inicializa com o token de conexão
-    // de curta duração que acabamos de receber.
-    final realtimeRepo = getIt<RealtimeRepository>();
-
-    print('🔌 Usando connection_token para conectar ao Socket.IO...');
-    await realtimeRepo.initialize(totemAuth.connectionToken);
-
-    print('✅ Socket.IO conectado com sucesso!');
-
-    // 5️⃣ O resto do fluxo continua normalmente
-    final authCubit = getIt<AuthCubit>();
-    await authCubit.checkInitialAuthStatus();
-
-    getIt.registerSingleton<bool>(true, instanceName: 'isInitialized');
-
+  // ✅ Função auxiliar para extrair slug da URL
+  String _extractStoreUrlFromBrowser() {
     if (kIsWeb) {
-      web.window.dispatchEvent(web.Event('flutter_ready'));
+      final hostname = web.window.location.hostname;
+      if (hostname.contains('.menuhub.com.br')) {
+        return hostname.split('.').first;
+      }
     }
-
-    print('🎉 Aplicação inicializada com sucesso!');
-  } catch (e, stackTrace) {
-    print('💥 ERRO CRÍTICO NA INICIALIZAÇÃO: $e');
-    print('Stack: $stackTrace');
-    getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
-
-    // TODO: Exibir tela de erro personalizada
+    return 'topburguer';
   }
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    if (kDebugMode) {
-      print('Erro capturado: ${details.exception}');
-      print('Stack: ${details.stack}');
-    }
-  };
-
-  runApp(MyApp());
-}
-// ✅ Função auxiliar para extrair slug da URL
-String _extractStoreUrlFromBrowser() {
-  if (kIsWeb) {
-    final hostname = web.window.location.hostname;
-
-    // Exemplo: topburguer.menuhub.com.br -> retorna 'topburguer'
-    if (hostname.contains('.menuhub.com.br')) {
-      return hostname.split('.').first;
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return MaterialApp(
+        home: Scaffold(
+          body: Center(child: Text("Erro fatal: $_error")),
+        ),
+      );
     }
 
-    // Exemplo: localhost ou domínio customizado -> usa padrão
-    print('⚠️ Hostname não reconhecido: $hostname, usando padrão');
+    if (!_initialized) {
+      // ✅ OTIMIZAÇÃO: Retorna widget vazio e deixa splash nativo do web aparecer
+      // Isso evita splash duplicado e melhora percepção de performance
+      return const SizedBox.shrink();
+    }
+    
+    // ✅ SEGURANÇA: Verifica se houve erro de autenticação
+    final authError = getIt.isRegistered<String>(instanceName: 'authError') 
+        ? getIt.get<String>(instanceName: 'authError') 
+        : null;
+    
+    if (authError != null) {
+      // ✅ SEGURANÇA: Mostra tela de erro ao invés de loading infinito
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 80,
+                    color: Color(0xFFEA1D2C),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Loja não encontrada',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    authError,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Verifique se o endereço está correto ou entre em contato com o estabelecimento.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return MyApp();
   }
-
-  // Fallback para desenvolvimento
-  return 'topburguer';
 }
 
 class MyApp extends StatelessWidget {
@@ -201,6 +250,7 @@ class MyApp extends StatelessWidget {
         BlocProvider<StoreCubit>.value(value: getIt<StoreCubit>()),
         BlocProvider<AddressCubit>.value(value: getIt<AddressCubit>()),
         BlocProvider<DeliveryFeeCubit>.value(value: getIt<DeliveryFeeCubit>()),
+        BlocProvider<OrdersCubit>.value(value: getIt<OrdersCubit>()),  // ✅ NOVO: Pedidos globais
         ChangeNotifierProvider<DsThemeSwitcher>.value(value: getIt()),
         ChangeNotifierProvider<MenuAppController>.value(value: getIt()),
       ],

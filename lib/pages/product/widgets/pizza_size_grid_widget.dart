@@ -6,7 +6,7 @@ import 'package:totem/models/option_item.dart';
 import 'package:totem/models/product.dart';
 
 /// Widget que exibe os tamanhos de pizza como cards em grid
-/// Similar ao layout do iFood: "PEQUENA (1 PEDAÇO)", "MÉDIA 2 SABORES (6 PEDAÇOS)", etc.
+/// Layout: "PEQUENA (1 PEDAÇO)", "MÉDIA 2 SABORES (6 PEDAÇOS)", etc.
 class PizzaSizeGridWidget extends StatelessWidget {
   final Category category;
   final OptionGroup sizeGroup;

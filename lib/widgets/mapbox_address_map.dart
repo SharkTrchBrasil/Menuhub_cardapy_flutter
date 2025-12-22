@@ -10,7 +10,7 @@ import 'package:totem/models/store.dart';
 import 'package:totem/models/store_city.dart';
 import 'package:totem/services/reverse_geocoding_service.dart';
 
-/// Widget de mapa interativo com formulário sobreposto (estilo iFood)
+/// Widget de mapa interativo com formulário sobreposto
 /// O formulário aparece como um bottom sheet sobre o mapa
 class MapboxAddressMap extends StatefulWidget {
   final double initialLatitude;
@@ -299,7 +299,7 @@ class _MapboxAddressMapState extends State<MapboxAddressMap> {
               ),
             ),
 
-          // ✅ FORMULÁRIO COMO BOTTOM SHEET (estilo iFood)
+          // ✅ FORMULÁRIO COMO BOTTOM SHEET
           if (_showForm)
             DraggableScrollableSheet(
               controller: _sheetController,

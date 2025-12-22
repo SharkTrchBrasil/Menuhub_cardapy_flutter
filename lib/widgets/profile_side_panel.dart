@@ -37,7 +37,7 @@ void showProfileSidePanel(BuildContext context) {
   );
 }
 
-/// SidePanel do perfil que desliza da direita para esquerda (estilo iFood)
+/// SidePanel do perfil que desliza da direita para esquerda
 class ProfileSidePanel extends StatelessWidget {
   const ProfileSidePanel({super.key});
 

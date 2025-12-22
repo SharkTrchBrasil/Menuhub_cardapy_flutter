@@ -3,11 +3,15 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/core/extensions.dart';
 import 'package:collection/collection.dart';
 import '../../../models/product.dart';
 import '../../../models/category.dart';
+import '../../../models/option_group.dart';
 import '../../../services/availability_service.dart';
+import '../../../pages/cart/cart_cubit.dart';
+import '../../../models/update_cart_payload.dart';
 
 class ProductItem extends StatelessWidget {
   final Product product;
@@ -27,9 +31,33 @@ class ProductItem extends StatelessWidget {
     int? originalPrice;
     bool showAsStartingFrom = false;
 
-    // Lógica de preço para categoria customizável (sabores)
+    // Lógica de preço para categoria customizável (pizzas)
     if (category.isCustomizable) {
-      if (product.prices.isNotEmpty) {
+      // ✅ CORREÇÃO: Para pizzas, busca o menor preço dos tamanhos
+      // O unitMinPrice que vem do backend agora é o preço CHEIO (não dividido)
+      final sizeGroup = category.optionGroups.firstWhereOrNull(
+        (g) => g.groupType == OptionGroupType.size,
+      );
+      
+      if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+        int minPrice = 99999999;
+        bool found = false;
+        
+        for (var size in sizeGroup.items.where((s) => s.isActive)) {
+          if (size.price > 0 && size.price < minPrice) {
+            minPrice = size.price;
+            found = true;
+          }
+        }
+        
+        if (found && minPrice < 99999999) {
+          displayPrice = minPrice;
+          showAsStartingFrom = true;
+        }
+      }
+      
+      // Fallback: Se não encontrou preço nos tamanhos, tenta product.prices
+      if (displayPrice == null && product.prices.isNotEmpty) {
         final validPrices = product.prices.where((p) => p.price > 0).map((p) => p.price);
         displayPrice = validPrices.isNotEmpty ? validPrices.reduce(min) : 0;
         showAsStartingFrom = true;
@@ -72,6 +100,11 @@ class ProductItem extends StatelessWidget {
 
     // ✅ VERIFICAÇÃO DE DISPONIBILIDADE
     final isAvailable = AvailabilityService.isProductAvailableNow(product);
+    
+    // ✅ Verifica se pode fazer Quick Add (produto simples sem variantes e não é pizza)
+    final hasVariants = product.variantLinks.isNotEmpty;
+    final isPizza = product.prices.isNotEmpty;
+    final canQuickAdd = isAvailable && !hasVariants && !isPizza;
 
     return GestureDetector(
       onTap: isAvailable ? onTap : null, // Desabilita clique se indisponível
@@ -153,7 +186,7 @@ class ProductItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              _buildProductImage(product, isAvailable),
+              _buildProductImage(context, product, isAvailable, canQuickAdd),
             ],
           ),
         ),
@@ -161,8 +194,8 @@ class ProductItem extends StatelessWidget {
     );
   }
 
-  Widget _buildProductImage(Product product, bool isAvailable) {
-    final coverImageUrl = product.coverImageUrl;
+  Widget _buildProductImage(BuildContext context, Product product, bool isAvailable, bool canQuickAdd) {
+    final coverImageUrl = product.imageUrl;
     return Stack(
       children: [
         ClipRRect(
@@ -195,8 +228,83 @@ class ProductItem extends StatelessWidget {
               ),
             ),
           ),
+        // ✅ NOVO: Botão Quick Add para produtos simples
+        if (canQuickAdd)
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: () => _handleQuickAdd(context),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.add,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  // ✅ NOVO: Função para adicionar produto simples ao carrinho rapidamente
+  Future<void> _handleQuickAdd(BuildContext context) async {
+    final firstCategoryLink = product.categoryLinks.firstOrNull;
+    if (firstCategoryLink == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: ${product.name} não pertence a nenhuma categoria.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final payload = UpdateCartItemPayload(
+      productId: product.id!,
+      categoryId: firstCategoryLink.categoryId,
+      quantity: 1,
+      variants: null,
+    );
+
+    try {
+      await context.read<CartCubit>().updateItem(payload);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${product.name} adicionado à sacola!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Não foi possível adicionar ${product.name}. Tente novamente.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildImagePlaceholder() {

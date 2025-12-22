@@ -1,0 +1,114 @@
+# =========================================
+# NGINX - Configuração Otimizada para Flutter Web
+# =========================================
+# Use esta configuração no seu servidor nginx para
+# melhorar a performance do cardápio.
+#
+# Localização típica: /etc/nginx/sites-available/menuhub
+# =========================================
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name topburguer.menuhub.com.br *.menuhub.com.br;
+    
+    # Redirecionar HTTP para HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name topburguer.menuhub.com.br *.menuhub.com.br;
+    
+    # Caminho para os arquivos Flutter Web
+    root /var/www/totem/build/web;
+    index index.html;
+
+    # =====================
+    # COMPRESSÃO
+    # =====================
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        application/wasm
+        image/svg+xml;
+
+    # Brotli (se disponível)
+    # brotli on;
+    # brotli_comp_level 6;
+    # brotli_types text/plain text/css application/javascript application/json application/wasm;
+
+    # =====================
+    # HEADERS DE SEGURANÇA
+    # =====================
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # =====================
+    # CACHE DE ASSETS
+    # =====================
+    
+    # Flutter bootstrap - cache curto (pode mudar entre builds)
+    location ~* flutter_bootstrap\.js$ {
+        expires 1h;
+        add_header Cache-Control "public, must-revalidate";
+    }
+    
+    # Service Worker - não fazer cache
+    location ~* flutter_service_worker\.js$ {
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+    
+    # JavaScript principal e WASM - cache longo
+    location ~* \.(js|wasm)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # CSS e fontes - cache longo
+    location ~* \.(css|woff|woff2|ttf|otf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Imagens - cache longo
+    location ~* \.(png|jpg|jpeg|gif|ico|svg|webp)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # index.html - não fazer cache (para atualizações)
+    location = /index.html {
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+    
+    # =====================
+    # ROTA PRINCIPAL (SPA)
+    # =====================
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # =====================
+    # SSL (ajuste para seu certificado)
+    # =====================
+    ssl_certificate /etc/letsencrypt/live/menuhub.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/menuhub.com.br/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+}

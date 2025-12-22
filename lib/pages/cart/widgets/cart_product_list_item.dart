@@ -23,7 +23,7 @@ class CartItemListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
 
-    // ✅ FUNÇÃO CORRIGIDA
+    // ✅ FUNÇÃO CORRIGIDA COM VALIDAÇÃO DE cartItemId
     UpdateCartItemPayload? createUpdatePayload(int newQuantity) {
       // 1. Pega o primeiro vínculo de categoria do produto.
       final firstCategoryLink = item.product.categoryLinks.firstOrNull;
@@ -35,8 +35,15 @@ class CartItemListItem extends StatelessWidget {
         // Retorna nulo para indicar que o payload não pôde ser criado.
         return null;
       }
+      
+      // ✅ VALIDAÇÃO ADICIONAL: Garante que item.id é válido para modo edição
+      if (item.id <= 0) {
+        print("ERRO: O item '${item.product.name}' não tem ID válido (id: ${item.id}).");
+        return null;
+      }
 
       // 3. Cria o payload com o categoryId correto.
+      print("🔍 [CART] Criando payload: cartItemId=${item.id}, productId=${item.product.id}, qty=$newQuantity");
       return UpdateCartItemPayload(
         cartItemId: item.id,
         productId: item.product.id!,
@@ -56,7 +63,8 @@ class CartItemListItem extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: CachedNetworkImage(
-                imageUrl: item.product.coverImageUrl ?? 'https://placehold.co/72/e0e0e0/a0a0a0?text=Sem+Foto',
+                // ✅ Usa sizeImageUrl (imagem do tamanho) se disponível, senão usa imageUrl do produto
+                imageUrl: item.sizeImageUrl ?? item.product.imageUrl ?? 'https://placehold.co/72/e0e0e0/a0a0a0?text=Sem+Foto',
                 height: 72,
                 width: 72,
                 fit: BoxFit.cover,
@@ -90,70 +98,78 @@ class CartItemListItem extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ✅ TÍTULO DO PRODUTO + CONTROLE DE QUANTIDADE
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.product.name,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: theme.cartTextColor.withOpacity(0.8)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ✅ TÍTULO DO PRODUTO
+                    Text(
+                      item.sizeName ?? item.product.name, 
+                      style: TextStyle(
+                        fontSize: 16, 
+                        fontWeight: FontWeight.w600, 
+                        color: theme.cartTextColor.withOpacity(0.8)
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  CartQuantityControl(
-                    quantity: item.quantity,
-                    textStyle: theme.bodyTextStyle.copyWith(fontWeight: FontWeight.bold),
-                    onRemove: () {
-                      final payload = createUpdatePayload(item.quantity - 1);
-                      if (payload != null) {
-                        context.read<CartCubit>().updateItem(payload);
-                      }
-                    },
-                    onAdd: () {
-                      final payload = createUpdatePayload(item.quantity + 1);
-                      if (payload != null) {
-                        context.read<CartCubit>().updateItem(payload);
-                      }
-                    },
-                  ),
-                ],
-              ),
-              
-              // ✅ DESCRIÇÃO DO PRODUTO (se houver)
-              if (item.product.description != null && item.product.description!.trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  item.product.description!,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: theme.cartTextColor.withOpacity(0.7)),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
 
-              if (item.product.description != null)
-              const SizedBox(height: 8),
-              _buildPriceSection(context, item, theme),
-              
-              // ✅ COMPLEMENTOS COM QUANTIDADE (AJUSTE 2)
-              if (item.variants.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _buildVariantsSection(item, theme),
-              ],
-              
-              // ✅ OBSERVAÇÃO (por último)
-              if (item.note != null && item.note!.trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  "Observação: ${item.note!.trim()}",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    // ✅ DESCRIÇÃO DO PRODUTO (se houver)
+                    if (item.product.description != null && item.product.description!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        item.product.description!,
+                        style: TextStyle(
+                          fontSize: 13, 
+                          fontWeight: FontWeight.w400, 
+                          color: theme.cartTextColor.withOpacity(0.7)
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+
+                    const SizedBox(height: 8),
+                    _buildPriceSection(context, item, theme),
+                    
+                    // ✅ COMPLEMENTOS
+                    if (item.variants.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _buildVariantsSection(item, theme),
+                    ],
+                    
+                    // ✅ OBSERVAÇÃO
+                    if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        "Observação: ${item.note!.trim()}",
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
+              const SizedBox(width: 12),
+              // ✅ CONTROLE DE QUANTIDADE AGORA ALINHADO À DIREITA DE TODO BLOCO
+              CartQuantityControl(
+                quantity: item.quantity,
+                textStyle: theme.bodyTextStyle.copyWith(fontWeight: FontWeight.bold),
+                onRemove: () {
+                  final payload = createUpdatePayload(item.quantity - 1);
+                  if (payload != null) {
+                    context.read<CartCubit>().updateItem(payload);
+                  }
+                },
+                onAdd: () {
+                  final payload = createUpdatePayload(item.quantity + 1);
+                  if (payload != null) {
+                    context.read<CartCubit>().updateItem(payload);
+                  }
+                },
+              ),
             ],
           ),
         ),
@@ -209,43 +225,137 @@ class CartItemListItem extends StatelessWidget {
     );
   }
 
-  // ✅ MÉTODO: Exibe complementos com quantidade antes do nome
+  // ✅ MÉTODO: Exibe complementos estilo iFood (linhas separadas)
+  // Formato iFood (imagem 04):
+  // - 1 Massa Tradicional + Borda Calabresa
+  // - 1 1/2 Pepperoni
+  // - 1 1/2 Pizza 4 queijos
   Widget _buildVariantsSection(CartItem item, DsTheme theme) {
-    final variantLines = <Widget>[];
+    // Agrupa opções por tipo
+    String? massaText;
+    String? bordaText;
+    final flavorTexts = <String>[];
+    final otherTexts = <String>[];
 
     for (final variant in item.variants) {
+      // ✅ Ignora variant de tamanho (SIZE) - já está no size_name
+      final isSizeGroup = variant.name.toLowerCase().contains('tamanho') || 
+          variant.name.toLowerCase().contains('size');
+      
+      if (isSizeGroup) {
+        continue;
+      }
+      
+      // Identifica tipo de grupo
+      final isMassaGroup = variant.name.toLowerCase().contains('massa');
+      final isBordaGroup = variant.name.toLowerCase().contains('borda') || 
+                           variant.name.toLowerCase().contains('edge');
+      final isFlavorGroup = variant.name.toLowerCase().contains('sabor') ||
+                            variant.name.toLowerCase().contains('topping') ||
+                            variant.name.toLowerCase().contains('flavor');
+      
       for (final option in variant.options) {
-        if (option.quantity > 0) {
-          variantLines.add(
-            Padding(
-              padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '• ',
-                    style: TextStyle(color: theme.cartTextColor.withOpacity(0.6)),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '${option.quantity}x ${option.name}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: theme.cartTextColor.withOpacity(0.8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
+        if (option.quantity > 0 && option.name.isNotEmpty) {
+          if (isMassaGroup) {
+            massaText = option.name;
+          } else if (isBordaGroup) {
+            bordaText = option.name;
+          } else if (isFlavorGroup) {
+            // ✅ Formato sabor: "1 1/2 Pepperoni" ou "1 Calabresa"
+            String displayText;
+            if (option.name.toLowerCase().contains('1/2') || 
+                option.name.toLowerCase().contains('1/3') ||
+                option.name.toLowerCase().contains('meio')) {
+              // Nome já contém fração
+              displayText = '1 ${option.name}';
+            } else {
+              // Adiciona "1" na frente (individual)
+              displayText = '1 ${option.name}';
+            }
+            flavorTexts.add(displayText);
+          } else {
+            // Outros complementos (adiconais etc)
+            if (option.quantity > 1) {
+              otherTexts.add('${option.quantity}x ${option.name}');
+            } else {
+              otherTexts.add('1x ${option.name}');
+            }
+          }
         }
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: variantLines,
+    // ✅ Monta lista de widgets em linhas separadas
+    final lineWidgets = <Widget>[];
+    
+    // Primeira linha: Massa + Borda (se houver)
+    if (massaText != null || bordaText != null) {
+      String combinedLine = '';
+      if (massaText != null && bordaText != null) {
+        combinedLine = '1 $massaText + Borda $bordaText';
+      } else if (massaText != null) {
+        combinedLine = '1 $massaText';
+      } else if (bordaText != null) {
+        combinedLine = '1 Borda $bordaText';
+      }
+      if (combinedLine.isNotEmpty) {
+        lineWidgets.add(_buildVariantLine(combinedLine, theme));
+      }
+    }
+    
+    // Linhas de sabores (um por linha)
+    for (final flavor in flavorTexts) {
+      lineWidgets.add(_buildVariantLine(flavor, theme));
+    }
+    
+    // Linhas de outros complementos (um por linha)
+    for (final other in otherTexts) {
+      lineWidgets.add(_buildVariantLine(other, theme));
+    }
+
+    if (lineWidgets.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: lineWidgets,
+      ),
+    );
+  }
+  
+  // ✅ Helper: Cria linha individual de variant
+  Widget _buildVariantLine(String text, DsTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Bullet point estilo iFood
+          Padding(
+            padding: const EdgeInsets.only(top: 6, right: 8),
+            child: Container(
+              width: 4,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.cartTextColor.withOpacity(0.5),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: theme.cartTextColor.withOpacity(0.7),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

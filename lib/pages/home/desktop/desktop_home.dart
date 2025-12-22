@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:totem/pages/home/desktop/desktop_home_with_appbar.dart';
 
 /// Desktop Home Page
-/// Implementação específica para desktop com AppBar estilo iFood
+/// Implementação específica para desktop com AppBar
 class DesktopHome extends StatelessWidget {
   const DesktopHome({super.key});
 

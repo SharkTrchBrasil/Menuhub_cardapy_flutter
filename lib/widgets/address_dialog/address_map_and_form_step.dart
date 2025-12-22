@@ -26,6 +26,8 @@ class AddressMapAndFormStep extends StatefulWidget {
   final Function(String) onFavoriteLabelChanged;
   // ✅ NOVO: Callback para atualizar coordenadas no pai
   final Function(double lat, double lon)? onCoordinatesChanged;
+  // ✅ NOVO: Se true, inicia diretamente no formulário (para edição)
+  final bool startWithForm;
 
   const AddressMapAndFormStep({
     super.key,
@@ -45,6 +47,7 @@ class AddressMapAndFormStep extends StatefulWidget {
     required this.favoriteLabel,
     required this.onFavoriteLabelChanged,
     this.onCoordinatesChanged,
+    this.startWithForm = false, // ✅ Por padrão, começa no mapa
   });
 
   @override
@@ -93,6 +96,11 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
     // Inicializa controllers com valores iniciais
     widget.streetController.text = _street;
     widget.neighborhoodController.text = _neighborhood;
+    
+    // ✅ Se startWithForm = true, abre direto no formulário
+    if (widget.startWithForm) {
+      _showForm = true;
+    }
   }
 
   @override
@@ -310,6 +318,9 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    // ✅ Em modo edição (startWithForm), não mostra seta de voltar
+    final showBackButton = !widget.startWithForm || !_showForm;
+    
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -317,26 +328,30 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            onPressed: () {
-              if (_showForm) {
-                setState(() => _showForm = false);
-              } else {
-                widget.onBack();
-              }
-            },
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          // ✅ Oculta seta de voltar em modo edição
+          if (showBackButton)
+            IconButton(
+              onPressed: () {
+                if (_showForm && !widget.startWithForm) {
+                  setState(() => _showForm = false);
+                } else {
+                  widget.onBack();
+                }
+              },
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-            ),
-            icon: Icon(
-              Icons.arrow_back_ios_rounded,
-              size: 18,
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
+              icon: Icon(
+                Icons.arrow_back_ios_rounded,
+                size: 18,
+                color: Theme.of(context).primaryColor,
+              ),
+            )
+          else
+            const SizedBox(width: 48), // Espaço para balancear quando não tem seta
           const Text(
             'ENDEREÇO',
             style: TextStyle(
@@ -628,6 +643,10 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
           decoration: InputDecoration(
             hintText: hintText,
+            hintStyle: TextStyle(
+              color: Colors.grey.shade400, // ✅ Cor mais clara para não confundir com texto digitado
+              fontWeight: FontWeight.normal,
+            ),
             filled: isReadOnly,
             fillColor: isReadOnly ? Colors.grey.shade100 : Colors.white,
             border: OutlineInputBorder(

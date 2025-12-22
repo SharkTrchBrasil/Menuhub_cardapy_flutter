@@ -3,7 +3,7 @@ import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/pages/home/desktop/desktop_home_with_appbar.dart';
 import 'simple_home_page.dart';
 
-/// Wrapper para desktop que usa AppBar horizontal estilo iFood
+/// Wrapper para desktop que usa AppBar horizontal
 class DesktopHomeWrapper extends StatelessWidget {
   const DesktopHomeWrapper({super.key});
 
@@ -14,7 +14,7 @@ class DesktopHomeWrapper extends StatelessWidget {
       return const SimpleHomePage();
     }
 
-    // Desktop usa AppBar horizontal estilo iFood (sem sidebar)
+    // Desktop usa AppBar horizontal (sem sidebar)
     return const DesktopHomeWithAppBar();
   }
 }

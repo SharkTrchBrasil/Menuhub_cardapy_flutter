@@ -42,7 +42,7 @@ class DesktopCart extends StatelessWidget {
     final allCategories = storeState.categories ?? [];
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
-    final minOrder = store?.store_operation_config?.deliveryMinOrder ?? 0;
+    final minOrder = store?.getMinOrderForDelivery() ?? 0;
 
     int deliveryFeeInCents = 0;
     if (deliveryFeeState is DeliveryFeeLoaded) {
@@ -182,8 +182,7 @@ class DesktopCart extends StatelessWidget {
                         const SizedBox(height: 32),
                         FreeShippingProgress(
                           cartTotal: cart.subtotal / 100.0,
-                          threshold:
-                              store?.store_operation_config?.freeDeliveryThreshold,
+                          threshold: store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 48),
                         OrderSummary(
@@ -211,9 +210,12 @@ class DesktopCart extends StatelessWidget {
   }
 
   Future<void> _handleProductTap(BuildContext context, Product product) async {
+    // ✅ CORREÇÃO: Verifica se tem variantes/complementos OU é pizza (tem prices)
     final hasVariants = product.variantLinks.isNotEmpty;
+    final isPizza = product.prices.isNotEmpty; // Pizza tem preços por sabor
 
-    if (hasVariants) {
+    // ✅ Se tem complementos OU é pizza, abre tela de detalhes (igual na home)
+    if (hasVariants || isPizza) {
       goToProductPage(context, product);
     } else {
       final firstCategoryLink = product.categoryLinks.firstOrNull;
@@ -264,7 +266,8 @@ class DesktopCart extends StatelessWidget {
   }
 }
 
-class _RecommendedProductsSection extends StatelessWidget {
+// ✅ MELHORADO: StatefulWidget para cachear recomendações e evitar reconstruções visíveis
+class _RecommendedProductsSection extends StatefulWidget {
   final List<Product> allProducts;
   final List<Category> allCategories;
   final List<CartItem> itemsInCart;
@@ -280,30 +283,72 @@ class _RecommendedProductsSection extends StatelessWidget {
   });
 
   @override
+  State<_RecommendedProductsSection> createState() => _RecommendedProductsSectionState();
+}
+
+class _RecommendedProductsSectionState extends State<_RecommendedProductsSection> {
+  List<Product> _cachedRecommendations = [];
+  List<int> _lastProductIds = []; // ✅ Lista ordenada para comparação estável
+  String _stableKey = ''; // ✅ Chave estável para o widget
+
+  @override
+  void initState() {
+    super.initState();
+    _updateRecommendations(widget.itemsInCart);
+  }
+
+  void _updateRecommendations(List<CartItem> items) {
+    // ✅ Cria lista ordenada de IDs para comparação estável
+    final currentProductIds = items
+        .map((item) => item.product.id ?? 0)
+        .where((id) => id > 0)
+        .toList()
+      ..sort();
+    
+    // ✅ Só recalcula se os PRODUTOS mudaram (ignora mudança de quantidade)
+    if (!_listEquals(_lastProductIds, currentProductIds)) {
+      _lastProductIds = currentProductIds;
+      _stableKey = currentProductIds.join('-'); // Chave estável baseada nos IDs
+      _cachedRecommendations = ProductRecommendationService.getRecommendedProducts(
+        allProducts: widget.allProducts,
+        allCategories: widget.allCategories,
+        itemsInCart: items,
+        maxItems: 10,
+      );
+    }
+  }
+  
+  // ✅ Helper para comparar listas de forma segura
+  bool _listEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return BlocBuilder<CartCubit, CartState>(
-      buildWhen: (previous, current) {
-        final previousIds = previous.cart.items.map((item) => item.product.id).toSet();
-        final currentIds = current.cart.items.map((item) => item.product.id).toSet();
-        return previousIds != currentIds;
-      },
-      builder: (context, state) {
-        final recommendedProducts = ProductRecommendationService.getRecommendedProducts(
-          allProducts: allProducts,
-          allCategories: allCategories,
-          itemsInCart: state.cart.items,
-          maxItems: 10,
-        );
+    // ✅ NÃO usa BlocBuilder aqui - as recomendações são calculadas apenas no initState
+    // e quando o didUpdateWidget é chamado (quando os produtos do carrinho mudam)
+    
+    if (_cachedRecommendations.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-        if (recommendedProducts.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        return RecommendedProductsSection(
-          recommendedProducts: recommendedProducts,
-          onProductTap: onProductTap,
-        );
-      },
+    // ✅ Usa chave estável - não muda se apenas quantidade mudou
+    return RecommendedProductsSection(
+      key: ValueKey(_stableKey),
+      recommendedProducts: _cachedRecommendations,
+      allCategories: widget.allCategories,
+      onProductTap: widget.onProductTap,
     );
+  }
+  
+  @override
+  void didUpdateWidget(covariant _RecommendedProductsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // ✅ Recalcula apenas se a lista de itens do carrinho mudou
+    _updateRecommendations(widget.itemsInCart);
   }
 }

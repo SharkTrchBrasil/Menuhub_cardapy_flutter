@@ -9,22 +9,28 @@ import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page.dart';
+import '../helpers/enums/product_status.dart';
+import '../helpers/enums/product_type.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../models/payment_method.dart';
 import '../models/product.dart';
+import '../models/category.dart';
+import '../models/product_category_link.dart';
+import '../core/enums/available_type.dart'; // ✅ Import correto
+import 'package:collection/collection.dart';
 import '../pages/address/address_page.dart';
 import '../pages/address/address_selection_page.dart';
 import '../pages/cart/cart_page.dart';
 import '../pages/checkout/checkout_page.dart';
+import '../pages/checkout/desktop_checkout_page.dart';
 import '../pages/coupon/coupon_page.dart';
 import '../pages/not_found/error_505_Page.dart';
 import '../pages/order/order_confirmation_page.dart';
 import '../pages/product/product_page_adaptive.dart';
 import '../pages/product/product_page_cubit.dart';
-import '../pages/signin/signin_page.dart'; // ✅ Importe a OnboardingPage
+import '../pages/signin/signin_page.dart';
 import '../pages/store/store_details.dart';
-import '../pages/success/order_success.dart';
 import '../pages/profile/profile_screem.dart';
 import '../pages/profile/edit_profile_page.dart';
 import '../pages/orders/order_history_page.dart';
@@ -41,7 +47,23 @@ import '../pages/home/desktop_home_wrapper.dart';
 import '../pages/main_tab/main_tab_page.dart';
 import '../widgets/desktop_page_wrapper.dart';
 import '../core/responsive_builder.dart';
+import '../pages/checkout/order_submission_page.dart'; // ✅ NOVO: Página de animação ao enviar pedido
+import '../pages/checkout/checkout_cubit.dart'; // ✅ CORREÇÃO: Import para o cubit
+import '../pages/pix_payment/pix_payment_page.dart'; // ✅ NOVO: Página de pagamento PIX
+import '../core/utils/id_obfuscator.dart'; // ✅ ENTERPRISE: Ofuscação de IDs em URLs
 import 'di.dart';
+
+/// ✅ ENTERPRISE: Decodifica ID de produto da URL ofuscada
+/// URL: /product/x-burguer-kX7h -> ID 123
+int? _decodeProductId(String slugWithId) {
+  return IdObfuscator.decodeFromProductUrl(slugWithId);
+}
+
+/// ✅ ENTERPRISE: Cria URL de produto com ID ofuscado
+/// ID 123 + "X-Burguer" -> "x-burguer-kX7h"
+String createProductUrl(int productId, String productName) {
+  return IdObfuscator.createProductUrl(productName, productId);
+}
 
 GoRouter createGoRouter() {
   final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -133,14 +155,52 @@ GoRouter createGoRouter() {
               ),
               GoRoute(
                 path: 'checkout',
-                pageBuilder: (context, state) => CustomTransitionPage(
-                  child: const CheckoutPage(),
-                  opaque: false,
-                  barrierDismissible: true,
-                  barrierColor: Colors.black45,
-                  transitionsBuilder: (_, animation, __, child) =>
-                      FadeTransition(opacity: animation, child: child),
-                ),
+                pageBuilder: (context, state) {
+                  final isDesktop = MediaQuery.of(context).size.width >= 768;
+                  
+                  // ✅ Desktop: usa checkout unificado com duas colunas
+                  if (isDesktop) {
+                    return MaterialPage(
+                      child: DesktopPageWrapper(child: const DesktopCheckoutPage()),
+                    );
+                  }
+                  
+                  // Mobile: mantém fluxo original
+                  return CustomTransitionPage(
+                    child: const CheckoutPage(),
+                    opaque: false,
+                    barrierDismissible: true,
+                    barrierColor: Colors.black45,
+                    transitionsBuilder: (_, animation, __, child) =>
+                        FadeTransition(opacity: animation, child: child),
+                  );
+                },
+              ),
+              // ✅ NOVO: Página de animação ao enviar pedido
+              GoRoute(
+                path: 'order/submitting',
+                builder: (context, state) {
+                  // ✅ CORREÇÃO: Recebe o CheckoutCubit via extra para manter o escopo
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final checkoutCubit = extra?['checkoutCubit'] as CheckoutCubit?;
+                  
+                  if (checkoutCubit != null) {
+                    return BlocProvider.value(
+                      value: checkoutCubit,
+                      child: const OrderSubmissionPage(),
+                    );
+                  }
+                  
+                  // Fallback: Se não recebeu o cubit, volta para checkout
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      context.go('/checkout');
+                    }
+                  });
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                },
               ),
               GoRoute(
                 path: 'address',
@@ -182,10 +242,117 @@ GoRouter createGoRouter() {
                   );
                 },
               ),
+              // ✅ NOVO: Rota para categorias customizáveis (Pizzas) sem produto base
               GoRoute(
-                path: 'product/:productSlug/:id',
+                path: 'category/:slug/:categoryId',
                 pageBuilder: (context, state) {
-                  final productId = int.tryParse(state.pathParameters['id'] ?? '');
+                  final categoryId = int.tryParse(state.pathParameters['categoryId'] ?? '');
+                  final sizeId = int.tryParse(state.uri.queryParameters['size'] ?? '');
+                  var category = state.extra as Category?;
+                  
+                  // Se não veio no extra, tenta buscar no StoreCubit
+                  if (category == null && categoryId != null) {
+                     final storeState = context.read<StoreCubit>().state;
+                     category = storeState.categories.firstWhereOrNull((c) => c.id == categoryId);
+                  }
+
+                  if (categoryId == null || category == null) {
+                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Categoria não encontrada"))));
+                  }
+
+                  // Cria produto virtual para o Cubit
+                  final virtualProduct = Product(
+                    id: 0, // ID virtual
+                    name: category.name,
+                    description: category.description,
+                    images: category.image != null ? [category.image!] : [],
+                    prices: [], 
+                    categoryLinks: [ProductCategoryLink(productId: 0, categoryId: category.id!, price: 0)], // ✅ Corrigido: productId=0, sem position
+                    status: ProductStatus.ACTIVE,
+                    storeId: 0,
+                    productType: ProductType.INDIVIDUAL, // ✅ Corrigido: INDIVIDUAL
+                    availabilityType: AvailabilityType.always, // ✅ Corrigido: always (minúsculo)
+                  );
+
+                  final isDesktop = MediaQuery.of(context).size.width >= 768;
+
+                  final pageContent = BlocProvider<ProductPageCubit>(
+                    create: (context) => ProductPageCubit(
+                      productId: 0,
+                      repository: getIt<StoreRepository>(),
+                      storeCubit: context.read<StoreCubit>(),
+                    )..loadProduct(
+                      initialProduct: virtualProduct,
+                      sizeId: sizeId,
+                    ),
+                    child: const ProductPageAdaptive(),
+                  );
+
+                  if (isDesktop) {
+                    return CustomTransitionPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                      barrierDismissible: true,
+                      barrierColor: Colors.black.withOpacity(0.6),
+                      opaque: false,
+                      transitionDuration: const Duration(milliseconds: 200),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    );
+                  } else {
+                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                  }
+                },
+              ),
+              // ✅ NOVO: Rota para URLs com ID criptografado (compartilhamento)
+              // URL: /produto/x-burguer-xK7hG2n
+              GoRoute(
+                path: 'produto/:encodedSlug',
+                pageBuilder: (context, state) {
+                  final encodedSlug = state.pathParameters['encodedSlug'] ?? '';
+                  final shareToken = state.uri.queryParameters['t'];
+                  
+                  if (encodedSlug.isEmpty) {
+                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
+                  }
+                  
+                  final isDesktop = MediaQuery.of(context).size.width >= 768;
+                  
+                  // Widget que resolve o ID e carrega o produto
+                  final pageContent = _ProductResolver(
+                    encodedSlug: encodedSlug,
+                    shareToken: shareToken,
+                    isDesktop: isDesktop,
+                  );
+                  
+                  if (isDesktop) {
+                    return CustomTransitionPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                      barrierDismissible: true,
+                      barrierColor: Colors.black.withOpacity(0.6),
+                      opaque: false,
+                      transitionDuration: const Duration(milliseconds: 200),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    );
+                  } else {
+                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                  }
+                },
+              ),
+              // ✅ ENTERPRISE: Rota com ID ofuscado (novo formato)
+              // URL: /product/x-burguer-kX7h (slug + ID ofuscado)
+              GoRoute(
+                path: 'product/:productSlugWithId',
+                pageBuilder: (context, state) {
+                  final slugWithId = state.pathParameters['productSlugWithId'] ?? '';
+                  
+                  // Importa o ofuscador
+                  final productId = _decodeProductId(slugWithId);
+                  
                   if (productId == null) {
                     return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
                   }
@@ -240,6 +407,31 @@ GoRouter createGoRouter() {
                   );
                 },
               ),
+              // ✅ NOVO: Página de pagamento PIX com QR Code
+              GoRoute(
+                path: 'pix-payment',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  if (extra == null) {
+                    // Sem dados, volta para home
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (context.mounted) context.go('/');
+                    });
+                    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                  }
+                  
+                  return PixPaymentPage(
+                    totalCents: extra['totalCents'] as int? ?? 0,
+                    pixKey: extra['pixKey'] as String? ?? '',
+                    pixKeyType: extra['pixKeyType'] as String?,
+                    storeName: extra['storeName'] as String? ?? '',
+                    storeCity: extra['storeCity'] as String? ?? '',
+                    orderNumber: extra['orderNumber'] as String?,
+                    orderId: extra['orderId'] as int?,
+                    order: extra['order'] as Order?, // ✅ NOVO: Order completo para navegação
+                  );
+                },
+              ),
               GoRoute(
                 path: 'profile',
                 builder: (context, state) {
@@ -275,11 +467,32 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'order/:id',
                 builder: (context, state) {
-                  final id = int.tryParse(state.pathParameters['id'] ?? '');
-                  if (id == null) {
-                    return const Scaffold(body: Center(child: Text('ID inválido')));
+                  // ✅ OTIMIZADO: Recebe Order via extra, sem fazer GET
+                  final order = state.extra as Order?;
+                  
+                  if (order == null) {
+                    // Fallback: se não recebeu o Order, volta para histórico
+                    return Scaffold(
+                      appBar: AppBar(title: const Text('Pedido não encontrado')),
+                      body: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, size: 64, color: Colors.orange),
+                            const SizedBox(height: 16),
+                            const Text('Pedido não encontrado.'),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => context.go('/orders/history'),
+                              child: const Text('Ir para Pedidos'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   }
-                  return OrderDetailPage(orderId: id);
+                  
+                  return OrderDetailPage(order: order);
                 },
               ),
               GoRoute(
@@ -418,5 +631,110 @@ Future<void> _validateAndOpenCart(BuildContext context, int cartId, String token
       );
       context.go('/');
     }
+  }
+}
+
+/// ✅ NOVO: Widget que resolve ID criptografado e carrega página do produto
+class _ProductResolver extends StatefulWidget {
+  final String encodedSlug;
+  final String? shareToken;
+  final bool isDesktop;
+  
+  const _ProductResolver({
+    required this.encodedSlug,
+    this.shareToken,
+    required this.isDesktop,
+  });
+  
+  @override
+  State<_ProductResolver> createState() => _ProductResolverState();
+}
+
+class _ProductResolverState extends State<_ProductResolver> {
+  bool _isLoading = true;
+  String? _error;
+  
+  @override
+  void initState() {
+    super.initState();
+    _resolveProduct();
+  }
+  
+  Future<void> _resolveProduct() async {
+    try {
+      final dio = GetIt.I<Dio>();
+      
+      // Chama API para resolver o ID criptografado
+      final response = await dio.get(
+        '/products/resolve/${widget.encodedSlug}',
+        queryParameters: widget.shareToken != null ? {'t': widget.shareToken} : null,
+      );
+      
+      if (response.statusCode == 200) {
+        final productId = response.data['product_id'] as int;
+        final productName = response.data['product_name'] as String;
+        
+        // ✅ ENTERPRISE: Usa ID ofuscado na URL
+        final productUrl = IdObfuscator.createProductUrl(productName, productId);
+        
+        // Redireciona para a rota existente com ID ofuscado
+        if (mounted) {
+          context.go('/product/$productUrl');
+        }
+      } else {
+        setState(() {
+          _error = 'Produto não encontrado';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Erro ao resolver produto: $e');
+      setState(() {
+        _error = 'Erro ao carregar produto';
+        _isLoading = false;
+      });
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Carregando produto...'),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Produto')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.orange),
+              const SizedBox(height: 16),
+              Text(_error!),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => context.go('/'),
+                child: const Text('Voltar ao Cardápio'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Não deve chegar aqui (redirect acontece antes)
+    return const SizedBox.shrink();
   }
 }

@@ -22,11 +22,26 @@ class ProductRecommendationService {
     final productIdsInCart = itemsInCart.map((item) => item.product.id).toSet();
     
     // ✅ Filtra produtos elegíveis (não estão no carrinho, têm imagem, estão ativos)
+    // ✅ CORREÇÃO: Filtra produtos arquivados e produtos que são apenas linked_products (sabores de pizza)
     final eligibleProducts = allProducts.where((p) {
-      return p.id != null &&
-          !productIdsInCart.contains(p.id) &&
-          (p.coverImageUrl?.isNotEmpty ?? false) &&
-          p.status.name == 'ACTIVE';
+      // Verifica se é um produto válido
+      if (p.id == null) return false;
+      
+      // Não está no carrinho
+      if (productIdsInCart.contains(p.id)) return false;
+      
+      // Tem imagem
+      if (p.imageUrl?.isEmpty ?? true) return false;
+      
+      // Está ativo (não arquivado, não pausado)
+      if (p.status.name != 'ACTIVE') return false;
+      
+      // ✅ CORREÇÃO: Filtra produtos que são apenas linked_products (sabores de pizza)
+      // Um produto deve ter categoryLinks para aparecer como recomendação
+      // Se não tem categoryLinks, é provavelmente apenas um sabor de pizza
+      if (p.categoryLinks.isEmpty) return false;
+      
+      return true;
     }).toList();
 
     if (eligibleProducts.isEmpty) return [];
@@ -143,26 +158,13 @@ class ProductRecommendationService {
       return !currentIds.contains(p.id);
     }).toList();
 
-    // ✅ Ordena por popularidade: produtos em destaque primeiro, depois por rating
+    // ✅ Ordena por popularidade: produtos em destaque primeiro
     popular.sort((a, b) {
       // 1. Produtos em destaque primeiro
       if (a.featured != b.featured) return a.featured ? -1 : 1;
       
-      // 2. Produtos com melhor rating primeiro
-      if (a.rating != null && b.rating != null) {
-        final aAvg = a.rating!.averageRating;
-        final bAvg = b.rating!.averageRating;
-        if (aAvg != bAvg) return bAvg.compareTo(aAvg);
-        
-        // Se rating igual, ordena por número de avaliações
-        final aCount = a.rating!.totalRatings;
-        final bCount = b.rating!.totalRatings;
-        if (aCount != bCount) return bCount.compareTo(aCount);
-      } else if (a.rating != null) {
-        return -1; // A tem rating, B não - A vem primeiro
-      } else if (b.rating != null) {
-        return 1; // B tem rating, A não - B vem primeiro
-      }
+      // 2. Ordena por vendas (soldCount) como fallback
+      if (a.soldCount != b.soldCount) return b.soldCount.compareTo(a.soldCount);
       
       return 0; // Mantém ordem original se tudo for igual
     });

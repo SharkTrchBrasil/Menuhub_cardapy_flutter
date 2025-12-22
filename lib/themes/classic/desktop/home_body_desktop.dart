@@ -143,7 +143,23 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
 
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 150) {
       final lastCategoryWithProducts = widget.categories.lastWhereOrNull(
-            (cat) => _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == cat.id)),
+            (cat) {
+              // Categorias customizáveis (pizzas) sempre aparecem
+              if (cat.isCustomizable) {
+                return true;
+              }
+              
+              // Verifica se há produtos com categoryLinks apontando para esta categoria
+              final hasProductsWithLinks = _filteredProducts.any((p) => 
+                p.categoryLinks.any((link) => link.categoryId == cat.id));
+              
+              // Verifica se a categoria tem productLinks que correspondem a produtos existentes
+              final hasCategoryLinks = cat.productLinks.isNotEmpty && 
+                cat.productLinks.any((link) => 
+                  _filteredProducts.any((p) => p.id == link.productId));
+              
+              return hasProductsWithLinks || hasCategoryLinks;
+            },
       );
       if(lastCategoryWithProducts != null) {
         newSelectedCategory = lastCategoryWithProducts;
@@ -184,9 +200,27 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
 
   /// ✅ Constrói as seções de grid de produtos por categoria
   List<Widget> _buildCategoryGridSection(BuildContext context, Category category) {
-    final categoryProducts = _filteredProducts.where((product) {
-      return product.categoryLinks.any((link) => link.categoryId == category.id);
+    // ✅ Filtra produtos da categoria considerando múltiplas formas de associação
+    var categoryProducts = _filteredProducts.where((product) {
+      // 1. Verifica se tem categoryLinks apontando para esta categoria
+      final hasCategoryLinks = product.categoryLinks.any((link) => link.categoryId == category.id);
+      
+      // 2. Verifica se primaryCategoryId aponta para esta categoria
+      final hasPrimaryCategory = product.primaryCategoryId == category.id;
+      
+      // 3. Verifica se a categoria tem productLinks que apontam para este produto
+      final hasProductLink = category.productLinks.any((link) => link.productId == product.id);
+      
+      return hasCategoryLinks || hasPrimaryCategory || hasProductLink;
     }).toList();
+
+    // ✅ Se não encontrou produtos na lista filtrada, mas a categoria tem productLinks,
+    // busca os produtos correspondentes na lista completa
+    if (categoryProducts.isEmpty && category.productLinks.isNotEmpty) {
+      categoryProducts = widget.products.where((product) {
+        return category.productLinks.any((link) => link.productId == product.id);
+      }).toList();
+    }
 
     if (categoryProducts.isEmpty) return [];
 
@@ -194,12 +228,11 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
     if (category.isCustomizable) {
       final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
       
+      // ✅ Se houver OptionGroup de tamanhos, usa ele
       if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
         final activeSizes = sizeGroup.items.where((s) => s.isActive).toList();
         
         if (activeSizes.isEmpty) return [];
-
-
 
         // Calcula o preço mínimo para cada tamanho
         final Map<int, int> minPrices = {};
@@ -259,6 +292,32 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                   );
                 }
               },
+            ),
+          ),
+        ];
+      } else {
+        // ✅ FORMATO ANTIGO: Se não houver OptionGroup de tamanhos, exibe os produtos como tamanhos
+        return [
+          SliverToBoxAdapter(
+            key: _categoryKeys[category.id],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 16),
+              child: Text(
+                category.name,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 60),
+            sliver: ProductGridList(
+              products: categoryProducts,
+              category: category,
+              onProductTap: (product) => NavigationHelper.showProductDialog(
+                context: context,
+                product: product,
+                category: category,
+              ),
             ),
           ),
         ];
@@ -477,7 +536,23 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
                             isExpanded: true,
                             icon: const Icon(Icons.keyboard_arrow_down),
                             items: widget.categories
-                                .where((cat) => _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == cat.id)))
+                                .where((cat) {
+                                  // Categorias customizáveis (pizzas) sempre aparecem
+                                  if (cat.isCustomizable) {
+                                    return true;
+                                  }
+                                  
+                                  // Verifica se há produtos com categoryLinks apontando para esta categoria
+                                  final hasProductsWithLinks = _filteredProducts.any((p) => 
+                                    p.categoryLinks.any((link) => link.categoryId == cat.id));
+                                  
+                                  // Verifica se a categoria tem productLinks que correspondem a produtos existentes
+                                  final hasCategoryLinks = cat.productLinks.isNotEmpty && 
+                                    cat.productLinks.any((link) => 
+                                      _filteredProducts.any((p) => p.id == link.productId));
+                                  
+                                  return hasProductsWithLinks || hasCategoryLinks;
+                                })
                                 .map((Category category) {
                               return DropdownMenuItem<Category>(
                                 value: category,

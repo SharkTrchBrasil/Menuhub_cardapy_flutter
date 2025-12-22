@@ -6,7 +6,7 @@ import '../models/product.dart';
 
 Widget _buildProductImage(Product product) {
   // ✅ NOVA LÓGICA: Usa a galeria de imagens
-  final coverImageUrl = product.coverImageUrl; // Já usa a galeria internamente
+  final coverImageUrl = product.imageUrl; // Já usa a galeria internamente
 
   return ClipRRect(
     borderRadius: BorderRadius.circular(8.0),

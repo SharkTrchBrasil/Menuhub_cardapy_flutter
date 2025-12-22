@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart'; // ✅ Import Geolocator
+import 'package:collection/collection.dart'; // ✅ Collection for firstWhereOrNull
 
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/themes/classic/widgets/store_hours_widget.dart';
-
+import 'package:totem/core/extensions.dart'; // ToCurrency
 
 import '../../../cubit/store_cubit.dart';
-
-
 import '../../ds_theme_switcher.dart';
-
+import '../../../pages/address/cubits/address_cubit.dart';
+import '../../../services/store_status_service.dart';
+import '../../../helpers/store_hours_helper.dart';
 
 class StoreCardData extends StatelessWidget {
   const StoreCardData({super.key});
@@ -23,286 +25,266 @@ class StoreCardData extends StatelessWidget {
     final double realSpaceNeeded = xyz / 2;
     final theme = context.watch<DsThemeSwitcher>().theme;
 
-    // ✅ 2. A GUARDA DE SEGURANÇA:
-    // Se a loja ainda não carregou, mostramos um widget de placeholder/loading.
+    // ✅ Get User Address for Distance Calculation
+    final addressState = context.watch<AddressCubit>().state;
+    final userAddress = addressState.selectedAddress;
+
+    // ✅ SEGURANÇA: Store Loading
     if (store == null) {
       return SliverAppBar(
-        expandedHeight: isDesktop ? 250 : 220,
+        expandedHeight: isDesktop ? 250 : 250, // Increased height for mobile too to fit new layout
         pinned: false,
         backgroundColor: theme.sidebarBackgroundColor,
-        // Mostra um loading simples enquanto os dados não chegam
         flexibleSpace: const Center(
           child: CircularProgressIndicator(),
         ),
       );
     }
 
-
-
-
-    final imageUrl = (store?.image?.url?.isNotEmpty ?? false)
-        ? store!.image!.url!
+    final imageUrl = (store.image?.url?.isNotEmpty ?? false)
+        ? store.image!.url!
         : 'https://images.ctfassets.net/kugm9fp9ib18/3aHPaEUU9HKYSVj1CTng58/d6750b97344c1dc31bdd09312d74ea5b/menu-default-image_220606_web.png';
 
-    final pedidoMinimo = store?.store_operation_config?.deliveryMinOrder!.toStringAsFixed(2) ?? '0.00';
-    final tempoEntrega = store?.store_operation_config != null
-        ? '${store!.store_operation_config!.deliveryEstimatedMin}-${store.store_operation_config!.deliveryEstimatedMax} min'
-        : '30-45 min';
+    // ✅ CALCULAR DISTÂNCIA
+    String? distanceText;
+    if (userAddress?.latitude != null && userAddress?.longitude != null && 
+        store.latitude != null && store.longitude != null) {
+      try {
+        final distMeters = Geolocator.distanceBetween(
+          userAddress!.latitude!, 
+          userAddress.longitude!, 
+          store.latitude!, 
+          store.longitude!
+        );
+        if (distMeters < 1000) {
+          distanceText = '${distMeters.round()} m';
+        } else {
+          distanceText = '${(distMeters / 1000).toStringAsFixed(1)} km';
+        }
+      } catch (e) {
+        // Ignora erro de calculo
+      }
+    }
+
+    // ✅ VALIDAR STATUS DA LOJA (Aberto/Fechado)
+    final storeStatus = StoreStatusService.validateStoreStatus(store);
+    final isClosed = !storeStatus.canReceiveOrders;
+    
+    // Texto de "Abre X" ou "Fecha Y"
+    final statusMsg = StoreStatusHelper(hours: store.hours).statusMessage;
+
+    // ✅ DADOS DE ENTREGA E PEDIDO MÍNIMO
+    final minOrderVal = store.getMinOrderForDelivery();
+    final hasMinOrder = minOrderVal > 0;
+    
+    // Tenta pegar regra ativa para tempo e preço
+    final activeDeliveryRule = store.deliveryFeeRules
+        .where((r) => r.isActive && r.deliveryMethod == 'delivery')
+        .firstOrNull;
+
+    // Tempo de entrega (Prioriza regra, depois config da loja)
+    String deliveryTimeText;
+    if (activeDeliveryRule?.estimatedMinMinutes != null) {
+      deliveryTimeText = '${activeRuleValue(activeDeliveryRule?.estimatedMinMinutes)}-${activeRuleValue(activeDeliveryRule?.estimatedMaxMinutes)} min';
+    } else {
+      deliveryTimeText = store.store_operation_config != null
+          ? '${store.store_operation_config!.deliveryEstimatedMin}-${store.store_operation_config!.deliveryEstimatedMax} min'
+          : '30-45 min';
+    }
+
+    // Frete grátis a partir de X (só exibe se free_delivery_threshold > 0)
+    // ✅ CORREÇÃO: O frete real é calculado dinamicamente baseado no endereço e regras
+    // Aqui só exibimos se há promoção de "frete grátis a partir de X"
+    // ✅ OBSERVAÇÃO: freeDeliveryThreshold já vem em REAIS (conversão feita no DeliveryFeeRule.fromJson)
+    String? freeDeliveryText;
+    if (activeDeliveryRule != null) {
+      final freeThreshold = activeDeliveryRule.freeDeliveryThreshold ?? 0;
+      
+      // Só mostra se tiver threshold de frete grátis configurado e > 0
+      if (freeThreshold > 0) {
+        // ✅ CORREÇÃO: Valor já está em REAIS, não precisa dividir por 100
+        freeDeliveryText = 'Frete grátis a partir de ${freeThreshold.toCurrency()}';
+      }
+      // Se freeThreshold é 0 ou nulo, não mostra nada (frete será calculado dinamicamente)
+    }
 
     return SliverAppBar(
-      expandedHeight: isDesktop ? 250 : 220,
-      pinned: false,
-      elevation: 0.5,
+      expandedHeight: isDesktop ? 220 : 200,
+      pinned: false, // ✅ Não fixa no topo - apenas o header sticky deve ficar fixo
       backgroundColor: theme.sidebarBackgroundColor,
-      flexibleSpace: LayoutBuilder(
-        builder: (context, constraints) {
-          final topPadding = constraints.biggest.height;
-
-          return Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.bottomCenter,
-            children: [
-              // Imagem de fundo
-              ClipRRect(
-              //  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-                child: Image.network(
-                  store?.banner?.url ?? 'https://images.ctfassets.net/kugm9fp9ib18/3aHPaEUU9HKYSVj1CTng58/d6750b97344c1dc31bdd09312d74ea5b/menu-default-image_220606_web.png',
-                  fit: BoxFit.cover,
-                  height: double.infinity,
-                  width: double.infinity,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey,
-                    height: double.infinity,
-                    child: const Icon(Icons.store, size: 100, color: Colors.white54),
-                  ),
-                ),
+      elevation: 0,
+      leading: (!isDesktop && GoRouter.of(context).canPop())
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+              onPressed: () => GoRouter.of(context).pop(),
+            )
+          : null,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+          onPressed: () => GoRouter.of(context).push('/search'),
+        ),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Imagem de Fundo
+            ColorFiltered(
+              colorFilter: isClosed
+                  ? const ColorFilter.mode(Colors.grey, BlendMode.saturation)
+                  : const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
+              child: Image.network(
+                store.banner?.url ?? 'https://images.ctfassets.net/kugm9fp9ib18/3aHPaEUU9HKYSVj1CTng58/d6750b97344c1dc31bdd09312d74ea5b/menu-default-image_220606_web.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(color: Colors.grey[300]),
               ),
-              // Botão de busca sobre a imagem
-              Positioned(
-                top: 0,
-                right: 0,
-                child: SafeArea(
-                  child: Container(
-                    margin: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.search, color: Colors.black87),
-                      onPressed: () {
-                        GoRouter.of(context).push('/search');
-                      },
-                    ),
-                  ),
-                ),
-              ),
-
-              // Card central com imagem flutuante
-              Positioned(
-                bottom: -70,
-                left: isDesktop ? realSpaceNeeded : 16,
-                right: isDesktop ? realSpaceNeeded : 16,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.topCenter,
-                  children: [
-                    // Card
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(16, 50, 16, 16),
-                      decoration: BoxDecoration(
-                        color: theme.sidebarBackgroundColor,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-
-                        children: [
-                          // Nome da loja com trailing
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: GestureDetector(
-                              // Exemplo de como você chamaria a navegação
-
-
-                              onTap: () {
-                                context.go('/store-details', extra: 1);
-                              },
-
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      store?.name ?? 'Nome da Loja',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.sidebarTextColor,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                 Icon(Icons.arrow_forward_ios_rounded, size: 16, color: theme.sidebarIconColor,),
-                                ],
-                              ),
-                            ),
-
-                            subtitle: Padding(
-                              padding: const EdgeInsets.symmetric(vertical:12.0),
-                              child: Column(
-                                children: [
-
-
-
-                                  if (store?.ratingsSummary != null)
-                                    GestureDetector(
-                                       onTap: () {
-                                             context.go('/store-details', extra: 0);
-                                            },
-
-                                      child: Row(
-                                        children: [
-
-
-                                          Expanded(
-                                            child: Row(
-                                              children: [
-
-                                                Text(
-                                                  store!.ratingsSummary!.averageRating
-                                                      .toStringAsFixed(1),
-                                                  style: TextStyle(fontSize: 16,   color: theme.sidebarTextColor,),
-                                                ),
-
-                                                const SizedBox(width: 8),
-
-
-                                                Row(
-                                                  children: List.generate(5, (index) {
-                                                    final starIndex = index + 1;
-                                                    return Icon(
-                                                      starIndex <=
-                                                          store.ratingsSummary!
-                                                              .averageRating
-                                                              .round()
-                                                          ? Icons.star
-                                                          : Icons.star_border,
-                                                      color: Colors.amber,
-                                                      size: 20,
-                                                    );
-                                                  }),
-                                                ),
-                                                const SizedBox(width: 8),
-
-                                                Text(
-                                                  '(${store.ratingsSummary!.totalRatings} avaliações)',
-                                                  style:  TextStyle(fontSize: 14,   color:theme.sidebarTextColor,),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          const SizedBox(width: 8),
-
-
-                                           Icon(Icons.arrow_forward_ios_rounded, size: 16, color: theme.sidebarIconColor,),
-                                        ],
-                                      ),
-                                    ),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 14.0),
-                                    child: Row(
-                                      children: [
-
-                                        Expanded(
-                                          child: Text(
-                                            'Pedido mínimo: R\$ $pedidoMinimo',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: theme.sidebarTextColor,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(width: 10,),
-                                        Text(
-                                          'Entrega: $tempoEntrega',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: theme.sidebarTextColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-
-                                  StoreHoursWidget(hours: store!.hours,)
-
-
-
-                                ],
-                              ),
-                            ),
-
-                          ),
-
-                        ],
-                      ),
-                    ),
-
-                    // Imagem da loja parcialmente fora
-                    Positioned(
-                      top: -40,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white, width: 1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: CircleAvatar(
-                          backgroundImage: NetworkImage(imageUrl),
-                          radius: 40,
-                          backgroundColor: Colors.transparent
-                        ),
-                      ),
-                    ),
+            ),
+            
+            // 2. Overlay Gradiente para legibilidade
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.0),
+                    Colors.black.withOpacity(0.4), // Gradiente mais suave
+                    Colors.black.withOpacity(0.8),
                   ],
+                  stops: const [0.4, 0.7, 1.0],
                 ),
               ),
-            ],
-          );
-        },
+            ),
+
+            // 3. Conteúdo (Info da Loja)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isClosed)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Loja fechada • $statusMsg',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Logo com borda
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          image: DecorationImage(
+                            image: NetworkImage(imageUrl),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              store.name,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            // Linha de Detalhes (Correções mantidas: Distância, MinOrder, Tempo)
+                            Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 6,
+                              children: [
+                                // Rating
+                                if (store.ratingsSummary != null) ...[
+                                  Icon(Icons.star, size: 14, color: Colors.amber),
+                                  Text(
+                                    store.ratingsSummary!.averageRating.toStringAsFixed(1),
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                  const Text('•', style: TextStyle(color: Colors.white70)),
+                                ],
+                                
+                                // Distância
+                                if (distanceText != null) ...[
+                                  Text(distanceText, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                                  const Text('•', style: TextStyle(color: Colors.white70)),
+                                ],
+
+                                // Tempo
+                                Text(deliveryTimeText, style: const TextStyle(color: Colors.white, fontSize: 13)),
+
+                                // Frete Grátis (só exibe se tiver promoção configurada)
+                                if (freeDeliveryText != null) ...[
+                                  const Text('•', style: TextStyle(color: Colors.white70)),
+                                  Text(
+                                    freeDeliveryText,
+                                    style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                             if (hasMinOrder)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'Pedido mínimo ${minOrderVal.toCurrency()}',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ),
+                       // Ícone de Info/Detalhes
+                      IconButton(
+                        icon: const Icon(Icons.info_outline, color: Colors.white),
+                        onPressed: () => context.go('/store-details', extra: 1),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+  
+  // Helper safe value
+  dynamic activeRuleValue(dynamic val) => val ?? 0;
 }
+
+
+
 
 
 

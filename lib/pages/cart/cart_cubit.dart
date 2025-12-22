@@ -5,6 +5,9 @@ import 'package:bloc/bloc.dart';
 import 'package:totem/models/cart.dart';
 import 'package:totem/models/update_cart_payload.dart';
 import 'package:totem/repositories/realtime_repository.dart';
+
+import 'package:totem/core/utils/app_logger.dart';
+import 'package:totem/core/exceptions/app_exception.dart';
 import '../../models/product.dart';
 import 'cart_state.dart';
 
@@ -33,7 +36,7 @@ class CartCubit extends Cubit<CartState> {
     final bool isCartAffected = updatedProducts.any((updatedProduct) => productIdsInCart.contains(updatedProduct.id));
 
     if (isCartAffected) {
-      print('🔄 Produtos no carrinho foram atualizados no servidor. Buscando carrinho atualizado...');
+      AppLogger.info('Produtos no carrinho atualizados. Sincronizando...', tag: 'CART');
       fetchCart();
     }
   }
@@ -55,36 +58,139 @@ class CartCubit extends Cubit<CartState> {
     }
   }
 
+  /// ✅ ATUALIZADO: Usa modo granular para economizar banda.
+  /// Atualiza apenas o item modificado localmente em vez de receber o carrinho todo.
   Future<void> updateItem(UpdateCartItemPayload payload) async {
     // Não emitimos 'loading' para a UI não piscar a cada item adicionado.
     emit(state.copyWith(isUpdating: true));
     try {
-      print('🛒 [CartCubit] Atualizando item: productId=${payload.productId}, categoryId=${payload.categoryId}, quantity=${payload.quantity}');
-      print('   Variants: ${payload.variants?.length ?? 0}');
-      print('   Note: ${payload.note ?? "sem observação"}');
+      AppLogger.debug(
+        'Atualizando item: productId=${payload.productId}, qty=${payload.quantity}',
+        tag: 'CART',
+      );
       
-      final updatedCart = await _realtimeRepository.updateCartItem(payload);
-      print('✅ [CartCubit] Item atualizado com sucesso. Carrinho tem ${updatedCart.items.length} itens.');
-      emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
-    } catch (e, stackTrace) {
-      print("❌ [CartCubit] Erro ao atualizar item: $e");
-      print("   Stack trace: $stackTrace");
-      // Re-busca o carrinho para garantir consistência após um erro.
+      // ✅ NOVO: Tenta usar modo granular primeiro
+      try {
+        final response = await _realtimeRepository.updateCartItemGranular(payload);
+        AppLogger.success(
+          'Item atualizado (granular). Action: ${response.action}, Total: ${response.cartItemsCount} itens',
+          tag: 'CART',
+        );
+        
+        // Atualiza o estado localmente baseado na ação
+        final currentCart = state.cart;
+        Cart updatedCart;
+        
+        switch (response.action) {
+          case 'removed':
+            // Remove o item da lista local
+            updatedCart = currentCart.copyWith(
+              items: currentCart.items.where((i) => i.id != response.removedItemId).toList(),
+              subtotal: response.cartSubtotal,
+              discount: response.cartDiscount,
+              total: response.cartTotal,
+            );
+            break;
+            
+          case 'added':
+            // Adiciona o novo item à lista local
+            if (response.item != null) {
+              updatedCart = currentCart.copyWith(
+                items: [...currentCart.items, response.item!],
+                subtotal: response.cartSubtotal,
+                discount: response.cartDiscount,
+                total: response.cartTotal,
+              );
+            } else {
+              updatedCart = currentCart.copyWith(
+                subtotal: response.cartSubtotal,
+                discount: response.cartDiscount,
+                total: response.cartTotal,
+              );
+            }
+            break;
+            
+          case 'quantity_changed':
+          case 'updated':
+          default:
+            // Atualiza o item existente na lista local
+            if (response.item != null) {
+              final updatedItems = currentCart.items.map((item) {
+                if (item.id == response.item!.id) {
+                  return response.item!;
+                }
+                return item;
+              }).toList();
+              
+              updatedCart = currentCart.copyWith(
+                items: updatedItems,
+                subtotal: response.cartSubtotal,
+                discount: response.cartDiscount,
+                total: response.cartTotal,
+              );
+            } else {
+              updatedCart = currentCart.copyWith(
+                subtotal: response.cartSubtotal,
+                discount: response.cartDiscount,
+                total: response.cartTotal,
+              );
+            }
+        }
+        
+        emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
+        return;
+        
+      } on CartGranularFallbackException catch (e) {
+        // Fallback: backend retornou carrinho completo (versão antiga)
+        AppLogger.warning('Fallback: usando carrinho completo (backend antigo)', tag: 'CART');
+        emit(state.copyWith(status: CartStatus.success, cart: e.cart, isUpdating: false));
+        return;
+      }
+      
+    } on NetworkException catch (e) {
+      AppLogger.error('Erro de rede ao atualizar item', error: e, tag: 'CART');
       await fetchCart();
-      // Finalmente, remove o estado de 'isUpdating'
       emit(state.copyWith(isUpdating: false));
-      // Re-lança o erro para a UI poder mostrá-lo (ex: com um SnackBar)
-      throw Exception('Erro interno ao atualizar item: ${e.toString()}');
+      throw CartException('Erro de conexão. Verifique sua internet.');
+    } on ServerException catch (e) {
+      AppLogger.error('Erro do servidor ao atualizar item', error: e, tag: 'CART');
+      await fetchCart();
+      emit(state.copyWith(isUpdating: false));
+      throw CartException(e.message);
+    } catch (e, stackTrace) {
+      AppLogger.error('Erro ao atualizar item', error: e, stackTrace: stackTrace, tag: 'CART');
+      await fetchCart();
+      emit(state.copyWith(isUpdating: false));
+      throw CartException('Erro ao atualizar carrinho. Tente novamente.');
     }
   }
 
   Future<void> clearCart() async {
-    emit(state.copyWith(isUpdating: true));
+    // ✅ OPTIMISTIC CLEAR: Limpa estado local imediatamente
+    // Isso garante que a UI reflita carrinho vazio assim que o pedido é confirmado
+    final emptyCart = state.cart.copyWith(
+      items: [],
+      subtotal: 0,
+      discount: 0,
+      total: 0,
+      couponCode: null, // Limpa cupom também
+    );
+    
+    // Atualiza estado
+    emit(state.copyWith(
+      status: CartStatus.success, 
+      cart: emptyCart, 
+      isUpdating: true
+    ));
+
     try {
       final updatedCart = await _realtimeRepository.clearCart();
+      AppLogger.success('Carrinho limpo no backend', tag: 'CART');
+      // Confirma com o estado real do backend (que deve ser vazio também)
       emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
     } catch (e) {
-      print("Erro ao limpar carrinho: $e");
+      AppLogger.error('Erro ao limpar carrinho no backend', error: e, tag: 'CART');
+      // Mesmo com erro no backend, mantemos limpo localmente pois o pedido foi feito
       emit(state.copyWith(isUpdating: false));
     }
   }

@@ -1,4 +1,6 @@
-// lib/pages/order/order_confirmation_page.dart
+// lib/pages/success/order_success.dart
+// ✅ DEPRECATED: Use OrderDetailsPage em vez desta página
+// Esta página é mantida apenas para compatibilidade com código antigo
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,7 +10,8 @@ import 'package:totem/models/order.dart';
 import 'package:totem/models/payment_method.dart';
 import 'package:totem/helpers/payment_method.dart';
 
-class OrderConfirmationPage extends StatelessWidget {
+/// @deprecated Use OrderDetailsPage de pages/order/order_details_page.dart
+class OrderSuccessPageLegacy extends StatelessWidget {
   final Order? order;
   final PlatformPaymentMethod? paymentMethod;
 

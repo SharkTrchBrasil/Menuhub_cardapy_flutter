@@ -334,12 +334,12 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-    final total = (order.charge?.amount ?? 0) / 100.0;
+    final total = order.totalAmount;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => context.push('/order/${order.id}'),
+        onTap: () => context.push('/order/${order.id}', extra: order),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -352,7 +352,7 @@ class _OrderCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Pedido #${order.publicId}',
+                        'Pedido #${order.displayId}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -360,7 +360,7 @@ class _OrderCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        dateFormat.format(DateTime.now()),
+                        dateFormat.format(order.createdAt),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,
@@ -373,7 +373,7 @@ class _OrderCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                '${order.products.length} ${order.products.length == 1 ? 'item' : 'itens'}',
+                '${order.items.length} ${order.items.length == 1 ? 'item' : 'itens'}',
                 style: TextStyle(color: Colors.grey.shade700),
               ),
               const SizedBox(height: 8),

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:collection/collection.dart'; // ✅ Import para firstOrNull
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/pages/address/widgets/Address_bottom_bar.dart';
 
@@ -15,6 +16,7 @@ import '../cart/cart_cubit.dart';
 import '../cart/cart_state.dart';
 import 'cubits/address_cubit.dart';
 import 'cubits/delivery_fee_cubit.dart';
+import 'package:totem/widgets/address_selection_bottom_sheet.dart'; // ✅ Novo bottom sheet moderno
 
 class AddressPage extends StatefulWidget {
   const AddressPage({super.key});
@@ -80,7 +82,16 @@ class _AddressPageState extends State<AddressPage> {
               const SizedBox(height: 8),
               _buildAddressCard(),
               const SizedBox(height: 32),
-              const _SectionTitle(title: 'Opções de entrega'),
+              // ✅ NOVO: Oculta título "Opções de entrega" também
+              BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
+                builder: (context, feeState) {
+                  final addressState = context.watch<AddressCubit>().state;
+                  if (feeState.deliveryType == DeliveryType.delivery && addressState.selectedAddress == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return const _SectionTitle(title: 'Opções de entrega');
+                },
+              ),
               const SizedBox(height: 8),
               _buildDeliveryOptions(),
             ],
@@ -105,6 +116,15 @@ class _AddressPageState extends State<AddressPage> {
     }
   }
 
+  // ✅ NOVO: Abre bottom sheet moderno para cadastro/edição de endereço
+  void _showAddressBottomSheet({CustomerAddress? addressToEdit}) {
+    AddressSelectionBottomSheet.show(
+      context,
+      addressToEdit: addressToEdit,
+      startWithSearch: true,
+    );
+  }
+
   Widget _buildAddressCard() {
     return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
       builder: (context, feeState) {
@@ -124,7 +144,10 @@ class _AddressPageState extends State<AddressPage> {
                 leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
                 title: const Text('Nenhum endereço selecionado'),
                 subtitle: const Text('Toque para escolher ou cadastrar'),
-                onTap: () => context.push('/select-address'),
+                onTap: () {
+                  // ✅ NOVO: Abre o bottom sheet moderno de endereço
+                  _showAddressBottomSheet();
+                },
               );
             }
             return _AddressCard(
@@ -138,6 +161,14 @@ class _AddressPageState extends State<AddressPage> {
   }
 
   Widget _buildDeliveryOptions() {
+    // ✅ NOVO: Oculta opções de entrega se for Delivery e não tiver endereço selecionado
+    final deliveryType = context.watch<DeliveryFeeCubit>().state.deliveryType;
+    final selectedAddress = context.watch<AddressCubit>().state.selectedAddress;
+    
+    if (deliveryType == DeliveryType.delivery && selectedAddress == null) {
+      return const SizedBox.shrink(); 
+    }
+
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, storeState) {
         final store = storeState.store;
@@ -147,8 +178,20 @@ class _AddressPageState extends State<AddressPage> {
 
         final deliveryEnabled = store.store_operation_config?.deliveryEnabled ?? false;
         final pickupEnabled = store.store_operation_config?.pickupEnabled ?? false;
-        final deliveryTime =
-            '${store.store_operation_config?.deliveryEstimatedMin}-${store.store_operation_config?.deliveryEstimatedMax} min';
+
+        // ✅ LÓGICA DE TEMPO: Prioriza regra ativa (se houver), depois config da loja, depois fallback padrão
+        final activeRule = store.deliveryFeeRules
+            .where((r) => r.isActive && r.deliveryMethod == 'delivery')
+            .firstOrNull;
+
+        String deliveryTime;
+        if (activeRule?.estimatedMinMinutes != null) {
+          deliveryTime = '${activeRule?.estimatedMinMinutes}-${activeRule?.estimatedMaxMinutes} min';
+        } else {
+          final minTime = store.store_operation_config?.deliveryEstimatedMin ?? 30;
+          final maxTime = store.store_operation_config?.deliveryEstimatedMax ?? 45;
+          deliveryTime = '$minTime-$maxTime min';
+        }
 
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
           builder: (context, feeState) {
@@ -330,18 +373,9 @@ class _DeliveryOptionTile extends StatelessWidget {
   }
 
   bool _shouldHideFeeDisplay(Store store) {
-    // Busca regra de frete por bairros ativa
-    try {
-      final neighborhoodFeeRule = store.deliveryFeeRules.firstWhere(
-        (rule) => rule.ruleType == 'neighborhood_fee' && rule.isActive,
-      );
-      
-      // Verifica se hide_fee_display está ativo
-      return neighborhoodFeeRule.config['hide_fee_display'] as bool? ?? false;
-    } catch (e) {
-      // Se não encontrar regra, retorna false
-      return false;
-    }
+    // ✅ REMOVIDO: Não usamos mais frete por bairros (neighborhood_fee)
+    // Retorna false por padrão
+    return false;
   }
 
   @override

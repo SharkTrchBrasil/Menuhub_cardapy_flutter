@@ -86,15 +86,32 @@ class CartVariant {
         break;
 
       case UIDisplayMode.MULTIPLE:
-        final isSelecting = newQuantity > 0;
-        // Permite selecionar apenas se não tiver atingido o máximo.
-        if (isSelecting && distinctOptionsSelected >= maxSelectedOptions) {
-          // Se já atingiu o máximo e está tentando selecionar uma *nova* opção, impede.
-          if (newOptions[optionIndex].quantity == 0) {
+        // ✅ CORRIGIDO: Permite repetir a mesma opção múltiplas vezes
+        // O limite é baseado no total de quantidade (maxTotalQuantity ou maxSelectedOptions)
+        // "Escolha até 3 opções" = pode escolher 3 bacons OU 1 de cada OU qualquer combinação
+        final effectiveMaxTotal = maxTotalQuantity ?? maxSelectedOptions;
+        final currentTotalMultiple = totalQuantitySelected;
+        final differenceMultiple = newQuantity - newOptions[optionIndex].quantity;
+        
+        // Permite o incremento apenas se não for exceder o total máximo
+        if (currentTotalMultiple + differenceMultiple > effectiveMaxTotal) {
+          // Se está tentando incrementar além do limite, calcula o máximo que pode adicionar
+          final maxCanAdd = effectiveMaxTotal - currentTotalMultiple + newOptions[optionIndex].quantity;
+          if (maxCanAdd > 0 && newQuantity > newOptions[optionIndex].quantity) {
+            newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: maxCanAdd);
+          }
+          // Se está tentando reduzir, permite
+          else if (newQuantity < newOptions[optionIndex].quantity) {
+            newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity < 0 ? 0 : newQuantity);
+          }
+          // Se não pode adicionar mais, não faz nada
+          if (newQuantity > newOptions[optionIndex].quantity && maxCanAdd <= 0) {
             return this;
           }
+        } else {
+          // Não atingiu o máximo, permite a alteração
+          newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity < 0 ? 0 : newQuantity);
         }
-        newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity > 0 ? 1 : 0);
         break;
 
       case UIDisplayMode.QUANTITY:

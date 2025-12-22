@@ -136,7 +136,7 @@ class ProductCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
               child: CachedNetworkImage(
                 // Usa o getter seguro para a URL da imagem
-                imageUrl: product.coverImageUrl ?? 'https://placehold.co/180x120/e0e0e0/a0a0a0?text=Sem+Imagem',
+                imageUrl: product.imageUrl ?? 'https://placehold.co/180x120/e0e0e0/a0a0a0?text=Sem+Imagem',
                 height: 120,
                 width: double.infinity,
                 fit: BoxFit.cover,

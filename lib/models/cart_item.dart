@@ -5,13 +5,17 @@ import 'package:totem/models/product.dart';
 import 'package:totem/core/extensions.dart'; // Para o helper .toCurrency
 
 class CartItemVariantOption extends Equatable {
-  final int variantOptionId;
+  // ✅ NULLABLE: Para pizzas, variant_option_id é null
+  final int? variantOptionId;
+  // ✅ NOVO: Para pizzas, armazena ID real do OptionItem (sabor, massa, borda)
+  final int? optionItemId;
   final int quantity;
   final String name;
   final int price;
 
   const CartItemVariantOption({
-    required this.variantOptionId,
+    this.variantOptionId,
+    this.optionItemId,
     required this.quantity,
     required this.name,
     required this.price,
@@ -20,7 +24,8 @@ class CartItemVariantOption extends Equatable {
   factory CartItemVariantOption.fromJson(Map<String, dynamic> json) {
     return CartItemVariantOption(
       variantOptionId: json['variant_option_id'],
-      quantity: json['quantity'],
+      optionItemId: json['option_item_id'],
+      quantity: json['quantity'] ?? 1,
       name: json['name'] ?? '',
       price: json['price'] ?? 0,
     );
@@ -28,22 +33,34 @@ class CartItemVariantOption extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'variant_option_id': variantOptionId,
+    'option_item_id': optionItemId,
     'quantity': quantity,
     'name': name,
     'price': price,
   };
 
+  // ✅ Helper: Retorna o ID efetivo (variantOptionId ou optionItemId)
+  int get effectiveId => variantOptionId ?? optionItemId ?? 0;
+
   @override
-  List<Object> get props => [variantOptionId, quantity, name, price];
+  List<Object?> get props => [variantOptionId, optionItemId, quantity, name, price];
+
+  // ✅ IMPORTANTE: toString() retorna o nome para exibição correta
+  @override
+  String toString() => name;
 }
 
 class CartItemVariant extends Equatable {
-  final int variantId;
+  // ✅ NULLABLE: Para pizzas, variant_id é null
+  final int? variantId;
+  // ✅ NOVO: Para pizzas, armazena ID do OptionGroup
+  final int? optionGroupId;
   final String name;
   final List<CartItemVariantOption> options;
 
   const CartItemVariant({
-    required this.variantId,
+    this.variantId,
+    this.optionGroupId,
     required this.name,
     required this.options,
   });
@@ -51,8 +68,9 @@ class CartItemVariant extends Equatable {
   factory CartItemVariant.fromJson(Map<String, dynamic> json) {
     return CartItemVariant(
       variantId: json['variant_id'],
+      optionGroupId: json['option_group_id'],
       name: json['name'] ?? '',
-      options: (json['options'] as List)
+      options: (json['options'] as List? ?? [])
           .map((optionJson) => CartItemVariantOption.fromJson(optionJson))
           .toList(),
     );
@@ -60,12 +78,16 @@ class CartItemVariant extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'variant_id': variantId,
+    'option_group_id': optionGroupId,
     'name': name,
     'options': options.map((o) => o.toJson()).toList(),
   };
 
+  // ✅ Helper: Retorna o ID efetivo (variantId ou optionGroupId)
+  int get effectiveId => variantId ?? optionGroupId ?? 0;
+
   @override
-  List<Object> get props => [variantId, name, options];
+  List<Object?> get props => [variantId, optionGroupId, name, options];
 }
 
 class CartItem extends Equatable {
@@ -76,7 +98,8 @@ class CartItem extends Equatable {
   final List<CartItemVariant> variants;
   final int unitPrice;
   final int totalPrice;
-  final String? sizeName; // ✅ NOVO: Para exibir o tamanho escolhido (ex: "Pizza Grande")
+  final String? sizeName; // ✅ Para exibir o tamanho escolhido (ex: "Pizza Grande")
+  final String? sizeImageUrl; // ✅ NOVO: Imagem do tamanho escolhido
 
   const CartItem({
     required this.id,
@@ -86,7 +109,8 @@ class CartItem extends Equatable {
     required this.variants,
     required this.unitPrice,
     required this.totalPrice,
-    this.sizeName, // ✅ NOVO
+    this.sizeName,
+    this.sizeImageUrl, // ✅ NOVO
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
@@ -100,7 +124,8 @@ class CartItem extends Equatable {
           .toList(),
       unitPrice: json['unit_price'],
       totalPrice: json['total_price'],
-      sizeName: json['size_name'], // ✅ NOVO
+      sizeName: json['size_name'],
+      sizeImageUrl: json['size_image_url'], // ✅ NOVO
     );
   }
 
@@ -109,13 +134,13 @@ class CartItem extends Equatable {
     return {
       'id': id,
       'product_id': product.id,
-      // 'product': product.toJson(), // REMOVIDO - CAUSAVA O ERRO
       'quantity': quantity,
       'note': note,
       'unit_price': unitPrice,
       'total_price': totalPrice,
       'variants': variants.map((variant) => variant.toJson()).toList(),
       'size_name': sizeName,
+      'size_image_url': sizeImageUrl, // ✅ NOVO
     };
   }
 
@@ -141,6 +166,7 @@ class CartItem extends Equatable {
     int? unitPrice,
     int? totalPrice,
     String? sizeName,
+    String? sizeImageUrl,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -151,6 +177,7 @@ class CartItem extends Equatable {
       unitPrice: unitPrice ?? this.unitPrice,
       totalPrice: totalPrice ?? this.totalPrice,
       sizeName: sizeName ?? this.sizeName,
+      sizeImageUrl: sizeImageUrl ?? this.sizeImageUrl,
     );
   }
 
@@ -162,7 +189,8 @@ class CartItem extends Equatable {
         variants = const [],
         unitPrice = 0,
         totalPrice = 0,
-        sizeName = null;
+        sizeName = null,
+        sizeImageUrl = null;
 
   String get formattedUnitPrice => unitPrice.toCurrency;
   String get formattedTotalPrice => totalPrice.toCurrency;
@@ -188,7 +216,7 @@ class CartItem extends Equatable {
   bool get hasVariants => variants.isNotEmpty;
 
   @override
-  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice, sizeName];
+  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice, sizeName, sizeImageUrl];
 
   @override
   String toString() {

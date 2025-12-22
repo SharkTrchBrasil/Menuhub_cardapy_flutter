@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../../widgets/video_player_widget.dart';
+// ❌ REMOVIDO: import '../../../widgets/video_player_widget.dart';
+// Vídeos não são mais suportados no cardápio
 
 class ProductImageGallery extends StatefulWidget {
   final List<String> imageUrls;
@@ -42,7 +44,7 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
       mediaWidgets.add(_buildImageWidget(imageUrl));
     }
 
-    // ✅ Adiciona o vídeo no final (se existir)
+    // ✅ Se tiver vídeo, mostra thumbnail que abre no navegador
     if (widget.videoUrl != null && widget.videoUrl!.isNotEmpty) {
       mediaWidgets.add(_buildVideoThumbnail(widget.videoUrl!));
     }
@@ -102,10 +104,7 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
 
   Widget _buildVideoThumbnail(String videoUrl) {
     return GestureDetector(
-      onTap: () {
-        // ✅ TODO: Implementar player de vídeo em fullscreen
-        _showVideoPlayer(context, videoUrl);
-      },
+      onTap: () => _openVideoInBrowser(videoUrl),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -151,11 +150,13 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
       ),
     );
   }
-  void _showVideoPlayer(BuildContext context, String videoUrl) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (context) => VideoPlayerDialog(videoUrl: videoUrl),
-    );
+
+  /// ✅ OTIMIZADO: Abre vídeo no navegador ao invés de usar player embutido
+  /// Isso economiza ~150 KiB no bundle
+  Future<void> _openVideoInBrowser(String videoUrl) async {
+    final uri = Uri.parse(videoUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }

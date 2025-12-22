@@ -10,10 +10,10 @@ import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../controllers/customer_controller.dart';
 import '../../core/di.dart';
-import '../../repositories/customer_repository.dart';
+
 import 'cubits/address_cubit.dart';
 import 'cubits/delivery_fee_cubit.dart';
-import 'edit_adress.dart';
+import 'package:totem/widgets/address_selection_bottom_sheet.dart'; // ✅ Novo bottom sheet moderno
 
 class AddressSelectionPage extends StatefulWidget {
   const AddressSelectionPage({super.key});
@@ -64,28 +64,12 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
     context.read<DeliveryFeeCubit>().updateDeliveryType(_selectedType);
   }
 
+  // ✅ NOVO: Abre bottom sheet moderno para cadastro/edição de endereço
   void _showEditAddressModal({CustomerAddress? addressToEdit}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      // Permite que o modal cresça
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        // Usamos o BlocProvider.value para passar a instância existente do AddressCubit
-        // para dentro do modal, garantindo que ele possa chamar a função de salvar.
-        return BlocProvider.value(
-          value: context.read<AddressCubit>(),
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: EditAddressPage(addressToEdit: addressToEdit),
-          ),
-        );
-      },
+    AddressSelectionBottomSheet.show(
+      context,
+      addressToEdit: addressToEdit,
+      startWithSearch: true,
     );
   }
 
@@ -429,26 +413,28 @@ class _AddressListItemState extends State<_AddressListItem> {
 
                   if (confirm == true) {
                     final customerId = getIt<CustomerController>().customer!.id;
-                    final deleted = await getIt<CustomerRepository>()
-                        .deleteCustomerAddress(customerId!, widget.address.id!);
-
-                    // Verifica novamente se o widget ainda está montado
+                    
+                    // ✅ CORREÇÃO: Usa apenas o Cubit (que já chama o repositório internamente)
+                    // Não chamar o repositório diretamente para evitar chamada duplicada
+                    await context.read<AddressCubit>().deleteAddress(
+                      customerId!,
+                      widget.address.id!,
+                    );
+                    
+                    // Verifica se deu erro no cubit
                     if (!mounted) return;
-
-                    if (deleted) {
-                      context.read<AddressCubit>().deleteAddress(
-                        customerId,
-                        widget.address.id!,
-                      );
+                    
+                    final state = context.read<AddressCubit>().state;
+                    if (state.status == AddressStatus.error) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Endereço excluído com sucesso!'),
+                        SnackBar(
+                          content: Text(state.errorMessage ?? 'Erro ao excluir endereço.'),
                         ),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Erro ao excluir endereço.'),
+                          content: Text('Endereço excluído com sucesso!'),
                         ),
                       );
                     }

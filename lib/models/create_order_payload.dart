@@ -1,4 +1,5 @@
 // Em: lib/models/create_order_payload.dart
+// ✅ ALINHAMENTO iFOOD: Inclui campos de origem para popular o formato iFood
 
 import 'package:totem/models/customer_address.dart';
 
@@ -16,6 +17,16 @@ class CreateOrderPayload {
   // ✅ SEGURANÇA: Coordenadas GPS reais do cliente
   final double? customerLatitude;
   final double? customerLongitude;
+  
+  // ✅ NOVO: Campos para pagamento online (Mercado Pago)
+  final String? mercadopagoPaymentId;
+  final String? paymentType; // 'delivery' ou 'online'
+  
+  // ✅ ALINHAMENTO iFOOD: Origem do pedido
+  final String? platform;     // 'ANDROID', 'IOS', 'WEB'
+  final String? appName;      // 'Totem', 'Menuhub', etc
+  final String? appVersion;   // '1.0.0'
+  final String? salesChannel; // 'TOTEM', 'MENU', 'IFOOD'
 
   CreateOrderPayload({
     required this.paymentMethodId,
@@ -29,6 +40,12 @@ class CreateOrderPayload {
     this.scheduledFor,
     this.customerLatitude,
     this.customerLongitude,
+    this.mercadopagoPaymentId,
+    this.paymentType,
+    this.platform,
+    this.appName,
+    this.appVersion,
+    this.salesChannel,
   });
 
   /// Factory para criar um CreateOrderPayload a partir de JSON
@@ -45,6 +62,13 @@ class CreateOrderPayload {
       scheduledFor: json['scheduled_for'] as String?,
       customerLatitude: (json['customer_latitude'] as num?)?.toDouble(),
       customerLongitude: (json['customer_longitude'] as num?)?.toDouble(),
+      mercadopagoPaymentId: json['mercadopago_payment_id'] as String?,
+      paymentType: json['payment_type'] as String?,
+      // ✅ ALINHAMENTO iFOOD: Campos de origem
+      platform: json['platform'] as String?,
+      appName: json['app_name'] as String?,
+      appVersion: json['app_version'] as String?,
+      salesChannel: json['sales_channel'] as String?,
     );
   }
 
@@ -63,6 +87,13 @@ class CreateOrderPayload {
       'scheduled_for': scheduledFor,
       'customer_latitude': customerLatitude,
       'customer_longitude': customerLongitude,
+      'mercadopago_payment_id': mercadopagoPaymentId,
+      'payment_type': paymentType,
+      // ✅ ALINHAMENTO iFOOD: Campos de origem
+      'platform': platform,
+      'app_name': appName,
+      'app_version': appVersion,
+      'sales_channel': salesChannel,
     }..removeWhere((key, value) => value == null); // Remove chaves nulas
   }
 }

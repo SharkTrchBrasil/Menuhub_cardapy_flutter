@@ -4,26 +4,57 @@ import 'package:equatable/equatable.dart';
 import 'package:totem/models/option_item.dart';
 
 // ✅ ENUM: Define os tipos de grupos de opções
-// Mapeia com o backend: SIZE, GENERIC
+// Mapeia com o backend: SIZE, TOPPING, CRUST, EDGE, GENERIC
 enum OptionGroupType {
-  size,       // Mapeia para "SIZE" do backend
-  generic,    // Mapeia para "GENERIC" do backend (Massa, Borda)
-  flavor,     // ✅ NOVO: Grupos virtuais de sabores de pizza
-  preference, // ✅ NOVO: Grupo virtual de preferências (massa + borda combinadas)
+  size,       // Mapeia para "SIZE" do backend (Tamanhos)
+  topping,    // ✅ NOVO: Mapeia para "TOPPING" do backend (Sabores de pizza)
+  crust,      // ✅ NOVO: Mapeia para "CRUST" do backend (Tipos de massa)
+  edge,       // ✅ NOVO: Mapeia para "EDGE" do backend (Tipos de borda)
+  generic,    // Mapeia para "GENERIC" do backend (Outros)
+  flavor,     // ⚠️ DEPRECATED: Mantido para compatibilidade
+  preference, // ⚠️ DEPRECATED: Mantido para compatibilidade
   other;      // Fallback
 
   static OptionGroupType fromString(String? value) {
     switch (value?.toUpperCase()) {
       case 'SIZE':
         return OptionGroupType.size;
+      case 'TOPPING':
+        return OptionGroupType.topping;
+      case 'CRUST':
+        return OptionGroupType.crust;
+      case 'EDGE':
+        return OptionGroupType.edge;
       case 'GENERIC':
         return OptionGroupType.generic;
       case 'FLAVOR':
-        return OptionGroupType.flavor;
+        return OptionGroupType.flavor; // Compatibilidade
       case 'PREFERENCE':
-        return OptionGroupType.preference;
+        return OptionGroupType.preference; // Compatibilidade
       default:
         return OptionGroupType.other;
+    }
+  }
+  
+  // Converte para string do backend
+  String toApiString() {
+    switch (this) {
+      case OptionGroupType.size:
+        return 'SIZE';
+      case OptionGroupType.topping:
+        return 'TOPPING';
+      case OptionGroupType.crust:
+        return 'CRUST';
+      case OptionGroupType.edge:
+        return 'EDGE';
+      case OptionGroupType.generic:
+        return 'GENERIC';
+      case OptionGroupType.flavor:
+        return 'FLAVOR'; // Compatibilidade
+      case OptionGroupType.preference:
+        return 'PREFERENCE'; // Compatibilidade
+      case OptionGroupType.other:
+        return 'GENERIC';
     }
   }
 }
@@ -52,6 +83,28 @@ class OptionGroup extends Equatable {
 
   bool get isSingleSelection => maxSelection == 1;
   bool get isRequired => minSelection > 0;
+
+  OptionGroup copyWith({
+    int? id,
+    String? name,
+    OptionGroupType? groupType,
+    int? minSelection,
+    int? maxSelection,
+    List<OptionItem>? items,
+    int? displayOrder,
+    bool? isActive,
+  }) {
+    return OptionGroup(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      groupType: groupType ?? this.groupType,
+      minSelection: minSelection ?? this.minSelection,
+      maxSelection: maxSelection ?? this.maxSelection,
+      items: items ?? this.items,
+      displayOrder: displayOrder ?? this.displayOrder,
+      isActive: isActive ?? this.isActive,
+    );
+  }
 
   factory OptionGroup.fromJson(Map<String, dynamic> json) {
     return OptionGroup(

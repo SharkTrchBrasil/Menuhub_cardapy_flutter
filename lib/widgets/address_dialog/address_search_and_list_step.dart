@@ -5,7 +5,7 @@ import 'package:totem/models/customer_address.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/services/address_search_service.dart';
 
-/// Step 0: Tela de busca + lista de endereços salvos - Estilo iFood
+/// Step 0: Tela de busca + lista de endereços salvos
 class AddressSearchAndListStep extends StatelessWidget {
   final TextEditingController searchController;
   final FocusNode searchFocusNode;

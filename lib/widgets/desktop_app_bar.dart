@@ -13,7 +13,7 @@ import 'package:totem/widgets/address_selection_dialog.dart';
 import 'package:totem/widgets/cart_side_panel.dart';
 import 'package:totem/widgets/profile_side_panel.dart';
 
-/// AppBar Desktop estilo iFood - Versão Responsiva
+/// AppBar Desktop - Versão Responsiva
 class DesktopAppBar extends StatelessWidget implements PreferredSizeWidget {
   final TextEditingController? searchController;
   final VoidCallback? onSearchChanged;
@@ -97,7 +97,7 @@ class DesktopAppBar extends StatelessWidget implements PreferredSizeWidget {
                 // Espaçamento entre logo e busca
                 SizedBox(width: isLargeScreen ? 32 : (isMediumScreen ? 24 : 16)),
 
-                // Barra de Busca (Centro - Maior espaço, estilo iFood)
+                // Barra de Busca (Centro - Maior espaço)
                 Expanded(
                   flex: 3,
                   child: Center(
@@ -179,7 +179,7 @@ class DesktopAppBar extends StatelessWidget implements PreferredSizeWidget {
 
                     SizedBox(width: isSmallScreen ? 8 : (isMediumScreen ? 12 : 16)),
 
-                    // Carrinho com Resumo (estilo iFood)
+                    // Carrinho com Resumo
                     _buildCartButton(context, theme, isSmallScreen),
                   ],
                 ),

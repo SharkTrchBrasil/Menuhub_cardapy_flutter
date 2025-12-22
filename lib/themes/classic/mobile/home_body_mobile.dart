@@ -7,6 +7,9 @@ import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/option_group.dart';
 import 'package:totem/themes/classic/widgets/store_card.dart';
+import 'package:totem/services/store_status_service.dart';
+import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/store_state.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
@@ -15,6 +18,9 @@ import '../../../pages/cart/cart_cubit.dart';
 import '../../../pages/cart/cart_state.dart';
 import '../../../core/extensions.dart';
 import '../../../themes/ds_theme_switcher.dart';
+import 'package:totem/themes/classic/widgets/coupon_list_widget.dart';
+import 'package:totem/themes/classic/widgets/order_again_list_widget.dart'; // ✅ Importante
+import '../../../widgets/store_closed_widgets.dart';
 
 class HomeBodyMobile extends StatefulWidget {
   final List<BannerModel> banners;
@@ -172,7 +178,11 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               const StoreCardData(),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              // const SliverToBoxAdapter(child: SizedBox(height: 80)), // Removed as per request to reduce whitespace
+              
+              const SliverToBoxAdapter(child: CouponListWidget()), // ✅ Cupons
+              const SliverToBoxAdapter(child: OrderAgainListWidget()), // ✅ Peça Novamente
+              
               SliverToBoxAdapter(child: FeaturedProductGrid(products: _filteredProducts, categories: widget.categories)),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverPersistentHeader(
@@ -217,9 +227,27 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                     final category = widget.categories[index];
                     final key = _categoryKeys[category.id];
 
-                    final productsInCategory = _filteredProducts
-                        .where((p) => p.categoryLinks.any((link) => link.categoryId == category.id))
-                        .toList();
+                    // ✅ Filtra produtos da categoria considerando múltiplas formas de associação
+                    var productsInCategory = _filteredProducts.where((p) {
+                      // 1. Verifica se tem categoryLinks apontando para esta categoria
+                      final hasCategoryLinks = p.categoryLinks.any((link) => link.categoryId == category.id);
+                      
+                      // 2. Verifica se primaryCategoryId aponta para esta categoria
+                      final hasPrimaryCategory = p.primaryCategoryId == category.id;
+                      
+                      // 3. Verifica se a categoria tem productLinks que apontam para este produto
+                      final hasProductLink = category.productLinks.any((link) => link.productId == p.id);
+                      
+                      return hasCategoryLinks || hasPrimaryCategory || hasProductLink;
+                    }).toList();
+
+                    // ✅ Se não encontrou produtos na lista filtrada, mas a categoria tem productLinks,
+                    // busca os produtos correspondentes na lista completa
+                    if (productsInCategory.isEmpty && category.productLinks.isNotEmpty) {
+                      productsInCategory = widget.products.where((p) {
+                        return category.productLinks.any((link) => link.productId == p.id);
+                      }).toList();
+                    }
 
                     if (productsInCategory.isEmpty) return const SizedBox.shrink();
 
@@ -227,6 +255,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                     if (category.isCustomizable) {
                       final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
                       
+                      // ✅ Se houver OptionGroup de tamanhos, usa ele
                       if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
                         final activeSizes = sizeGroup.items.where((s) => s.isActive).toList();
                         
@@ -337,9 +366,9 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                                           child: SizedBox(
                                             width: 80,
                                             height: 80,
-                                            child: category.image?.url != null
+                                            child: (size.image?.url != null || category.image?.url != null)
                                                 ? Image.network(
-                                                    category.image!.url,
+                                                    size.image?.url ?? category.image!.url,
                                                     fit: BoxFit.cover,
                                                     errorBuilder: (_, __, ___) => Container(
                                                       color: Colors.grey.shade100,
@@ -355,6 +384,43 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                                       ],
                                     ),
                                   ),
+                                );
+                              }),
+                            ],
+                          ),
+                        );
+                      } else {
+                        // ✅ FORMATO ANTIGO: Se não houver OptionGroup de tamanhos, exibe os produtos como tamanhos
+                        return Container(
+                          key: key,
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                                child: Text(
+                                  category.name,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              // ✅ Exibe cada produto como um tamanho
+                              ...productsInCategory.map((product) {
+                                final minPrice = product.price ?? product.categoryLinks
+                                    .firstWhereOrNull((link) => link.categoryId == category.id)?.price ?? 0;
+                                
+                                return ProductItem(
+                                  product: product,
+                                  category: category,
+                                  onTap: () {
+                                    NavigationHelper.showProductDialog(
+                                      context: context,
+                                      product: product,
+                                      category: category,
+                                    );
+                                  },
                                 );
                               }),
                             ],
@@ -416,9 +482,24 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   }
 
   Widget _buildHorizontalCategories() {
-    // ✅ Filtra categorias que têm produtos
+    // ✅ Filtra categorias que têm produtos OU são customizáveis (pizzas)
+    // Categorias customizáveis aparecem mesmo sem produtos (como no iFood)
     final categoriesWithProducts = widget.categories.where((category) {
-      return _filteredProducts.any((p) => p.categoryLinks.any((link) => link.categoryId == category.id));
+      // Categorias customizáveis (pizzas) sempre aparecem
+      if (category.isCustomizable) {
+        return true;
+      }
+      
+      // Verifica se há produtos com categoryLinks apontando para esta categoria
+      final hasProductsWithLinks = _filteredProducts.any((p) => 
+        p.categoryLinks.any((link) => link.categoryId == category.id));
+      
+      // Verifica se a categoria tem productLinks que correspondem a produtos existentes
+      final hasCategoryLinks = category.productLinks.isNotEmpty && 
+        category.productLinks.any((link) => 
+          _filteredProducts.any((p) => p.id == link.productId));
+      
+      return hasProductsWithLinks || hasCategoryLinks;
     }).toList();
     
     return ListView.builder(
@@ -524,94 +605,111 @@ class _CartFloatingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
     
-    return BlocBuilder<CartCubit, CartState>(
-      builder: (context, cartState) {
-        final cart = cartState.cart;
+    return BlocBuilder<StoreCubit, StoreState>(
+      builder: (context, storeState) {
+        final store = storeState.store;
+        final storeStatus = StoreStatusService.validateStoreStatus(store);
         
-        // ✅ Não mostra se o carrinho estiver vazio
-        if (cart.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        
-        final totalInReais = cart.total / 100.0;
-        final itemCount = cart.items.length;
-        
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          margin: EdgeInsets.zero,
-          color: theme.cartBackgroundColor,
-          child: InkWell(
-            onTap: () => context.push('/cart'),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  // Ícone do carrinho
-                  Icon(
-                    Icons.shopping_bag,
-                    color: theme.primaryColor,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  // Informações do carrinho
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Total sem a entrega',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.cartTextColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
+        return BlocBuilder<CartCubit, CartState>(
+          builder: (context, cartState) {
+            final cart = cartState.cart;
+            
+            // ✅ Não mostra se o carrinho estiver vazio
+            if (cart.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            
+            // ✅ CORREÇÃO: Removido ocultamento para permitir ver itens mesmo com loja fechada
+            /*
+            if (!storeStatus.canReceiveOrders) {
+              return const SizedBox.shrink();
+            }
+            */
+            
+            final totalInReais = cart.total / 100.0;
+            final itemCount = cart.items.length;
+            
+            return Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              margin: EdgeInsets.zero,
+              color: theme.cartBackgroundColor,
+              child: InkWell(
+                onTap: () {
+                  // ✅ Permite abrir o carrinho mesmo com loja fechada (validação ocorre no botão Continuar)
+                  context.push('/cart');
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      // Ícone do carrinho
+                      Icon(
+                        Icons.shopping_bag,
+                        color: theme.primaryColor,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      // Informações do carrinho
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              totalInReais.toCurrency(),
+                              'Total sem a entrega',
                               style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: theme.onBackgroundColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '/ $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
-                              style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 12,
                                 color: theme.cartTextColor,
                               ),
                             ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  totalInReais.toCurrency(),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.onBackgroundColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '/ $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: theme.cartTextColor,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  // Botão "Ver sacola"
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'Ver sacola',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
                       ),
-                    ),
+                      // Botão "Ver sacola"
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Ver sacola',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

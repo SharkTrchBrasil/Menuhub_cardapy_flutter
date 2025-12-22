@@ -5,7 +5,7 @@ import 'package:totem/cubit/store_state.dart';
 import 'package:totem/core/extensions.dart';
 
 /// Widget que exibe informações de entrega (tempo e taxa)
-/// Similar ao iFood: "Hoje | 33-43 min • R$ 2,99"
+/// Exibe: "Hoje | 33-43 min • R$ 2,99"
 class DeliveryInfoWidget extends StatelessWidget {
   final bool showDeliveryTypeSelector;
   final VoidCallback? onTap;

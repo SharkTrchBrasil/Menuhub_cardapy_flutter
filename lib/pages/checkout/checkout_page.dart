@@ -14,19 +14,32 @@ import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/pages/checkout/checkout_cubit.dart';
 import 'package:totem/pages/checkout/widgets/checkou_summary_card.dart';
 import 'package:totem/pages/checkout/widgets/payment_methods.dart';
-import 'package:totem/pages/checkout/widgets/phone_collection_bottom_sheet.dart';
+import 'package:totem/pages/checkout/widgets/phone_collection_bottom_sheet.dart' show showPhoneCollectionDialog;
 import 'package:totem/widgets/dot_loading.dart';
 import '../../core/di.dart';
+import '../../core/utils/app_logger.dart';
 import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../models/delivery_type.dart';
+import '../../models/store.dart';
 import '../../repositories/customer_repository.dart';
 import '../../widgets/ds_primary_button.dart';
 import '../../widgets/store_header_card.dart';
+import '../../widgets/store_closed_widgets.dart';
+import '../../services/store_status_service.dart';
 import '../cart/cart_state.dart';
+import '../cart/widgets/recommended_products.dart';
+import '../../services/product_recommendation_service.dart';
+import '../../models/update_cart_payload.dart';
+import '../../models/product.dart';
+import '../../models/cart.dart'; // ✅ Para usar Cart no _CheckoutInitializer
+import '../../core/utils/id_obfuscator.dart'; // ✅ ENTERPRISE: Ofuscação de IDs
 
 class CheckoutPage extends StatelessWidget {
   const CheckoutPage({super.key});
+  
+  // ✅ CORREÇÃO: Flag estática para evitar múltiplas inicializações
+  static bool _hasInitialized = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,33 +48,111 @@ class CheckoutPage extends StatelessWidget {
 
     final addressState = context.read<AddressCubit>().state;
     final cart = context.read<CartCubit>().state.cart;
+    final feeState = context.read<DeliveryFeeCubit>().state;
 
     final deliveryFeeCubit = context.read<DeliveryFeeCubit>();
     
-    // ✅ Calcula frete assincronamente
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      deliveryFeeCubit.calculate(
-        address: addressState.selectedAddress,
-        store: store,
-        cartSubtotal: cart.subtotal / 100.0,
-      );
-    });
-
-    return BlocProvider(
-      create: (context) {
-        final cubit = CheckoutCubit(
-          realtimeRepository: getIt(),
-          customerRepository: getIt<CustomerRepository>(),
-        );
-        // ✅ Inicializa com tipo de entrega atual
-        // Se deliveryType for null, inicializa sem filtro para mostrar todos os métodos ativos
-        final currentDeliveryType = deliveryFeeCubit.state.deliveryType;
-        // ✅ SEGURANÇA: Removido print com dados potencialmente sensíveis
-        cubit.initialize(store, deliveryType: currentDeliveryType);
-        return cubit;
+    // ✅ CORREÇÃO: Usa BlocListener para calcular frete apenas quando necessário
+    // Evita loop infinito calculando apenas quando endereço ou carrinho mudam
+    return BlocListener<AddressCubit, AddressState>(
+      listenWhen: (previous, current) => 
+          previous.selectedAddress?.id != current.selectedAddress?.id,
+      listener: (context, addressState) {
+        // ✅ Recalcula apenas quando o endereço muda
+        if (addressState.selectedAddress != null) {
+          final currentCart = context.read<CartCubit>().state.cart;
+          deliveryFeeCubit.calculate(
+            address: addressState.selectedAddress,
+            store: store,
+            cartSubtotal: currentCart.subtotal / 100.0,
+          );
+        }
       },
-      child: const CheckoutView(),
+      child: BlocListener<CartCubit, CartState>(
+        listenWhen: (previous, current) => 
+            previous.cart.subtotal != current.cart.subtotal,
+        listener: (context, cartState) {
+          // ✅ Recalcula apenas quando o subtotal do carrinho muda
+          final currentFeeState = context.read<DeliveryFeeCubit>().state;
+          final currentAddress = context.read<AddressCubit>().state.selectedAddress;
+          if (currentFeeState is! DeliveryFeeLoading && currentAddress != null) {
+            deliveryFeeCubit.calculate(
+              address: currentAddress,
+              store: store,
+              cartSubtotal: cartState.cart.subtotal / 100.0,
+            );
+          }
+        },
+        child: BlocProvider(
+          create: (context) {
+            final cubit = CheckoutCubit(
+              realtimeRepository: getIt(),
+              customerRepository: getIt<CustomerRepository>(),
+            );
+            final currentDeliveryType = deliveryFeeCubit.state.deliveryType;
+            cubit.initialize(store, deliveryType: currentDeliveryType);
+            return cubit;
+          },
+          child: _CheckoutInitializer(
+            store: store,
+            addressState: addressState,
+            cart: cart,
+            deliveryFeeCubit: deliveryFeeCubit,
+          ),
+        ),
+      ),
     );
+  }
+}
+
+// ✅ CORREÇÃO: Widget stateful para calcular frete apenas uma vez na inicialização
+class _CheckoutInitializer extends StatefulWidget {
+  final Store store;
+  final AddressState addressState;
+  final Cart cart;
+  final DeliveryFeeCubit deliveryFeeCubit;
+  
+  const _CheckoutInitializer({
+    required this.store,
+    required this.addressState,
+    required this.cart,
+    required this.deliveryFeeCubit,
+  });
+  
+  @override
+  State<_CheckoutInitializer> createState() => _CheckoutInitializerState();
+}
+
+class _CheckoutInitializerState extends State<_CheckoutInitializer> {
+  bool _hasCalculated = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Calcula apenas uma vez na inicialização, se necessário
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasCalculated && mounted) {
+        final currentState = widget.deliveryFeeCubit.state;
+        final currentAddress = widget.addressState.selectedAddress;
+        // ✅ Só calcula se ainda não foi calculado ou se está em estado inicial/erro
+        if ((currentState is DeliveryFeeInitial || 
+             currentState is DeliveryFeeError ||
+             (currentState is DeliveryFeeRequiresAddress && currentAddress != null)) &&
+            currentAddress != null) {
+          widget.deliveryFeeCubit.calculate(
+            address: currentAddress,
+            store: widget.store,
+            cartSubtotal: widget.cart.subtotal / 100.0,
+          );
+          _hasCalculated = true;
+        }
+      }
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return const CheckoutView();
   }
 }
 
@@ -71,7 +162,7 @@ class CheckoutView extends StatelessWidget {
   // ✅ NOVO: Flag para evitar que o bottom sheet do troco abra múltiplas vezes
   static bool _isChangeSheetOpen = false;
 
-  void _showChangeNeededSheet(BuildContext context) {
+  Future<void> _showChangeNeededSheet(BuildContext context) async {
     // ✅ CORREÇÃO: Previne que abra múltiplas vezes
     if (_isChangeSheetOpen) return;
     
@@ -86,7 +177,7 @@ class CheckoutView extends StatelessWidget {
     final grandTotal = (cartState.cart.total / 100.0) + deliveryFee;
 
     _isChangeSheetOpen = true;
-    showModalBottomSheet<double?>(
+    final value = await showModalBottomSheet<double?>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -94,25 +185,17 @@ class CheckoutView extends StatelessWidget {
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: _ChangeNeededBottomSheet(grandTotal: grandTotal),
       ),
-    ).then((value) {
-      _isChangeSheetOpen = false;
-      if (value != null) {
-        context.read<CheckoutCubit>().updateChange(value);
-      }
-    });
+    );
+    
+    _isChangeSheetOpen = false;
+    if (value != null) {
+      context.read<CheckoutCubit>().updateChange(value);
+    }
   }
 
-  // ✅ NOVO: Bottom sheet para coletar telefone
+  // ✅ NOVO: Bottom sheet para coletar telefone (mobile) ou dialog (desktop)
   void _showPhoneCollectionSheet(BuildContext context, String? currentPhone) {
-    showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: PhoneCollectionBottomSheet(initialPhone: currentPhone),
-      ),
-    );
+    showPhoneCollectionDialog(context, initialPhone: currentPhone);
   }
 
   String _getPaymentGroupTitle(PlatformPaymentMethod method) {
@@ -141,28 +224,28 @@ class CheckoutView extends StatelessWidget {
       child: BlocListener<CheckoutCubit, CheckoutState>(
         listenWhen: (previous, current) => previous.status != current.status || previous.selectedPaymentMethod != current.selectedPaymentMethod,
         listener: (context, state) {
+        // ✅ NOTA: A navegação para success agora é tratada pela OrderSubmissionPage
+        // Este listener aqui é apenas para fallback em casos edge (ex: usuário não está na tela de submissão)
         if (state.status == CheckoutStatus.success) {
-          context.read<CartCubit>().clearCart().then((_) {
-            // ✅ CORREÇÃO: Passa order e payment method para a tela de sucesso
-            context.go('/order/success', extra: {
-              'order': state.finalOrder,
-              'paymentMethod': state.selectedPaymentMethod,
-            });
-          });
+          // Não faz nada aqui - a OrderSubmissionPage cuida da navegação
+          AppLogger.debug('✅ [CHECKOUT] Status success recebido no checkout_page (ignorado - OrderSubmissionPage cuida)', tag: 'CHECKOUT');
         }
         if (state.status == CheckoutStatus.error) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.errorMessage ?? "Ocorreu um erro."),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
+          // ✅ Mostra erro apenas se NÃO estiver na tela de submissão
+          // A OrderSubmissionPage tem seu próprio tratamento de erro
+          final currentRoute = GoRouterState.of(context).matchedLocation;
+          if (!currentRoute.contains('submitting')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.errorMessage ?? "Ocorreu um erro."),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
         }
-        if (state.selectedPaymentMethod?.method_type == 'CASH' && state.changeFor == null) {
-          Future.delayed(const Duration(milliseconds: 300), () {
-            _showChangeNeededSheet(context);
-          });
-        }
+        // ✅ CORREÇÃO: REMOVIDO - O auto-popup do troco era intrusivo
+        // O usuário configura o troco clicando em "Precisa de troco?" na seção de pagamento
+        // Se não configurou, será validado ao clicar em "Revisar pedido"
       },
       child: Scaffold(
         appBar: AppBar(
@@ -231,6 +314,9 @@ class CheckoutView extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               const OrderSummaryCard(),
+              const SizedBox(height: 32),
+              // ✅ NOVO: Seção de Upsell no Checkout
+              _CheckoutUpsellSection(),
               const SizedBox(height: 32),
               const _ScheduleOrderSection(),
               const SizedBox(height: 32),
@@ -318,12 +404,32 @@ class _PaymentMethodSummary extends StatelessWidget {
                 trailing: TextButton(
                   child: const Text('Trocar'),
                   onPressed: () async {
+                    // ✅ Calcula total do pedido para passar ao widget de pagamento online
+                    final cartState = context.read<CartCubit>().state;
+                    final feeState = context.read<DeliveryFeeCubit>().state;
+                    final store = context.read<StoreCubit>().state.store;
+                    
+                    double deliveryFee = 0.0;
+                    if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+                      deliveryFee = feeState.deliveryFee;
+                    }
+                    
+                    double paymentFee = 0.0;
+                    if (state.selectedPaymentMethod != null) {
+                      final subtotalInReais = cartState.cart.subtotal / 100.0;
+                      paymentFee = state.selectedPaymentMethod!.calculateFee(subtotalInReais);
+                    }
+                    
+                    final orderTotal = (cartState.cart.total / 100.0) + deliveryFee + paymentFee;
+                    
                     final selected = await Navigator.push<PlatformPaymentMethod>(
                       context,
                       MaterialPageRoute(
                         builder: (_) => PaymentMethodSelectionList(
                           paymentGroups: availablePaymentGroups,
                           initialSelectedMethod: method,
+                          orderTotal: orderTotal, // ✅ NOVO: Passa total do pedido
+                          store: store!, // ✅ NOVO: Passa loja
                         ),
                       ),
                     );
@@ -573,6 +679,37 @@ class CheckoutBottomBar extends StatelessWidget {
 
   // ✅ NOVO: Flag para evitar que o sheet de confirmação abra múltiplas vezes
   static bool _isConfirmationSheetOpen = false;
+  static bool _isChangeSheetOpen = false;
+
+  // ✅ NOVO: Método para mostrar sheet de troco
+  Future<void> _showChangeNeededSheet(BuildContext context) async {
+    if (_isChangeSheetOpen) return;
+    
+    final cartState = context.read<CartCubit>().state;
+    final feeState = context.read<DeliveryFeeCubit>().state;
+
+    double deliveryFee = 0.0;
+    if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+      deliveryFee = feeState.deliveryFee;
+    }
+    final grandTotal = (cartState.cart.total / 100.0) + deliveryFee;
+
+    _isChangeSheetOpen = true;
+    final value = await showModalBottomSheet<double?>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: _ChangeNeededBottomSheet(grandTotal: grandTotal),
+      ),
+    );
+    
+    _isChangeSheetOpen = false;
+    if (value != null && context.mounted) {
+      context.read<CheckoutCubit>().updateChange(value);
+    }
+  }
 
   void _showOrderConfirmationSheet(BuildContext context) {
     // ✅ CORREÇÃO: Previne que abra múltiplas vezes
@@ -607,17 +744,9 @@ class CheckoutBottomBar extends StatelessWidget {
     });
   }
 
-  // ✅ NOVO: Bottom sheet para coletar telefone
+  // ✅ NOVO: Bottom sheet para coletar telefone (mobile) ou dialog (desktop)
   Future<void> _showPhoneCollectionSheet(BuildContext context, String? currentPhone) async {
-    final phone = await showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: PhoneCollectionBottomSheet(initialPhone: currentPhone),
-      ),
-    );
+    final phone = await showPhoneCollectionDialog(context, initialPhone: currentPhone);
 
     if (phone != null && phone.isNotEmpty) {
       final authState = context.read<AuthCubit>().state;
@@ -695,9 +824,32 @@ class CheckoutBottomBar extends StatelessWidget {
             return BottomAppBar(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-                child: DsPrimaryButton(
-                  label: 'Revisar pedido • ${UtilBrasilFields.obterReal(grandTotal)}',
-                  onPressed: () => _showOrderConfirmationSheet(context),
+                child: BlocBuilder<CheckoutCubit, CheckoutState>(
+                  builder: (context, checkoutState) {
+                    return DsPrimaryButton(
+                      label: 'Revisar pedido • ${UtilBrasilFields.obterReal(grandTotal)}',
+                      onPressed: () {
+                        // ✅ CORREÇÃO: Valida troco ANTES de mostrar o resumo
+                        final method = checkoutState.selectedPaymentMethod;
+                        final isCash = method?.method_type == 'CASH';
+                        final needsChangeConfig = isCash && checkoutState.changeFor == null;
+                        
+                        if (needsChangeConfig) {
+                          // Se é dinheiro e não configurou troco, mostra sheet de troco primeiro
+                          _showChangeNeededSheet(context).then((_) {
+                            // Após configurar troco, mostra o resumo
+                            final updatedState = context.read<CheckoutCubit>().state;
+                            if (updatedState.changeFor != null || !isCash) {
+                              _showOrderConfirmationSheet(context);
+                            }
+                          });
+                        } else {
+                          // Já configurou ou não é dinheiro, mostra resumo direto
+                          _showOrderConfirmationSheet(context);
+                        }
+                      },
+                    );
+                  },
                 ),
               ),
             );
@@ -774,6 +926,19 @@ class _OrderConfirmationBottomSheet extends StatelessWidget {
           ElevatedButton(
             child: const Text('Fazer pedido'),
             onPressed: () async {
+              // ✅ NOVO: Verifica se a loja está aberta antes de fazer o pedido
+              final storeStatus = StoreStatusService.validateStoreStatus(store);
+              if (!storeStatus.canReceiveOrders) {
+                Navigator.pop(context); // Fecha o sheet de confirmação
+                // Mostra modal de loja fechada
+                await StoreClosedCartModal.show(
+                  context,
+                  onSeeOtherOptions: () => Navigator.pop(context),
+                  nextOpenTime: storeStatus.message,
+                );
+                return;
+              }
+              
               // ✅ NOVO: Valida se tem telefone antes de finalizar
               final customer = authState.customer;
               if (customer?.phone == null || customer!.phone!.isEmpty) {
@@ -785,9 +950,19 @@ class _OrderConfirmationBottomSheet extends StatelessWidget {
                 return;
               }
               
-              // Se tem telefone, prossegue normalmente
+              // Se tem telefone, prossegue para tela de animação
               Navigator.pop(context); // Fecha o sheet de confirmação
-              context.read<CheckoutCubit>().placeOrder(
+              
+              // ✅ CORREÇÃO: Obtém o cubit antes de navegar
+              final checkoutCubit = context.read<CheckoutCubit>();
+              
+              // ✅ CORREÇÃO: Navega para tela de animação passando o cubit via extra
+              context.push('/order/submitting', extra: {
+                'checkoutCubit': checkoutCubit,
+              });
+              
+              // ✅ Dispara o placeOrder após navegar (a tela de animação vai escutar o estado)
+              checkoutCubit.placeOrder(
                 cartState: cartState,
                 addressState: addressState,
                 feeState: feeState,
@@ -824,6 +999,109 @@ class _OrderConfirmationBottomSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ✅ NOVO: Seção de Upsell no Checkout
+class _CheckoutUpsellSection extends StatelessWidget {
+  const _CheckoutUpsellSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<CartCubit, CartState>(
+      builder: (context, cartState) {
+        final storeState = context.watch<StoreCubit>().state;
+        final allProducts = storeState.products ?? [];
+        final allCategories = storeState.categories;
+        final itemsInCart = cartState.cart.items;
+
+        // Se não tem produtos ou carrinho vazio, não mostra upsell
+        if (allProducts.isEmpty || itemsInCart.isEmpty || allCategories.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        // Obtém produtos recomendados usando o serviço existente
+        final recommendedProducts = ProductRecommendationService.getRecommendedProducts(
+          allProducts: allProducts,
+          allCategories: allCategories,
+          itemsInCart: itemsInCart,
+          maxItems: 6, // Limita a 6 produtos no checkout
+        );
+
+        // Se não tem recomendações, não mostra a seção
+        if (recommendedProducts.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            RecommendedProductsSection(
+              recommendedProducts: recommendedProducts,
+              allCategories: allCategories,
+              onProductTap: (product) => _handleProductTap(context, product),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleProductTap(BuildContext context, Product product) async {
+    // ✅ Verifica se tem variantes/complementos OU é pizza (tem prices)
+    final hasVariants = product.variantLinks.isNotEmpty;
+    final isPizza = product.prices.isNotEmpty;
+
+    // ✅ Se tem complementos OU é pizza, abre tela de detalhes
+    if (hasVariants || isPizza) {
+      // ✅ ENTERPRISE: Usa ID ofuscado na URL
+      final productUrl = IdObfuscator.createProductUrl(product.name, product.id!);
+      context.push('/product/$productUrl?fromCart=true', extra: product);
+    } else {
+      // ✅ Produto simples: adiciona direto ao carrinho
+      final firstCategoryLink = product.categoryLinks.firstOrNull;
+      if (firstCategoryLink == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erro: ${product.name} não pertence a nenhuma categoria.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final payload = UpdateCartItemPayload(
+        productId: product.id!,
+        categoryId: firstCategoryLink.categoryId,
+        quantity: 1,
+        variants: null,
+      );
+
+      try {
+        await context.read<CartCubit>().updateItem(payload);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${product.name} adicionado à sacola!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Não foi possível adicionar ${product.name}. Tente novamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 }
 

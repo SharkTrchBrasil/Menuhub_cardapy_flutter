@@ -1,55 +1,152 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:totem/models/payment_method.dart';
+import 'package:totem/models/store.dart';
+import 'package:totem/pages/checkout/widgets/mercadopago_payment_widget.dart';
 import 'package:totem/widgets/ds_primary_button.dart'; // Importe seus modelos atualizados
 
 class PaymentMethodSelectionList extends StatefulWidget {
   final List<PaymentMethodGroup> paymentGroups;
   final PlatformPaymentMethod? initialSelectedMethod;
+  final double orderTotal; // ✅ NOVO: Total do pedido para pagamento online
+  final Store store; // ✅ NOVO: Loja para pagamento online
 
   const PaymentMethodSelectionList({
     super.key,
     required this.paymentGroups,
     this.initialSelectedMethod,
+    required this.orderTotal, // ✅ NOVO
+    required this.store, // ✅ NOVO
   });
 
   @override
   State<PaymentMethodSelectionList> createState() => _PaymentMethodSelectionListState();
 }
 
-class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList> {
+class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList> with SingleTickerProviderStateMixin {
   // Guarda o método de pagamento selecionado
   PlatformPaymentMethod? _selectedMethod;
+  late TabController _tabController;
+  
+  // ✅ NOVO: Variáveis de instância para grupos (acessíveis em todos os métodos)
+  late final List<PaymentMethodGroup> offlineGroups;
+  late final List<PaymentMethodGroup> onlineGroups;
 
   @override
   void initState() {
     super.initState();
     _selectedMethod = widget.initialSelectedMethod;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // ✅ CORREÇÃO: Filtra grupos que têm métodos ativos e disponíveis
-    // ✅ Os grupos já vêm filtrados por tipo de entrega do checkout_page
+    _tabController = TabController(length: 2, vsync: this);
+    
+    // ✅ NOVO: Separa métodos em "Pagamento na Entrega" e "Pagamento Online"
     final activeGroups = widget.paymentGroups
         .where((group) => group.methods.any((method) => method.activation?.isActive == true))
         .toList();
 
-    // ✅ CORREÇÃO: Layout mobile-first em coluna única (sem TabBar)
+    // ✅ Separa métodos offline (na entrega) e online (Mercado Pago)
+    final offline = <PaymentMethodGroup>[];
+    final online = <PaymentMethodGroup>[];
+    
+    for (final group in activeGroups) {
+      final hasOnline = group.methods.any((m) => 
+        m.method_type == 'ONLINE' || 
+        (m.activation?.details?['is_online'] == true)
+      );
+      
+      if (hasOnline) {
+        online.add(group);
+      } else {
+        offline.add(group);
+      }
+    }
+    
+    offlineGroups = offline;
+    onlineGroups = online;
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    // ✅ Se não há métodos online, mostra apenas métodos offline sem tabs
+    if (onlineGroups.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Escolha o Pagamento'),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16.0),
+                itemCount: offlineGroups.length,
+                itemBuilder: (context, groupIndex) {
+                  final group = offlineGroups[groupIndex];
+                  return _buildGroupCard(group, groupIndex == offlineGroups.length - 1);
+                },
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: DsPrimaryButton(
+                onPressed: _selectedMethod == null
+                    ? null
+                    : () {
+                  Navigator.pop(context, _selectedMethod);
+                },
+                label: 'Confirmar',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ✅ Layout com tabs (Pagamento na Entrega | Pagamento Online)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Escolha o Pagamento'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Pagamento na Entrega'),
+            Tab(text: 'Pagamento Online'),
+          ],
+        ),
       ),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: activeGroups.length,
-              itemBuilder: (context, groupIndex) {
-                final group = activeGroups[groupIndex];
-                return _buildGroupCard(group, groupIndex == activeGroups.length - 1);
-              },
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // ✅ Tab 1: Pagamento na Entrega
+                ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: offlineGroups.length,
+                  itemBuilder: (context, groupIndex) {
+                    final group = offlineGroups[groupIndex];
+                    return _buildGroupCard(group, groupIndex == offlineGroups.length - 1);
+                  },
+                ),
+                // ✅ Tab 2: Pagamento Online (Mercado Pago)
+                _buildOnlinePaymentTab(context),
+              ],
             ),
           ),
           // ✅ Botão de confirmação fixo no rodapé
@@ -182,6 +279,57 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
     );
   }
   
+  /// ✅ NOVO: Constrói tab de pagamento online com Mercado Pago
+  Widget _buildOnlinePaymentTab(BuildContext context) {
+    // ✅ Sempre mostra o widget de Mercado Pago (backend valida se está conectado)
+    // Se a loja não estiver conectada, o widget mostrará erro ao tentar criar pagamento
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: MercadoPagoPaymentWidget(
+        store: widget.store,
+        orderTotal: widget.orderTotal,
+        onPaymentCreated: (paymentId, paymentData) {
+          // ✅ Quando pagamento é criado, cria um método de pagamento online virtual
+          final onlineMethod = PlatformPaymentMethod(
+            id: 0, // ID temporário (não é um método real do backend)
+            name: paymentData['payment_method_id'] == 'pix' 
+                ? 'PIX (Pelo App)' 
+                : 'Cartão de Crédito (Pelo App)',
+            method_type: 'ONLINE',
+            iconKey: paymentData['payment_method_id'] == 'pix' ? 'pix' : 'credit_card',
+            activation: StorePaymentMethodActivation(
+              id: 0,
+              isActive: true,
+              feePercentage: 0.0,
+              details: {
+                'mercadopago_payment_id': paymentId,
+                'payment_method_id': paymentData['payment_method_id'],
+                'flag_type': paymentData['payment_method_id'],
+                'is_online': true,
+              },
+              isForDelivery: true,
+              isForPickup: true,
+              isForInStore: true,
+            ),
+          );
+          
+          setState(() {
+            _selectedMethod = onlineMethod;
+          });
+          
+          // ✅ Mostra mensagem de sucesso
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pagamento criado! Clique em "Confirmar" para finalizar.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// ✅ NOVO: Constrói item de método com bandeiras (se houver)
   Widget _buildMethodItem(PlatformPaymentMethod method, {List<PlatformPaymentMethod> flags = const []}) {
     final activation = method.activation;
@@ -194,14 +342,16 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
       final feeType = details['fee_type'] as String?;
       final feeValue = details['fee_value'] as num?;
       
-      if (hasFee && feeValue != null && feeValue > 0) {
-        if (feeType == 'fixed' || feeType == 'R\$' || feeType == '\$') {
-          feeText = 'Taxa: R\$ ${feeValue.toStringAsFixed(2)}';
-        } else if (feeType == '%' || feeType == 'percentage' || activation.feePercentage > 0) {
-          final percentage = activation.feePercentage > 0 
-              ? activation.feePercentage 
-              : feeValue.toDouble();
-          feeText = 'Taxa: ${percentage.toStringAsFixed(1)}%';
+      // ✅ UNIFICADO: Prioriza feeValue e feeType do activation, depois details
+      final finalFeeValue = activation.feeValue ?? feeValue;
+      final finalFeeType = activation.feeType ?? feeType;
+      
+      if (hasFee && finalFeeValue != null && finalFeeValue > 0) {
+        if (finalFeeType == 'fixed' || finalFeeType == 'R\$' || finalFeeType == '\$') {
+          feeText = 'Taxa: R\$ ${finalFeeValue.toStringAsFixed(2)}';
+        } else if (finalFeeType == '%' || finalFeeType == 'percentage') {
+          // ✅ UNIFICADO: Sempre usa feeValue (não usa feePercentage como fallback)
+          feeText = 'Taxa: ${finalFeeValue.toStringAsFixed(1)}%';
         }
       }
     }
@@ -250,14 +400,16 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
       final feeType = details['fee_type'] as String?;
       final feeValue = details['fee_value'] as num?;
       
-      if (hasFee && feeValue != null && feeValue > 0) {
-        if (feeType == 'fixed' || feeType == 'R\$' || feeType == '\$') {
-          feeText = 'Taxa: R\$ ${feeValue.toStringAsFixed(2)}';
-        } else if (feeType == '%' || feeType == 'percentage' || activation.feePercentage > 0) {
-          final percentage = activation.feePercentage > 0 
-              ? activation.feePercentage 
-              : feeValue.toDouble();
-          feeText = 'Taxa: ${percentage.toStringAsFixed(1)}%';
+      // ✅ UNIFICADO: Prioriza feeValue e feeType do activation, depois details
+      final finalFeeValue = activation.feeValue ?? feeValue;
+      final finalFeeType = activation.feeType ?? feeType;
+      
+      if (hasFee && finalFeeValue != null && finalFeeValue > 0) {
+        if (finalFeeType == 'fixed' || finalFeeType == 'R\$' || finalFeeType == '\$') {
+          feeText = 'Taxa: R\$ ${finalFeeValue.toStringAsFixed(2)}';
+        } else if (finalFeeType == '%' || finalFeeType == 'percentage') {
+          // ✅ UNIFICADO: Sempre usa feeValue (não usa feePercentage como fallback)
+          feeText = 'Taxa: ${finalFeeValue.toStringAsFixed(1)}%';
         }
       }
     }

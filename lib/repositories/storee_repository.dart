@@ -3,6 +3,7 @@ import 'package:either_dart/either.dart';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/models/category.dart'; // Importando o Category que faltava
+import 'package:totem/models/menu/menu_response.dart'; // ✅ NOVO: Formato de menu
 import '../core/di.dart';
 import '../models/banners.dart';
 import '../models/product.dart';
@@ -85,6 +86,23 @@ class StoreRepository {
     } catch (e) {
       print('Erro ao buscar bairros da cidade: $e');
       return Left(null);
+    }
+  }
+
+  /// ✅ NOVO: Busca menu no novo formato (com estrutura de pizzas por tamanhos)
+  /// Endpoint: GET /menu ou similar (verificar endpoint exato no backend)
+  Future<Either<String, MenuResponse>> fetchMenu() async {
+    try {
+      final response = await _dio.get(
+        '/menu', // ✅ Ajustar endpoint conforme backend
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+      
+      final menuResponse = MenuResponse.fromJson(response.data);
+      return Right(menuResponse);
+    } catch (e) {
+      debugPrint('Erro ao buscar menu: $e');
+      return Left('Não foi possível carregar o menu.');
     }
   }
 }

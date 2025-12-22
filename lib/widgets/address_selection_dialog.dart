@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -182,8 +183,19 @@ class _AddressSelectionDialogState extends State<AddressSelectionDialog> {
     final authState = context.read<AuthCubit>().state;
     if (authState.status != AuthStatus.success || authState.customer == null) return;
 
+    // ✅ Validação de campos obrigatórios
     if (_numberController.text.trim().isEmpty) {
-      _showError('Por favor, preencha o numero do endereco');
+      _showError('Por favor, preencha o número do endereço');
+      return;
+    }
+    
+    if (_neighborhoodController.text.trim().isEmpty) {
+      _showError('Por favor, preencha o bairro');
+      return;
+    }
+    
+    if (_streetController.text.trim().isEmpty) {
+      _showError('Por favor, preencha a rua');
       return;
     }
 
@@ -226,34 +238,114 @@ class _AddressSelectionDialogState extends State<AddressSelectionDialog> {
       longitude: _mapLongitude,
     );
 
-    final tempDeliveryFeeCubit = DeliveryFeeCubit();
-
-    await tempDeliveryFeeCubit.calculate(
-      address: newAddress,
-      store: store,
-      cartSubtotal: 0,
-    );
-
-    final deliveryState = tempDeliveryFeeCubit.state;
-
-    if (deliveryState is DeliveryFeeError) {
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Endereco fora da area'),
-            content: Text(deliveryState.message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-      return;
+    // ✅ DIAGNÓSTICO: Exibe informações da loja e endereço para debug
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('📍 DIAGNÓSTICO DE ENTREGA');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('🏪 Loja: ${store.name}');
+    debugPrint('🏪 Coordenadas da Loja: (${store.latitude}, ${store.longitude})');
+    debugPrint('🏪 Raio de Entrega: ${store.deliveryRadiusKm ?? "Não configurado"} km');
+    debugPrint('🏪 Regras de Frete Ativas: ${store.deliveryFeeRules.where((r) => r.isActive).length}');
+    for (final rule in store.deliveryFeeRules.where((r) => r.isActive)) {
+      debugPrint('   └─ ${rule.ruleType}');
     }
+    debugPrint('📍 Endereço Cliente: ${newAddress.street}, ${newAddress.number}');
+    debugPrint('📍 Coordenadas Cliente: (${newAddress.latitude}, ${newAddress.longitude})');
+    
+    // Calcula distância localmente para diagnóstico
+    if (store.latitude != null && store.longitude != null &&
+        newAddress.latitude != null && newAddress.longitude != null) {
+      final distance = _calculateDistanceKm(
+        store.latitude!, store.longitude!,
+        newAddress.latitude!, newAddress.longitude!,
+      );
+      debugPrint('📏 Distância calculada: ${distance.toStringAsFixed(2)} km');
+      if (store.deliveryRadiusKm != null) {
+        final isWithin = distance <= store.deliveryRadiusKm!;
+        debugPrint('✅ Dentro do raio: $isWithin (${distance.toStringAsFixed(2)} <= ${store.deliveryRadiusKm} km)');
+      }
+    }
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // ✅ MELHORIA: Não bloqueia por erros de conexão
+    bool shouldSave = true;
+    String? warningMessage;
+    
+    try {
+      final tempDeliveryFeeCubit = DeliveryFeeCubit();
+
+      await tempDeliveryFeeCubit.calculate(
+        address: newAddress,
+        store: store,
+        cartSubtotal: 0,
+      );
+
+      final deliveryState = tempDeliveryFeeCubit.state;
+
+      if (deliveryState is DeliveryFeeError) {
+        final errorMsg = deliveryState.message.toLowerCase();
+        
+        // ✅ Erros de conexão não devem bloquear
+        if (errorMsg.contains('connection') || 
+            errorMsg.contains('timeout') ||
+            errorMsg.contains('network') ||
+            errorMsg.contains('xmlhttprequest')) {
+          debugPrint('⚠️ Erro de conexão ao verificar área - permitindo salvar mesmo assim');
+          warningMessage = 'Não foi possível verificar a área de entrega (erro de conexão). O endereço será salvo, mas pode estar fora da área de entrega.';
+        }
+        // ✅ Erros de área de entrega bloqueiam (mas mostram opção de continuar)
+        else if (errorMsg.contains('fora da área') || 
+                 errorMsg.contains('fora do raio') ||
+                 errorMsg.contains('não entrega')) {
+          debugPrint('❌ Endereço fora da área de entrega');
+          if (context.mounted) {
+            final continueAnyway = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Endereço fora da área'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(deliveryState.message),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Deseja salvar este endereço mesmo assim?',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Você poderá usá-lo para retirada na loja.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Salvar mesmo assim'),
+                  ),
+                ],
+              ),
+            );
+            shouldSave = continueAnyway ?? false;
+          }
+        } else {
+          // Outros erros - mostra aviso mas permite salvar
+          warningMessage = 'Aviso: ${deliveryState.message}';
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Exceção ao verificar área de entrega: $e');
+      // Erro de exceção não bloqueia - permite salvar
+      warningMessage = 'Não foi possível verificar a área de entrega. O endereço será salvo.';
+    }
+
+    if (!shouldSave) return;
 
     try {
       await context.read<AddressCubit>().saveAddress(customerId, newAddress);
@@ -261,9 +353,9 @@ class _AddressSelectionDialogState extends State<AddressSelectionDialog> {
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Endereco adicionado com sucesso!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(warningMessage ?? 'Endereco adicionado com sucesso!'),
+            backgroundColor: warningMessage != null ? Colors.orange : Colors.green,
           ),
         );
       }
@@ -273,6 +365,22 @@ class _AddressSelectionDialogState extends State<AddressSelectionDialog> {
       }
     }
   }
+
+  /// Calcula distância em km usando Haversine
+  double _calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadiusKm = 6371.0;
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degreesToRadians(lat1)) *
+            math.cos(_degreesToRadians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  double _degreesToRadians(double degrees) => degrees * (math.pi / 180.0);
 
   void _showError(String message) {
     showDialog(

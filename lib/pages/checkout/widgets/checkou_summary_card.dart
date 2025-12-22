@@ -36,9 +36,9 @@ class OrderSummaryCard extends StatelessWidget {
 
                 // ✅ P0 - CRÍTICO: Calcula taxa de pagamento baseada no subtotal (antes do desconto)
                 double paymentFee = 0.0;
-                if (checkoutState.selectedPaymentMethod != null) {
+                if (checkoutState.selectedPaymentMethod != null && checkoutState.selectedPaymentMethod!.activation != null) {
                   final subtotalInReais = cart.subtotal / 100.0;
-                  paymentFee = checkoutState.selectedPaymentMethod!.calculateFee(subtotalInReais);
+                  paymentFee = checkoutState.selectedPaymentMethod!.activation!.calculateFee(subtotalInReais);
                 }
 
                 // ✅ P0 - CRÍTICO: Total = (subtotal - desconto do cupom) + frete + taxa de pagamento

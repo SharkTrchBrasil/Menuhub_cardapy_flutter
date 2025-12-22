@@ -91,17 +91,18 @@ class PaymentMethodsWidget extends StatelessWidget {
           final feeType = details['fee_type'] as String?;
           final feeValue = details['fee_value'] as num?;
           
-          if (hasFee && feeValue != null && feeValue > 0) {
+          // ✅ UNIFICADO: Prioriza feeValue e feeType do activation, depois details
+          final finalFeeValue = activation.feeValue ?? feeValue;
+          final finalFeeType = activation.feeType ?? feeType;
+          
+          if (hasFee && finalFeeValue != null && finalFeeValue > 0) {
             // ✅ ENTERPRISE: fee_value está em reais (Numeric(10, 2) no backend)
-            if (feeType == 'fixed' || feeType == 'R\$' || feeType == '\$') {
+            if (finalFeeType == 'fixed' || finalFeeType == 'R\$' || finalFeeType == '\$') {
               // Taxa fixa: fee_value já está em reais (ex: 5.50 para R$ 5,50)
-              return Text('Taxa: R\$ ${feeValue.toStringAsFixed(2)}');
-            } else if (feeType == '%' || feeType == 'percentage' || activation.feePercentage > 0) {
-              // Taxa percentual: usa feePercentage do activation ou fee_value
-              final percentage = activation.feePercentage > 0 
-                  ? activation.feePercentage 
-                  : feeValue.toDouble();
-              return Text('Taxa: ${percentage.toStringAsFixed(1)}%');
+              return Text('Taxa: R\$ ${finalFeeValue.toStringAsFixed(2)}');
+            } else if (finalFeeType == '%' || finalFeeType == 'percentage') {
+              // ✅ UNIFICADO: Sempre usa feeValue (não usa feePercentage como fallback)
+              return Text('Taxa: ${finalFeeValue.toStringAsFixed(1)}%');
             }
           }
           return null;

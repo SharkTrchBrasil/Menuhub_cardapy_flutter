@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// Configurações de performance para Flutter Web
 class PerformanceOptimizer {
@@ -13,10 +14,6 @@ class PerformanceOptimizer {
       // Habilita o cache de imagens mais agressivo
       PaintingBinding.instance.imageCache.maximumSize = 1000;
       PaintingBinding.instance.imageCache.maximumSizeBytes = 500 << 20; // 500MB
-
-      // Desabilita animações desnecessárias em web para melhor performance
-      // (Pode ser reativado se necessário)
-      // RendererBinding.instance.deferFirstFrame();
     }
   }
 
@@ -68,17 +65,21 @@ class Debouncer {
 /// Widget que carrega imagens de forma lazy
 class LazyImage extends StatelessWidget {
   final String? imageUrl;
+  final double? width;
+  final double? height;
   final BoxFit fit;
-  final Widget? placeholder;
   final Widget? errorWidget;
+  final bool useDiskCache;
 
   const LazyImage({
-    super.key,
+    Key? key,
     required this.imageUrl,
+    this.width,
+    this.height,
     this.fit = BoxFit.cover,
-    this.placeholder,
     this.errorWidget,
-  });
+    this.useDiskCache = true,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -86,27 +87,26 @@ class LazyImage extends StatelessWidget {
       return errorWidget ?? const SizedBox.shrink();
     }
 
-    return Image.network(
-      imageUrl!,
+    // ✅ ENTERPRISE: Cache em Disco e Memória
+    return CachedNetworkImage(
+      imageUrl: imageUrl!,
+      width: width,
+      height: height,
       fit: fit,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return placeholder ??
-            Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
-              ),
-            );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return errorWidget ?? const Icon(Icons.error_outline);
-      },
-      // Cache configuration
-      cacheWidth: kIsWeb ? 800 : null, // Reduz tamanho em web
-      cacheHeight: kIsWeb ? 800 : null,
+      memCacheWidth: kIsWeb ? 800 : null, // Otimização de memória
+      placeholder: (context, url) => Container(
+        color: Colors.grey[200],
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      errorWidget: (context, url, error) => 
+          errorWidget ?? const Icon(Icons.error_outline),
+      fadeInDuration: const Duration(milliseconds: 300),
     );
   }
 }
@@ -147,4 +147,3 @@ class OptimizedListView extends StatelessWidget {
     );
   }
 }
-

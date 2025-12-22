@@ -1,0 +1,15 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Bloquear assets internos do Flutter que não precisam ser indexados
+Disallow: /assets/
+Disallow: /icons/
+Disallow: /flutter_service_worker.js
+Disallow: /flutter_bootstrap.js
+Disallow: /main.dart.js
+Disallow: /canvaskit/
+Disallow: /manifest.json
+
+# Sitemap (opcional - adicione se tiver)
+# Sitemap: https://topburguer.menuhub.com.br/sitemap.xml

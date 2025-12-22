@@ -100,13 +100,14 @@ class ProductFilterService {
       }).toList();
     }
 
-    // Filtro por rating mínimo
-    if (options.minRating != null) {
-      filtered = filtered.where((product) {
-        final rating = product.rating?.averageRating ?? 0.0;
-        return rating >= options.minRating!;
-      }).toList();
-    }
+    // Filtro por rating mínimo - REMOVIDO: Product não tem rating
+    // TODO: Adicionar rating ao modelo Product se necessário
+    // if (options.minRating != null) {
+    //   filtered = filtered.where((product) {
+    //     final rating = product.rating?.averageRating ?? 0.0;
+    //     return rating >= options.minRating!;
+    //   }).toList();
+    // }
 
     // Filtro por promoção
     if (options.inPromotion == true) {
@@ -163,10 +164,9 @@ class ProductFilterService {
         });
         break;
       case SortOption.ratingDesc:
+        // Ordena por vendas como fallback (rating não disponível no Product)
         sorted.sort((a, b) {
-          final ratingA = a.rating?.averageRating ?? 0.0;
-          final ratingB = b.rating?.averageRating ?? 0.0;
-          return ratingB.compareTo(ratingA);
+          return b.soldCount.compareTo(a.soldCount);
         });
         break;
       case SortOption.newest:

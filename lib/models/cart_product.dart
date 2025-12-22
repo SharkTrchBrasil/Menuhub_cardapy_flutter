@@ -86,6 +86,8 @@ class CartProduct extends Equatable {
                     isActuallyAvailable: true, // Já filtrado acima
                     description: item.description,
                     imageUrl: item.image?.url,
+                    // ✅ NOVO: Preserva parentCustomizationOptionId para combinações massa + borda
+                    parentCustomizationOptionId: item.parentCustomizationOptionId,
                     quantity: shouldAutoSelect ? 1 : 0, // ✅ Auto-seleciona
                   );
                 })
@@ -131,7 +133,72 @@ class CartProduct extends Equatable {
     if (category.isCustomizable) {
       if (selectedSize == null) return 0;
       
-      // ✅ Encontra os grupos de sabores
+      // ✅ NOVO: Busca TODOS os grupos TOPPING (pode haver múltiplos: SABOR, SABOR2, SABOR3, etc.)
+      final toppingGroups = category.optionGroups.where(
+        (g) => g.groupType == OptionGroupType.topping,
+      ).toList();
+      
+      if (toppingGroups.isNotEmpty) {
+        // ✅ Coleta todos os sabores selecionados de TODOS os grupos TOPPING
+        final List<int> selectedFlavorPrices = [];
+        
+        for (final toppingGroup in toppingGroups) {
+          final flavorVariant = selectedVariants.firstWhereOrNull(
+            (v) => v.id == toppingGroup.id,
+          );
+          
+          if (flavorVariant != null && flavorVariant.cartOptions.isNotEmpty) {
+            // Busca preços dos sabores selecionados usando prices_by_size
+            final groupFlavorPrices = flavorVariant.cartOptions
+                .where((o) => o.quantity > 0)
+                .map((o) {
+                  // Busca o OptionItem original para acessar prices_by_size
+                  final toppingItem = toppingGroup.items.firstWhereOrNull(
+                    (item) => item.id == o.id,
+                  );
+                  
+                  if (toppingItem != null && selectedSize?.id != null) {
+                    // Usa prices_by_size se disponível
+                    final priceForSize = toppingItem.getPriceForSize(selectedSize!.id);
+                    return priceForSize ?? o.price;
+                  }
+                  return o.price;
+                })
+                .whereType<int>()
+                .where((p) => p > 0)
+                .toList();
+            
+            selectedFlavorPrices.addAll(groupFlavorPrices);
+          }
+        }
+        
+        if (selectedFlavorPrices.isNotEmpty) {
+          // ✅ CORREÇÃO: Os preços já vêm divididos (ex: R$ 17,50 para 1/2)
+          // Para obter o preço cheio, precisamos multiplicar pelo número de sabores
+          final numberOfFlavors = selectedFlavorPrices.length;
+          
+          // ✅ ESTRATÉGIA DE PREÇO: HIGHEST ou AVERAGE
+          // Por padrão usa HIGHEST (mais caro) se não tiver acesso à configuração
+          // O backend recalcula usando a estratégia configurada na loja
+          // Aqui apenas calculamos o preço base para exibição
+          final maxFractionalPrice = selectedFlavorPrices.reduce((a, b) => a > b ? a : b);
+          
+          // ✅ Para HIGHEST: pega o maior preço dividido e multiplica pelo número de sabores
+          // Exemplo: 2 sabores de R$ 17,50 cada → R$ 17,50 * 2 = R$ 35,00 (preço cheio)
+          final fullPrice = maxFractionalPrice * numberOfFlavors;
+          
+          print('🍕 [CartProduct] Cálculo de basePrice:');
+          print('   - Preços divididos: ${selectedFlavorPrices.map((p) => (p / 100).toStringAsFixed(2)).join(", ")}');
+          print('   - Número de sabores: $numberOfFlavors');
+          print('   - Maior preço dividido: R\$ ${(maxFractionalPrice / 100).toStringAsFixed(2)}');
+          print('   - Preço cheio (basePrice): R\$ ${(fullPrice / 100).toStringAsFixed(2)}');
+          
+          return fullPrice;
+        }
+        return 0;
+      }
+      
+      // ⚠️ FALLBACK: Estrutura antiga (busca por nome "sabor")
       final flavorGroups = selectedVariants.where((v) => 
         v.name.toLowerCase().contains('sabor')
       ).toList();
@@ -169,7 +236,7 @@ class CartProduct extends Equatable {
         }
       }
       
-      // ✅ Se ainda não selecionou todos os sabores, retorna 0 (igual iFood)
+      // ✅ Se ainda não selecionou todos os sabores, retorna 0
       return 0;
     }
     
@@ -184,37 +251,93 @@ class CartProduct extends Equatable {
   // Preço total dos complementos selecionados
   int get variantsPrice {
     if (category.isCustomizable) {
-      // ✅ Para pizzas: soma apenas bordas, massas e outros extras (NÃO sabores)
+      // ✅ NOVO: Para pizzas: soma apenas bordas (EDGE), massas (CRUST) e outros extras (NÃO sabores TOPPING)
       // Sabores já são calculados no basePrice usando a regra do maior preço
+      
+      // ✅ CORREÇÃO: Busca TODOS os grupos TOPPING para excluir do cálculo
+      final toppingGroupIds = category.optionGroups
+          .where((g) => g.groupType == OptionGroupType.topping)
+          .map((g) => g.id)
+          .toSet();
+      
       return selectedVariants
-          .where((v) => !v.name.toLowerCase().contains('sabor'))
+          .where((v) {
+            // Exclui TODOS os grupos TOPPING (sabores)
+            if (toppingGroupIds.contains(v.id)) {
+              return false;
+            }
+            // Exclui grupos com nome "sabor" (estrutura antiga)
+            if (v.name.toLowerCase().contains('sabor')) {
+              return false;
+            }
+            return true;
+          })
           .fold(0, (total, variant) => total + variant.totalPrice);
     }
     return selectedVariants.fold(0, (total, variant) => total + variant.totalPrice);
   }
 
-  /// ✅ NOVO: Preço "a partir de" para exibição (menor preço dos sabores)
-  /// Usado no cabeçalho do dialog de pizza antes de selecionar os sabores
+  /// ✅ NOVO: Preço "a partir de" para exibição
+  /// Para pizzas: usa o preço mínimo do tamanho (unitMinPrice)
+  /// Para produtos normais: usa o preço base
   int get startingPrice {
-    if (!category.isCustomizable) return basePrice;
+    if (!category.isCustomizable || selectedSize == null) return basePrice;
     
-    // Pega o menor preço dos sabores disponíveis
-    final flavorPrices = selectedVariants
-        .where((v) => v.name.toLowerCase().contains('sabor'))
-        .expand((v) => v.cartOptions)
-        .map((o) => o.price)
-        .where((p) => p > 0)
-        .toList();
-    
-    if (flavorPrices.isNotEmpty) {
-      return flavorPrices.reduce((a, b) => a < b ? a : b);
+    // ✅ CORREÇÃO: Para pizzas, usa o preço do tamanho (unitMinPrice)
+    // Este é o mesmo valor exibido na home
+    if (selectedSize!.price > 0) {
+      return selectedSize!.price;
     }
+    
+    // Fallback: se não tiver preço no tamanho, busca o menor preço dos sabores
+    // Tenta encontrar grupo pelo tipo TOPPING
+    var toppingGroup = category.optionGroups.firstWhereOrNull(
+      (g) => g.groupType == OptionGroupType.topping,
+    );
+    
+    // Se não achar por tipo, tenta por nome (fallback legado)
+    toppingGroup ??= category.optionGroups.firstWhereOrNull(
+      (g) => g.name.toLowerCase().contains('sabor'),
+    );
+    
+    if (toppingGroup != null) {
+      final prices = toppingGroup.items
+          .where((item) => item.isActive)
+          .map((item) => item.getPriceForSize(selectedSize?.id))
+          .whereType<int>() // Filtra nulos
+          .where((p) => p > 0)
+          .toList();
+      
+      if (prices.isNotEmpty) {
+        return prices.reduce((a, b) => a < b ? a : b);
+      }
+    }
+    
+    // Se ainda for 0 e for pizza, tenta pegar o preço do próprio tamanho novamente 
+    // (caso selectedSize esteja desatualizado ou não populado corretamente)
+    if (category.isCustomizable && selectedSize != null) {
+        final sizeGroup = category.optionGroups.firstWhereOrNull(
+            (g) => g.groupType == OptionGroupType.size
+        );
+        final sizeItem = sizeGroup?.items.firstWhereOrNull((i) => i.id == selectedSize!.id);
+        if (sizeItem != null && sizeItem.price > 0) {
+            return sizeItem.price;
+        }
+    }
+    
     return 0;
   }
 
   // Preço unitário (base + complementos)
   int get unitPrice {
-    return basePrice + variantsPrice;
+    final total = basePrice + variantsPrice;
+    if (category.isCustomizable) {
+      print('🍕 [CartProduct] Cálculo de unitPrice:');
+      print('   - basePrice: R\$ ${(basePrice / 100).toStringAsFixed(2)}');
+      print('   - variantsPrice: R\$ ${(variantsPrice / 100).toStringAsFixed(2)}');
+      print('   - unitPrice: R\$ ${(total / 100).toStringAsFixed(2)}');
+    }
+    return total;
   }
 
   // Preço total (unitário * quantidade efetiva)

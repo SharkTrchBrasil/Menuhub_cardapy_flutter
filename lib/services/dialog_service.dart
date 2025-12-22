@@ -25,7 +25,7 @@ class DialogService {
       }) {
     return showDialog(
       context: context,
-      // ✅ NOVO: Bordas arredondadas estilo iFood
+      // ✅ NOVO: Bordas arredondadas
       barrierColor: Colors.black54,
       builder: (_) => Dialog(
         shape: RoundedRectangleBorder(

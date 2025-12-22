@@ -1,6 +1,6 @@
 /// Estratégia de preço para pizzas com múltiplos sabores
 enum PizzaPricingStrategy {
-  /// Cobra pelo sabor mais caro (padrão iFood)
+  /// Cobra pelo sabor mais caro (padrão)
   highest,
   /// Cobra pela média dos sabores
   average;
@@ -21,6 +21,10 @@ enum PizzaPricingStrategy {
 class StoreOperationConfig {
   // --- Configurações Gerais de Operação ---
   final bool isStoreOpen;
+  
+  // ✅ PAUSA PROGRAMADA: Data/hora até quando a loja está pausada
+  final DateTime? pausedUntil;
+  
   final bool autoAcceptOrders;
   final bool autoPrintOrders;
   final bool is_operational;
@@ -62,6 +66,7 @@ class StoreOperationConfig {
   StoreOperationConfig({
     // Gerais
     this.isStoreOpen = true,
+    this.pausedUntil,
     this.autoAcceptOrders = false,
     this.autoPrintOrders = false,
     this.is_operational = true,
@@ -99,6 +104,9 @@ class StoreOperationConfig {
     return StoreOperationConfig(
       // Gerais
       isStoreOpen: json['is_store_open'] ?? true,
+      pausedUntil: json['paused_until'] != null 
+          ? DateTime.tryParse(json['paused_until']) 
+          : null,
       autoAcceptOrders: json['auto_accept_orders'] ?? false,
       autoPrintOrders: json['auto_print_orders'] ?? false,
       is_operational: json['is_operational'] ?? true,
@@ -140,6 +148,7 @@ class StoreOperationConfig {
 
   StoreOperationConfig copyWith({
     bool? isStoreOpen,
+    DateTime? pausedUntil,
     bool? autoAcceptOrders,
     bool? autoPrintOrders,
     bool? is_operational,
@@ -169,6 +178,7 @@ class StoreOperationConfig {
   }) {
     return StoreOperationConfig(
       isStoreOpen: isStoreOpen ?? this.isStoreOpen,
+      pausedUntil: pausedUntil ?? this.pausedUntil,
       autoAcceptOrders: autoAcceptOrders ?? this.autoAcceptOrders,
       autoPrintOrders: autoPrintOrders ?? this.autoPrintOrders,
       is_operational: is_operational ?? this.is_operational,

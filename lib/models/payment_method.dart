@@ -3,10 +3,13 @@
 import 'package:equatable/equatable.dart';
 
 // --- Nível 1: A Configuração da Loja ---
+/// ✅ ENTERPRISE: Modelo alinhado com Backend (fee_value e fee_type tipados)
 class StorePaymentMethodActivation extends Equatable {
   final int id;
   final bool isActive;
-  final double feePercentage;
+  final double feePercentage; // ✅ Mantido para compatibilidade (deprecated)
+  final double? feeValue; // ✅ NOVO: Valor da taxa (em reais ou percentual)
+  final String? feeType; // ✅ NOVO: Tipo da taxa ('%', 'R$', 'fixed', 'percentage')
   final Map<String, dynamic>? details;
   final bool isForDelivery;
   final bool isForPickup;
@@ -16,6 +19,8 @@ class StorePaymentMethodActivation extends Equatable {
     required this.id,
     required this.isActive,
     required this.feePercentage,
+    this.feeValue, // ✅ NOVO
+    this.feeType, // ✅ NOVO
     this.details,
     required this.isForDelivery,
     required this.isForPickup,
@@ -23,11 +28,20 @@ class StorePaymentMethodActivation extends Equatable {
   });
 
   factory StorePaymentMethodActivation.fromJson(Map<String, dynamic> json) {
+    // ✅ NOVO: Extrai fee_value e fee_type de details se não estiverem no nível raiz
+    final details = json['details'] != null ? Map<String, dynamic>.from(json['details']) : null;
+    final feeValue = json['fee_value'] != null 
+        ? (json['fee_value'] as num).toDouble()
+        : (details?['fee_value'] != null ? (details!['fee_value'] as num).toDouble() : null);
+    final feeType = json['fee_type'] as String? ?? details?['fee_type'] as String?;
+
     return StorePaymentMethodActivation(
       id: json['id'] ?? 0, // Garante que não seja nulo
       isActive: json['is_active'],
-      feePercentage: (json['fee_percentage'] as num).toDouble(),
-      details: json['details'] != null ? Map<String, dynamic>.from(json['details']) : null,
+      feePercentage: (json['fee_percentage'] as num?)?.toDouble() ?? 0.0, // ✅ Mantido para compatibilidade
+      feeValue: feeValue, // ✅ NOVO
+      feeType: feeType, // ✅ NOVO
+      details: details,
       isForDelivery: json['is_for_delivery'],
       isForPickup: json['is_for_pickup'],
       isForInStore: json['is_for_in_store'],
@@ -38,6 +52,8 @@ class StorePaymentMethodActivation extends Equatable {
     return {
       'is_active': isActive,
       'fee_percentage': feePercentage,
+      if (feeValue != null) 'fee_value': feeValue, // ✅ NOVO
+      if (feeType != null) 'fee_type': feeType, // ✅ NOVO
       'details': details,
       'is_for_delivery': isForDelivery,
       'is_for_pickup': isForPickup,
@@ -45,15 +61,40 @@ class StorePaymentMethodActivation extends Equatable {
     };
   }
 
-  // ✅ copyWith JÁ EXISTIA AQUI, ESTÁ CORRETO
+  // ✅ NOVO: Helper para calcular taxa corretamente
+  // ✅ UNIFICADO: Sempre usa feeValue e feeType (deprecado feePercentage)
+  double calculateFee(double subtotal) {
+    if (feeValue == null || feeValue == 0) return 0.0;
+    
+    if (feeType == '%' || feeType == 'percentage') {
+      // Taxa percentual: feeValue já é o percentual
+      return (subtotal * feeValue!) / 100.0;
+    } else if (feeType == 'R\$' || feeType == '\$' || feeType == 'fixed') {
+      // Taxa fixa: feeValue já está em reais
+      return feeValue!;
+    }
+    
+    // ✅ Se não tem tipo definido, retorna 0 (não usa feePercentage como fallback)
+    return 0.0;
+  }
+
   StorePaymentMethodActivation copyWith({
-    int? id, bool? isActive, double? feePercentage, Map<String, dynamic>? details,
-    bool? isForDelivery, bool? isForPickup, bool? isForInStore,
+    int? id, 
+    bool? isActive, 
+    double? feePercentage, 
+    double? feeValue, // ✅ NOVO
+    String? feeType, // ✅ NOVO
+    Map<String, dynamic>? details,
+    bool? isForDelivery, 
+    bool? isForPickup, 
+    bool? isForInStore,
   }) {
     return StorePaymentMethodActivation(
       id: id ?? this.id,
       isActive: isActive ?? this.isActive,
       feePercentage: feePercentage ?? this.feePercentage,
+      feeValue: feeValue ?? this.feeValue, // ✅ NOVO
+      feeType: feeType ?? this.feeType, // ✅ NOVO
       details: details ?? this.details,
       isForDelivery: isForDelivery ?? this.isForDelivery,
       isForPickup: isForPickup ?? this.isForPickup,
@@ -62,7 +103,7 @@ class StorePaymentMethodActivation extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, isActive, feePercentage, details, isForDelivery, isForPickup, isForInStore];
+  List<Object?> get props => [id, isActive, feePercentage, feeValue, feeType, details, isForDelivery, isForPickup, isForInStore];
 }
 
 

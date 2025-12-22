@@ -1,20 +1,36 @@
+// lib/helpers/enums/product_status.dart
+// Alinhado com Backend e Admin
 
 enum ProductStatus {
-  active,
-  inactive,
-  archived,
-  unknown; // Um valor padrão para segurança
+  ACTIVE,
+  INACTIVE,
+  ARCHIVED,
+  UNKNOWN;
 
   static ProductStatus fromString(String? status) {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return active;
-      case 'inactive':
-        return inactive;
-      case 'archived':
-        return archived;
+    switch (status?.toUpperCase()) {
+      case 'ACTIVE':
+        return ACTIVE;
+      case 'INACTIVE':
+        return INACTIVE;
+      case 'ARCHIVED':
+        return ARCHIVED;
       default:
-        return unknown;
+        return UNKNOWN;
+    }
+  }
+  
+  /// Nome para exibição ao usuário
+  String get displayName {
+    switch (this) {
+      case ACTIVE:
+        return 'Ativo';
+      case INACTIVE:
+        return 'Inativo';
+      case ARCHIVED:
+        return 'Arquivado';
+      case UNKNOWN:
+        return 'Desconhecido';
     }
   }
 }

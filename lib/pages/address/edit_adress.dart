@@ -16,12 +16,14 @@ import '../../cubit/store_cubit.dart';
 import 'cubits/address_cubit.dart';
 
 class EditAddressPage extends StatefulWidget {
+  final CustomerAddress? addressToEdit;
+  final bool startWithMap; // ✅ NOVO: Flag para iniciar com o mapa
+
   const EditAddressPage({
     super.key,
     this.addressToEdit,
+    this.startWithMap = false,
   });
-
-  final CustomerAddress? addressToEdit;
 
   @override
   State<EditAddressPage> createState() => _EditAddressPageState();
@@ -84,9 +86,16 @@ class _EditAddressPageState extends State<EditAddressPage> {
       }
     }
 
-    // Se for novo endereço, tenta pegar localização automaticamente
+    // Se for novo endereço, tenta pegar localização automaticamente ou abrir o mapa
     if (widget.addressToEdit == null) {
-      _getCurrentLocation();
+      if (widget.startWithMap) {
+        // ✅ NOVO: Se solicitado, abre o mapa imediatamente após o build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _openMap(context);
+        });
+      } else {
+        _getCurrentLocation();
+      }
     }
 
     if (widget.addressToEdit != null && store != null) {
@@ -132,7 +141,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
       );
     }
 
-    // ✅ ATUALIZADO: Padrão iFood - endereço vem do mapa, cliente só digita número, complemento e referência
+    // ✅ ATUALIZADO: Endereço vem do mapa, cliente só digita número, complemento e referência
 
     return Scaffold(
       // ✅ NOVO: Remove bordas do Scaffold quando está dentro de um Dialog
@@ -160,7 +169,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
             children: [
               const SizedBox(height: 16),
               
-              // ✅ NOVO: Exibe endereço completo do mapa no topo (estilo iFood)
+              // ✅ NOVO: Exibe endereço completo do mapa no topo
               if (_mapStreet != null && _mapStreet!.isNotEmpty)
                 _buildAddressDisplay(context),
               
@@ -242,7 +251,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       ),
                     ),
-                    // ✅ Mensagem de erro abaixo do campo (estilo iFood)
+                    // ✅ Mensagem de erro abaixo do campo
                     Padding(
                       padding: const EdgeInsets.only(top: 4, left: 4),
                       child: Text(
@@ -345,7 +354,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
     );
   }
 
-  // ✅ NOVO: Widget para exibir endereço completo do mapa (estilo iFood)
+  // ✅ NOVO: Widget para exibir endereço completo do mapa
   Widget _buildAddressDisplay(BuildContext context) {
     final theme = Theme.of(context);
     final addressLine = _mapStreet ?? '';
@@ -396,62 +405,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
           TextButton.icon(
             icon: const Icon(Icons.edit_location_alt, size: 16),
             label: const Text('Alterar localização no mapa'),
-            onPressed: () async {
-              // ✅ NOVO: Abre o mapa para o usuário escolher a localização
-              final store = context.read<StoreCubit>().state.store;
-              if (store == null) return;
-              
-              final result = await context.push<Map<String, dynamic>>(
-                '/address-map',
-                extra: {
-                  'initialLatitude': _latitude,
-                  'initialLongitude': _longitude,
-                  'addressDescription': _mapStreet,
-                  'store': store,
-                },
-              );
-              
-              if (result != null && mounted) {
-                // ✅ CRÍTICO: Atualiza endereço quando o usuário escolhe nova localização no mapa
-                setState(() {
-                  _latitude = result['latitude'] as double;
-                  _longitude = result['longitude'] as double;
-                  _mapStreet = result['formData']['street'] as String?;
-                  _mapNeighborhood = result['formData']['neighborhood'] as String?;
-                  _mapCity = result['formData']['city'] as String?;
-                  _mapState = result['formData']['state'] as String?;
-                  
-                  // Atualiza campos editáveis
-                  if (result['formData']['number'] != null) {
-                    _numberController.text = result['formData']['number'] as String? ?? '';
-                  }
-                  if (result['formData']['complement'] != null) {
-                    _complementController.text = result['formData']['complement'] as String? ?? '';
-                  }
-                  if (result['formData']['reference'] != null) {
-                    _referenceController.text = result['formData']['reference'] as String? ?? '';
-                  }
-                  
-                  // ✅ CRÍTICO: Atualiza bairro - se não encontrou, limpa para mostrar o campo
-                  if (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) {
-                    _neighborhoodTextController.text = _mapNeighborhood!;
-                  } else {
-                    _neighborhoodTextController.clear();
-                  }
-                  
-                  // Atualiza cidade selecionada
-                  final cityName = result['formData']['city'] as String?;
-                  if (cityName != null && cityName.isNotEmpty) {
-                    final matchingCity = store.cities.firstWhereOrNull(
-                      (c) => c.name.toLowerCase() == cityName.toLowerCase(),
-                    );
-                    if (matchingCity != null) {
-                      _selectedCity = matchingCity;
-                    }
-                  }
-                });
-              }
-            },
+            onPressed: () => _openMap(context),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
@@ -459,6 +413,63 @@ class _EditAddressPageState extends State<EditAddressPage> {
         ],
       ),
     );
+  }
+
+  // ✅ NOVO: Método extraído para abrir o mapa
+  Future<void> _openMap(BuildContext context) async {
+    final store = context.read<StoreCubit>().state.store;
+    if (store == null) return;
+    
+    final result = await context.push<Map<String, dynamic>>(
+      '/address-map',
+      extra: {
+        'initialLatitude': _latitude,
+        'initialLongitude': _longitude,
+        'addressDescription': _mapStreet,
+        'store': store,
+      },
+    );
+    
+    if (result != null && mounted) {
+      // ✅ CRÍTICO: Atualiza endereço quando o usuário escolhe nova localização no mapa
+      setState(() {
+        _latitude = result['latitude'] as double;
+        _longitude = result['longitude'] as double;
+        _mapStreet = result['formData']['street'] as String?;
+        _mapNeighborhood = result['formData']['neighborhood'] as String?;
+        _mapCity = result['formData']['city'] as String?;
+        _mapState = result['formData']['state'] as String?;
+        
+        // Atualiza campos editáveis
+        if (result['formData']['number'] != null) {
+          _numberController.text = result['formData']['number'] as String? ?? '';
+        }
+        if (result['formData']['complement'] != null) {
+          _complementController.text = result['formData']['complement'] as String? ?? '';
+        }
+        if (result['formData']['reference'] != null) {
+          _referenceController.text = result['formData']['reference'] as String? ?? '';
+        }
+        
+        // ✅ CRÍTICO: Atualiza bairro - se não encontrou, limpa para mostrar o campo
+        if (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) {
+          _neighborhoodTextController.text = _mapNeighborhood!;
+        } else {
+          _neighborhoodTextController.clear();
+        }
+        
+        // Atualiza cidade selecionada
+        final cityName = result['formData']['city'] as String?;
+        if (cityName != null && cityName.isNotEmpty) {
+          final matchingCity = store.cities.firstWhereOrNull(
+            (c) => c.name.toLowerCase() == cityName.toLowerCase(),
+          );
+          if (matchingCity != null) {
+            _selectedCity = matchingCity;
+          }
+        }
+      });
+    }
   }
 
   // Widget auxiliar para títulos de seção

@@ -12,6 +12,11 @@ class CartVariantOption {
   final bool trackInventory;
   final int stockQuantity;
   final bool isActuallyAvailable; // A "verdade final" sobre a disponibilidade
+  
+  // ✅ NOVO: ID do item pai de customização (para combinações massa + borda)
+  // Quando selecionamos "Massa Tradicional + Borda Catupiry", 
+  // id = ID da massa, parentCustomizationOptionId = ID da borda
+  final int? parentCustomizationOptionId;
 
   // --- Propriedade de Estado do Carrinho (A única que muda na tela) ---
   final int quantity;
@@ -25,6 +30,7 @@ class CartVariantOption {
     required this.isActuallyAvailable,
     this.description,
     this.imageUrl,
+    this.parentCustomizationOptionId,
     this.quantity = 0,
   });
 
@@ -39,6 +45,7 @@ class CartVariantOption {
       isActuallyAvailable: false,
       description: null,
       imageUrl: null,
+      parentCustomizationOptionId: null,
       quantity: 0,
     );
   }
@@ -82,6 +89,9 @@ class CartVariantOption {
       stockQuantity: json['stock_quantity'] ?? 0,
       isActuallyAvailable: json['is_actually_available'] ??
           false, // Por padrão, considera indisponível se a info não vier
+      
+      // ✅ NOVO: parentCustomizationOptionId para combinações
+      parentCustomizationOptionId: json['parent_customization_option_id'],
 
       imageUrl: null, // Geralmente não é salvo no JSON do pedido
     );
@@ -99,6 +109,7 @@ class CartVariantOption {
     bool? trackInventory,
     int? stockQuantity,
     bool? isActuallyAvailable,
+    int? parentCustomizationOptionId,
     int? quantity,
   }) {
     return CartVariantOption(
@@ -110,6 +121,7 @@ class CartVariantOption {
       trackInventory: trackInventory ?? this.trackInventory,
       stockQuantity: stockQuantity ?? this.stockQuantity,
       isActuallyAvailable: isActuallyAvailable ?? this.isActuallyAvailable,
+      parentCustomizationOptionId: parentCustomizationOptionId ?? this.parentCustomizationOptionId,
       quantity: quantity ?? this.quantity,
     );
   }

@@ -20,6 +20,10 @@ import 'package:totem/models/category.dart';
 import 'package:totem/widgets/store_header_card.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/services/product_recommendation_service.dart';
+import 'package:totem/core/utils/id_obfuscator.dart'; // ✅ ENTERPRISE: Ofuscação de IDs
+
+/// Helper para ofuscar ID de produto
+String _obfuscateId(int id) => IdObfuscator.encode(id);
 
 /// Função helper para abrir o sidepanel do carrinho
 void showCartSidePanel(BuildContext context) {
@@ -50,7 +54,7 @@ void showCartSidePanel(BuildContext context) {
   );
 }
 
-/// SidePanel do carrinho que desliza da direita para esquerda (estilo iFood)
+/// SidePanel do carrinho que desliza da direita para esquerda
 class CartSidePanel extends StatelessWidget {
   const CartSidePanel({super.key});
 
@@ -192,7 +196,7 @@ class CartPageBody extends StatelessWidget {
     final allCategories = storeState.categories ?? [];
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
-    final minOrder = store?.store_operation_config?.deliveryMinOrder ?? 0;
+    final minOrder = store?.getMinOrderForDelivery() ?? 0;
 
     int deliveryFeeInCents = 0;
     if (deliveryFeeState is DeliveryFeeLoaded) {
@@ -252,6 +256,7 @@ class CartPageBody extends StatelessWidget {
                     if (recommendedProducts.isNotEmpty)
                       RecommendedProductsSection(
                         recommendedProducts: recommendedProducts,
+                        allCategories: allCategories,
                         onProductTap: (product) => _handleProductTap(context, product),
                       ),
                     const SizedBox(height: 34),
@@ -302,7 +307,9 @@ class CartPageBody extends StatelessWidget {
     final hasVariants = product.variantLinks.isNotEmpty;
 
     if (hasVariants) {
-      context.push('/product/${product.id}');
+      // ✅ ENTERPRISE: Usa ID ofuscado na URL
+      final productUrl = '${product.name.toLowerCase().replaceAll(' ', '-')}-${_obfuscateId(product.id!)}';
+      context.push('/product/$productUrl');
     } else {
       final firstCategoryLink = product.categoryLinks.firstOrNull;
       if (firstCategoryLink == null) {

@@ -41,36 +41,47 @@ extension PaymentGroupFiltering on List<PaymentMethodGroup> {
 
 /// Extension para calcular taxas de pagamento
 extension PaymentFeeCalculation on PlatformPaymentMethod {
-  /// ✅ CORREÇÃO: Calcula a taxa de pagamento baseada no subtotal
-  /// ✅ Usa fee_value do backend (já em reais) ao invés de fee_fixed_amount
+  /// ✅ ENTERPRISE: Calcula a taxa de pagamento baseada no subtotal
+  /// ✅ Usa fee_value e fee_type tipados do activation (prioridade) ou details (fallback)
   /// Retorna o valor da taxa em reais (double)
   double calculateFee(double subtotalInReais) {
     final activation = this.activation;
     if (activation == null) return 0.0;
     
+    // ✅ NOVO: Prioriza campos tipados do activation
+    final feeValue = activation.feeValue;
+    final feeType = activation.feeType;
+    
+    // ✅ Fallback: Se não tiver campos tipados, lê de details
     final details = activation.details ?? {};
     final hasFee = details['has_fee'] as bool? ?? false;
-    final feeType = details['fee_type'] as String?;
-    final feeValue = details['fee_value'] as num?;
+    final feeValueFromDetails = details['fee_value'] as num?;
+    final feeTypeFromDetails = details['fee_type'] as String?;
     
-    if (!hasFee || feeValue == null || feeValue <= 0) {
+    // ✅ Usa campos tipados se disponíveis, senão usa details
+    final finalFeeValue = feeValue ?? feeValueFromDetails;
+    final finalFeeType = feeType ?? feeTypeFromDetails;
+    
+    if (!hasFee && feeValue == null && feeValueFromDetails == null) {
+      return 0.0;
+    }
+    
+    if (finalFeeValue == null || finalFeeValue <= 0) {
       return 0.0;
     }
     
     // ✅ CORREÇÃO: fee_value está em reais (Numeric(10, 2) no backend)
-    if (feeType == 'fixed' || feeType == 'R\$' || feeType == '\$') {
+    // ✅ UNIFICADO: Sempre usa feeValue e feeType (deprecado feePercentage)
+    if (finalFeeType == 'fixed' || finalFeeType == 'R\$' || finalFeeType == '\$') {
       // Taxa fixa: fee_value já está em reais (ex: 5.50 para R$ 5,50)
-      return feeValue.toDouble();
-    } else if (feeType == '%' || feeType == 'percentage') {
+      return finalFeeValue.toDouble();
+    } else if (finalFeeType == '%' || finalFeeType == 'percentage') {
       // Taxa percentual: calcula sobre o subtotal
-      // fee_value pode estar em porcentagem (ex: 2.5 para 2.5%)
-      // ou usar feePercentage do activation
-      final percentage = activation.feePercentage > 0 
-          ? activation.feePercentage 
-          : feeValue.toDouble();
-      return (subtotalInReais * percentage) / 100.0;
+      // fee_value está em porcentagem (ex: 2.5 para 2.5%)
+      return (subtotalInReais * finalFeeValue.toDouble()) / 100.0;
     }
     
+    // ✅ Se não tem tipo definido, retorna 0 (não usa feePercentage como fallback)
     return 0.0;
   }
   

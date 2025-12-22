@@ -41,7 +41,7 @@ class CartPage extends StatelessWidget {
     final allCategories = storeState.categories ?? [];
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
-    final minOrder = store?.store_operation_config?.deliveryMinOrder ?? 0;
+    final minOrder = store?.getMinOrderForDelivery() ?? 0;
 
     int deliveryFeeInCents = 0;
     if (deliveryFeeState is DeliveryFeeLoaded) {
@@ -126,6 +126,7 @@ class CartPage extends StatelessWidget {
                         if (recommendedProducts.isNotEmpty)
                           RecommendedProductsSection(
                             recommendedProducts: recommendedProducts,
+                            allCategories: allCategories,
                             onProductTap: (product) => handleProductTap(context, product),
                           ),
                         const SizedBox(height: 34),
@@ -133,7 +134,7 @@ class CartPage extends StatelessWidget {
                         const SizedBox(height: 26),
                         FreeShippingProgress(
                           cartTotal: cart.subtotal / 100.0,
-                          threshold: store?.store_operation_config?.freeDeliveryThreshold,
+                          threshold: store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 40),
                         OrderSummary(
@@ -162,11 +163,12 @@ class CartPage extends StatelessWidget {
 
   // ✅ MÉTODO CORRIGIDO
   Future<void> handleProductTap(BuildContext context, Product product) async {
-    // ✅ Verifica se tem QUALQUER variante (obrigatória ou opcional)
+    // ✅ CORREÇÃO: Verifica se tem variantes/complementos OU é pizza (tem prices)
     final hasVariants = product.variantLinks.isNotEmpty;
+    final isPizza = product.prices.isNotEmpty; // Pizza tem preços por sabor
 
-    if (hasVariants) {
-      // Se tem complementos, vai para a tela de detalhes
+    // ✅ Se tem complementos OU é pizza, abre tela de detalhes (igual na home)
+    if (hasVariants || isPizza) {
       goToProductPage(context, product);
     } else {
       // 1. Pega o primeiro vínculo de categoria do produto.

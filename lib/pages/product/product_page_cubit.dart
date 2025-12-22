@@ -14,9 +14,11 @@ import 'package:totem/pages/product/product_page_state.dart';
 import '../../cubit/store_cubit.dart';
 import '../../models/cart_item.dart';
 import '../../models/category.dart';
+import '../../models/image_model.dart';
 import '../../models/option_group.dart';
 import '../../repositories/storee_repository.dart';
 import 'package:totem/helpers/pizza_adapter_helper.dart'; // ✅ Import do helper
+import '../../helpers/enums/product_status.dart';
 
 class ProductPageCubit extends Cubit<ProductPageState> {
   final StoreRepository _repository;
@@ -81,10 +83,21 @@ class ProductPageCubit extends Cubit<ProductPageState> {
       // ✅ LÓGICA DE ADAPTAÇÃO PARA PIZZA
       if (PizzaAdapterHelper.isPizza(category)) {
         print("🍕 [Cubit] Produto detectado como PIZZA (Customizable).");
+        print("🍕 [Cubit] ProductId: ${product.id}");
         
         // 1. Tenta pegar o tamanho pelo ID passado na navegação
         if (sizeId != null) {
           print("🍕 [Cubit] sizeId recebido: $sizeId");
+          print("🔍 [Cubit] Buscando tamanho na categoria:");
+          print("   - category.optionGroups.length: ${category.optionGroups.length}");
+          for (var group in category.optionGroups) {
+            if (group.groupType == OptionGroupType.size) {
+              print("   - Grupo SIZE encontrado: ${group.name} com ${group.items.length} itens");
+              for (var item in group.items) {
+                print("      - Item: ${item.name} (id: ${item.id}, linkedProductId: ${item.linkedProductId})");
+              }
+            }
+          }
           selectedSize = PizzaAdapterHelper.getSelectedSize(category, sizeId);
         } 
         // 2. Se for edição, tenta pegar do item do carrinho
@@ -94,33 +107,115 @@ class ProductPageCubit extends Cubit<ProductPageState> {
            if (sizeGroup != null) {
              selectedSize = sizeGroup.items.firstWhereOrNull((item) => item.name == cartItemToEdit.sizeName);
            }
-        } else {
-          print("⚠️ [Cubit] Nenhum sizeId passado e não é edição.");
+        } 
+        // 3. ✅ NOVO: Se não há sizeId, cria um OptionItem virtual do produto (cada tamanho é um produto)
+        else {
+          print("⚠️ [Cubit] Nenhum sizeId passado. Criando OptionItem virtual do produto...");
+          // Para pizzas, cada tamanho é um produto, então criamos um OptionItem virtual
+          // baseado nas informações do produto
+          final productId = product.id;
+          if (productId != null) {
+            // Extrai o nome do tamanho do nome do produto (ex: "MÉDIA 2 SABORES (6 PEDAÇOS)" -> "Média")
+            final productName = product.name ?? '';
+            final sizeNameMatch = RegExp(r'^([A-ZÁÉÍÓÚÇ]+)').firstMatch(productName);
+            final sizeName = sizeNameMatch?.group(1) ?? productName;
+            
+            // Cria um OptionItem virtual para representar o tamanho
+            // Extrai maxFlavors do nome do produto (ex: "MÉDIA 2 SABORES" -> 2)
+            final maxFlavorsMatch = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false).firstMatch(productName);
+            final maxFlavors = maxFlavorsMatch != null ? int.tryParse(maxFlavorsMatch.group(1)!) : 1;
+            
+            // Verifica se o produto tem imagem
+            ImageModel? sizeImage;
+            if (product.images.isNotEmpty) {
+              sizeImage = product.images.first;
+              print("✅ [Cubit] Imagem do produto encontrada: ${sizeImage.url}");
+            } else {
+              print("⚠️ [Cubit] Produto não tem imagem");
+            }
+            
+            print("🔍 [Cubit] Criando OptionItem virtual:");
+            print("   - product.id: $productId");
+            print("   - product.linkedProductId: ${product.linkedProductId}");
+            
+            selectedSize = OptionItem(
+              id: product.linkedProductId ?? productId, // ✅ Usa o ID real (OptionItem ID) se disponível, senão o inflado
+              name: sizeName,
+              description: product.description,
+              price: (product.price ?? 0) ~/ 100, // Converte de centavos para reais
+              isActive: product.status == ProductStatus.ACTIVE,
+              image: sizeImage,
+              maxFlavors: maxFlavors, // Número de sabores permitidos
+              linkedProductId: product.linkedProductId ?? productId, // ✅ ID do produto real no banco para o carrinho
+            );
+            print("✅ [Cubit] Tamanho virtual criado: ${selectedSize.name}");
+            print("   - OptionItem.id: ${selectedSize.id}");
+            print("   - OptionItem.linkedProductId: ${selectedSize.linkedProductId}");
+          } else {
+            print("⚠️ [Cubit] ProductId é null, não é possível criar tamanho virtual.");
+          }
         }
 
         if (selectedSize != null) {
           print("✅ [Cubit] Tamanho selecionado: ${selectedSize.name} (ID: ${selectedSize.id})");
+          print("🔍 [Cubit] Detalhes do tamanho selecionado:");
+          print("   - selectedSize.id: ${selectedSize.id}");
+          print("   - selectedSize.linkedProductId: ${selectedSize.linkedProductId}");
+          print("   - product.id: ${product.id}");
+          print("   - product.linkedProductId: ${product.linkedProductId}");
           
-          // Busca todos os produtos da categoria para usar como sabores
-          final allProducts = _storeCubit.state.products ?? [];
-          final availableFlavors = allProducts.where((p) {
-             return p.categoryLinks.any((link) => link.categoryId == category.id);
-          }).toList();
-          
-          print("🍕 [Cubit] Sabores disponíveis encontrados: ${availableFlavors.length}");
+          // ✅ NOVO: Verifica se categoria tem productOptionGroups (estrutura nova do backend)
+          if (category.productOptionGroups != null && category.productOptionGroups!.containsKey(product.id)) {
+            print("🍕 [Cubit] Usando productOptionGroups do backend para productId: ${product.id}");
+            
+            // Usa o PizzaAdapterHelper que já está preparado para usar productOptionGroups
+            final allProducts = _storeCubit.state.products ?? [];
+            final availableFlavors = allProducts.where((p) {
+              if (p.status != ProductStatus.ACTIVE) {
+                return false;
+              }
+              return p.categoryLinks.any((link) => link.categoryId == category.id);
+            }).toList();
+            
+            // Adapta o produto usando os productOptionGroups específicos deste tamanho
+            final adaptation = PizzaAdapterHelper.adaptPizzaProduct(
+              originalProduct: product,
+              category: category,
+              size: selectedSize,
+              availableFlavors: availableFlavors,
+            );
+            
+            product = adaptation.product;
+            category = adaptation.category;
+            
+            print("✨ [Cubit] Produto adaptado com sucesso usando productOptionGroups! Grupos na categoria: ${category.optionGroups.length}");
+          } else {
+            // ⚠️ FALLBACK: Estrutura antiga (sabores como Products)
+            print("⚠️ [Cubit] productOptionGroups não encontrado. Usando estrutura antiga (sabores como Products)");
+            
+            final allProducts = _storeCubit.state.products ?? [];
+            final availableFlavors = allProducts.where((p) {
+              if (p.status != ProductStatus.ACTIVE) {
+                return false;
+              }
+              return p.categoryLinks.any((link) => link.categoryId == category.id);
+            }).toList();
+            
+            print("🍕 [Cubit] Sabores disponíveis (estrutura antiga): ${availableFlavors.length}");
 
-          // Adapta o produto para estrutura virtual (grupos de sabores e preferências)
-          final adaptation = PizzaAdapterHelper.adaptPizzaProduct(
-            originalProduct: product,
-            category: category,
-            size: selectedSize,
-            availableFlavors: availableFlavors,
-          );
-          
-          product = adaptation.product;
-          category = adaptation.category;
-          
-          print("✨ [Cubit] Produto adaptado com sucesso! Grupos na categoria: ${category.optionGroups.length}");
+            // Adapta o produto para estrutura virtual (grupos de sabores e preferências)
+            final adaptation = PizzaAdapterHelper.adaptPizzaProduct(
+              originalProduct: product,
+              category: category,
+              size: selectedSize,
+              availableFlavors: availableFlavors,
+            );
+            
+            product = adaptation.product;
+            category = adaptation.category;
+            
+            print("✨ [Cubit] Produto adaptado com sucesso! Grupos na categoria: ${category.optionGroups.length}");
+          }
         } else {
           print("❌ [Cubit] Falha ao identificar tamanho selecionado. Exibindo produto original.");
         }
@@ -161,24 +256,68 @@ class ProductPageCubit extends Cubit<ProductPageState> {
   }
 
   CartProduct _configureForEdit(Product product, Category category, CartItem cartItem) {
+    print('🔧 [_configureForEdit] Iniciando configuração para edição');
+    print('   - Produto: ${product.name}');
+    print('   - Categoria customizável: ${category.isCustomizable}');
+    print('   - Variantes salvas: ${cartItem.variants.length}');
+    print('   - Nota salva: ${cartItem.note}');
+    
     var configuredProduct = CartProduct.fromProduct(product, category);
     OptionItem? selectedSize;
+    
     if (category.isCustomizable) {
       final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
       if (sizeGroup != null) {
         selectedSize = sizeGroup.items.firstWhereOrNull((item) => item.name == cartItem.sizeName);
+        print('   - Tamanho encontrado: ${selectedSize?.name}');
       }
     }
-    final savedVariantOptions = {
-      for (var v in cartItem.variants)
-        for (var o in v.options) o.variantOptionId: o.quantity
-    };
+    
+    // ✅ CORREÇÃO: Cria mapa usando effectiveId (funciona para produtos normais E pizzas)
+    // Para produtos normais: effectiveId = variantOptionId
+    // Para pizzas: effectiveId = optionItemId (quando variantOptionId é null)
+    final savedVariantOptionsById = <int, int>{};
+    final savedVariantOptionsByName = <String, int>{};
+    
+    for (var v in cartItem.variants) {
+      print('   - Variant "${v.name}" (id: ${v.effectiveId}) com ${v.options.length} opções');
+      for (var o in v.options) {
+        final effectiveId = o.effectiveId;
+        if (effectiveId > 0) {
+          savedVariantOptionsById[effectiveId] = o.quantity;
+        }
+        // ✅ Fallback por nome (caso IDs não batam)
+        if (o.name.isNotEmpty) {
+          savedVariantOptionsByName[o.name.toLowerCase()] = o.quantity;
+        }
+        print('      - Opção "${o.name}" (effectiveId: $effectiveId, qty: ${o.quantity})');
+      }
+    }
+    
+    print('   - Mapa por ID: $savedVariantOptionsById');
+    print('   - Mapa por Nome: $savedVariantOptionsByName');
+    
     final newSelectedVariants = configuredProduct.selectedVariants.map((variant) {
       final newOptions = variant.cartOptions.map((option) {
-        return option.copyWith(quantity: savedVariantOptions[option.id] ?? 0);
+        // ✅ Tenta primeiro por ID, depois por nome
+        int quantity = savedVariantOptionsById[option.id] ?? 0;
+        
+        // ✅ Fallback: tenta por nome se não encontrou por ID
+        if (quantity == 0 && option.name.isNotEmpty) {
+          quantity = savedVariantOptionsByName[option.name.toLowerCase()] ?? 0;
+        }
+        
+        if (quantity > 0) {
+          print('      ✅ Opção "${option.name}" (id: ${option.id}) -> qty: $quantity');
+        }
+        
+        return option.copyWith(quantity: quantity);
       }).toList();
       return variant.copyWith(options: newOptions);
     }).toList();
+    
+    print('🔧 [_configureForEdit] Configuração concluída');
+    
     return configuredProduct.copyWith(
       quantity: cartItem.quantity,
       note: cartItem.note,
@@ -186,6 +325,7 @@ class ProductPageCubit extends Cubit<ProductPageState> {
       selectedVariants: newSelectedVariants,
     );
   }
+
 
   void updateQuantity(int newQuantity) {
     if (state.product == null || newQuantity < 1) return;

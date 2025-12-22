@@ -1,15 +1,17 @@
 // No seu StoreCubit
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/cubit/store_state.dart';
 import 'package:totem/repositories/realtime_repository.dart';
+import 'package:totem/core/utils/app_logger.dart';
+import 'package:totem/utils/seo_helper.dart';
 
 import '../models/banners.dart';
 import '../models/store.dart';
-import '../models/rating_summary.dart';
 import '../core/di.dart';
 import '../pages/address/cubits/delivery_fee_cubit.dart';
 
@@ -22,29 +24,39 @@ class StoreCubit extends Cubit<StoreState> {
 
       // ✅ CORREÇÃO: Seleciona categoria padrão baseado nas categorias da loja
       if (state.selectedCategory == null && state.categories.isNotEmpty) {
-        print('⚙️ Selecionando categoria padrão: ${state.categories.first.name}');
+        AppLogger.debug('⚙️ Selecionando categoria padrão: ${state.categories.first.name}');
         emit(state.copyWith(selectedCategory: state.categories.first));
       }
     });
 
     _storeSub = _realtimeRepository.storeController.listen((storeData) {
-      print('🏪 StoreCubit: Loja recebida');
-      print('   ├─ Nome: ${storeData.name}');
-      print('   ├─ Categorias: ${storeData.categories.length}');
+      AppLogger.debug('🏪 StoreCubit: Loja recebida');
+      AppLogger.debug('   ├─ Nome: ${storeData.name}');
+      AppLogger.debug('   ├─ Categorias: ${storeData.categories.length}');
       for (var cat in storeData.categories) {
-        print('      └─ ${cat.name} (ID: ${cat.id})');
+        AppLogger.debug('      └─ ${cat.name} (ID: ${cat.id})');
       }
 
       emit(state.copyWith(store: storeData));
 
-      print('📊 Estado após atualizar loja:');
-      print('   ├─ state.store != null: ${state.store != null}');
-      print('   ├─ state.categories.length: ${state.categories.length}');
-      print('   └─ state.selectedCategory: ${state.selectedCategory?.name}');
+      // ✅ SEO: Atualiza título e descrição da página com dados da loja
+      if (kIsWeb) {
+        SeoHelper.updateStoreSeo(
+          storeName: storeData.name,
+          storeDescription: storeData.description,
+          storeImageUrl: storeData.image?.url,
+        );
+        AppLogger.debug('🔍 SEO: Título atualizado para "${storeData.name}"');
+      }
+
+      AppLogger.debug('📊 Estado após atualizar loja:');
+      AppLogger.debug('   ├─ state.store != null: ${state.store != null}');
+      AppLogger.debug('   ├─ state.categories.length: ${state.categories.length}');
+      AppLogger.debug('   └─ state.selectedCategory: ${state.selectedCategory?.name}');
 
       // ✅ ADICIONE: Quando a loja carregar, seleciona a primeira categoria
       if (state.selectedCategory == null && storeData.categories.isNotEmpty) {
-        print('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
+        AppLogger.debug('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
         emit(state.copyWith(selectedCategory: storeData.categories.first));
       }
 
@@ -57,7 +69,7 @@ class StoreCubit extends Cubit<StoreState> {
     });
 
     _bannersSub = _realtimeRepository.bannersController.listen((banners) {
-      print('🎨 StoreCubit: Banners recebidos: ${banners.length}');
+      AppLogger.debug('🎨 StoreCubit: Banners recebidos: ${banners.length}');
       emit(state.copyWith(banners: banners));
     });
   }

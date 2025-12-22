@@ -57,6 +57,6 @@ class FeaturedProductGrid extends StatelessWidget {
   }
 }
 
-// Nota: Assumi que `IfoodProductCard` é o `product_item_featured.dart`
-// Você precisará garantir que `IfoodProductCard` também aceite `Category? category`
+// Nota: Assumi que `ProductCard` é o `product_item_featured.dart`
+// Você precisará garantir que `ProductCard` também aceite `Category? category`
 // e tenha a lógica de preço corrigida, similar ao `ProductCard` e `ProductItem`.

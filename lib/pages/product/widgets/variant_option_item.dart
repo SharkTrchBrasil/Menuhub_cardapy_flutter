@@ -138,7 +138,7 @@ class VariantOptionItem extends StatelessWidget {
 
         final bool isSelectedRadio = option.id == selectedOptionIdInGroup;
         
-        // ✅ Se tem imagem, usa layout customizado para sabores (estilo iFood)
+        // ✅ Se tem imagem, usa layout customizado para sabores
         if (option.imageUrl != null && option.imageUrl!.isNotEmpty) {
           return InkWell(
             onTap: () => onUpdate(1),
@@ -242,7 +242,10 @@ class VariantOptionItem extends StatelessWidget {
         
         // Radio sem imagem (layout original)
         return RadioListTile<int>(
-          title: Text(option.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+          title: Text(
+            option.name.isEmpty ? 'Opção sem nome' : option.name, 
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
+          ),
           subtitle: _buildSubtitle(),
           value: option.id,
           groupValue: selectedOptionIdInGroup,
@@ -252,12 +255,46 @@ class VariantOptionItem extends StatelessWidget {
         );
 
       case UIDisplayMode.MULTIPLE:
-        trailingWidget = Checkbox(
-          value: isSelected,
-          onChanged: (bool? selected) => onUpdate(selected == true ? 1 : 0),
-          activeColor: theme.primaryColor,
-        );
-        onTapAction = () => onUpdate(isSelected ? 0 : 1);
+        // ✅ IFOOD STYLE: Usa +/- para permitir múltiplas unidades da mesma opção
+        // Usa maxSelectedOptions como limite quando maxTotalQuantity é null
+        final effectiveMaxTotal = variant.maxTotalQuantity ?? variant.maxSelectedOptions;
+        final bool canIncrementMultiple = variant.totalQuantitySelected < effectiveMaxTotal;
+        
+        // Se ainda não selecionou nenhum, mostra apenas o botão +
+        if (!isSelected) {
+          trailingWidget = IconButton(
+            icon: Icon(Icons.add, color: theme.primaryColor, size: 28),
+            onPressed: canIncrementMultiple ? () => onUpdate(1) : null,
+          );
+          onTapAction = canIncrementMultiple ? () => onUpdate(1) : null;
+        } else {
+          // Já selecionou, mostra -/quantidade/+
+          trailingWidget = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(Icons.remove_circle_outline, color: theme.primaryColor, size: 24),
+                onPressed: () => onUpdate(option.quantity - 1),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              SizedBox(
+                width: 24,
+                child: Text(
+                  option.quantity.toString(),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.add_circle, color: canIncrementMultiple ? theme.primaryColor : Colors.grey.shade300, size: 24),
+                onPressed: canIncrementMultiple ? () => onUpdate(option.quantity + 1) : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          );
+        }
         break;
 
       default:
@@ -290,7 +327,10 @@ class VariantOptionItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(option.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  Text(
+                    option.name.isEmpty ? 'Opção sem nome' : option.name, 
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
+                  ),
                   if (_buildSubtitle() != null) _buildSubtitle()!,
                 ],
               ),

@@ -5,7 +5,7 @@ import 'package:totem/cubit/store_state.dart';
 import 'package:totem/themes/classic/desktop/home_body_desktop.dart';
 import 'package:totem/widgets/desktop_app_bar.dart';
 
-/// Wrapper para HomeBodyDesktop com o novo AppBar estilo iFood
+/// Wrapper para HomeBodyDesktop com o novo AppBar
 class DesktopHomeWithAppBar extends StatefulWidget {
   const DesktopHomeWithAppBar({super.key});
 

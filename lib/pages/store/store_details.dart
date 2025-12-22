@@ -57,7 +57,7 @@ class _StoreDetailsState extends State<StoreDetails>
               leading: IconButton(
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded, // seta fina e moderna
-                  color: Colors.red, // cor no estilo do iFood
+                  color: Colors.red,
                   size: 22,
                 ),
                 onPressed: () => context.pop(),

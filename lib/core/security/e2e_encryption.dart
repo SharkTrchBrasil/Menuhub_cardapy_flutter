@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 
+
 /// Serviço de criptografia E2E
 class E2EEncryptionService {
   /// Chave de sessão AES (256 bits)

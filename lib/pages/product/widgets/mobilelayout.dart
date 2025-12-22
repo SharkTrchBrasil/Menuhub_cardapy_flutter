@@ -157,101 +157,210 @@ class _MobileProductPageState extends State<MobileProductPage> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
     final topPadding = MediaQuery.of(context).padding.top;
-    final imageHeight = media.width * 0.8;
-    final contentOverlapPosition = imageHeight - 30;
+    final imageHeight = media.width * 0.7; // Proporção igual ao iFood
+    final contentOverlapPosition = imageHeight - 24; // Overlap suave
 
-    // ✅ CORREÇÃO: Acessa o produto através do 'productState'
-    // O '!' é seguro aqui, pois o widget pai (product_page.dart)
-    // usa um 'AppPageStatusBuilder' que garante que 'product' não é nulo
-    // no estado 'PageStatusSuccess'.
-    final product = widget.productState.product!; //
+    final product = widget.productState.product!;
+    final store = context.watch<StoreCubit>().state.store;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: _showTitleInAppBar
           ? AppBar(
-        backgroundColor: Colors.white,
-        elevation: 1,
-        shadowColor: Colors.grey.shade200,
-        title: Text(
-          product.product.name, //
-          style: widget.theme.bodyTextStyle
-              .colored(widget.theme.productTextColor)
-              .weighted(FontWeight.bold),
-        ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: widget.theme.primaryColor),
-          onPressed: () => context.go('/'),
-        ),
-        actions: [
-          // ✅ NOVO: Botão de compartilhamento no AppBar
-          IconButton(
-            icon: Icon(Icons.share, color: widget.theme.primaryColor),
-            onPressed: () => _shareProduct(context, product),
-          ),
-        ],
-      )
+              backgroundColor: Colors.white,
+              elevation: 0.5,
+              shadowColor: Colors.grey.shade300,
+              title: Text(
+                product.product.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              centerTitle: true,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back, color: widget.theme.primaryColor),
+                onPressed: () => context.go('/'),
+              ),
+              actions: [
+                IconButton(
+                  icon: Icon(Icons.share, color: widget.theme.primaryColor),
+                  onPressed: () => _shareProduct(context, product),
+                ),
+              ],
+            )
           : null,
       body: Stack(
         children: [
           SingleChildScrollView(
             controller: _scrollController,
-            child: Stack(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: imageHeight,
-                  width: media.width,
-                  child: CachedNetworkImage(
-                    imageUrl: product.product.coverImageUrl ?? '', //
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        Container(color: Colors.grey.shade200),
-                    errorWidget: (context, url, error) =>
-                    const Icon(Icons.image_not_supported),
+                // ✅ IFOOD STYLE: Imagem clicável (abre fullscreen)
+                GestureDetector(
+                  onTap: () => _openImageFullscreen(context, product),
+                  child: SizedBox(
+                    height: imageHeight,
+                    width: media.width,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Imagem do produto
+                        Hero(
+                          tag: 'product_image_${product.product.id}',
+                          child: CachedNetworkImage(
+                            imageUrl: product.product.imageUrl ?? '',
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) =>
+                                Container(color: Colors.grey.shade200),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.image_not_supported, size: 48),
+                            ),
+                          ),
+                        ),
+                        // ✅ IFOOD STYLE: Card flutuante com info da loja
+                        if (store != null)
+                          Positioned(
+                            bottom: 32,
+                            left: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.12),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Logo da loja
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: CachedNetworkImage(
+                                      imageUrl: store.image?.url ?? '',
+                                      width: 28,
+                                      height: 28,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(
+                                        width: 28,
+                                        height: 28,
+                                        color: Colors.grey.shade200,
+                                      ),
+                                      errorWidget: (context, url, error) => Container(
+                                        width: 28,
+                                        height: 28,
+                                        color: widget.theme.primaryColor.withOpacity(0.1),
+                                        child: Icon(
+                                          Icons.store,
+                                          size: 16,
+                                          color: widget.theme.primaryColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Nome da loja + tempo + frete
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            store.name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            Icons.verified,
+                                            size: 14,
+                                            color: Colors.blue.shade600,
+                                          ),
+                                        ],
+                                      ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${store.store_operation_config?.deliveryEstimatedMin ?? 30}-${store.store_operation_config?.deliveryEstimatedMax ?? 45} min',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                          Text(
+                                            ' • ',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade500,
+                                            ),
+                                          ),
+                                          Text(
+                                            _getDeliveryFeeText(store),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                              color: store.store_operation_config?.freeDeliveryThreshold != null
+                                                  ? Colors.green.shade600
+                                                  : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                Padding(
-                  padding: EdgeInsets.only(top: contentOverlapPosition),
-                  child: Container(
-                    width: media.width,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(30)),
-                    ),
-                    padding: const EdgeInsets.fromLTRB(0, 24, 0, 150),
-                    child: _buildContentColumn(product),
-                  ),
+                // ✅ Conteúdo principal (sem overlap/bordas arredondadas como no iFood)
+                Container(
+                  width: media.width,
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(0, 20, 0, 150),
+                  child: _buildContentColumn(product),
                 ),
               ],
             ),
           ),
+          // ✅ IFOOD STYLE: Botão voltar rosa/vermelho
           if (!_showTitleInAppBar)
             Positioned(
-              top: topPadding + 16,
-              left: 16,
-              child: CircleAvatar(
-                backgroundColor: Colors.black.withOpacity(0.4),
-                child: IconButton(
-                  onPressed: () => context.go('/'),
-                  icon: const Icon(Icons.close, size: 20, color: Colors.white),
+              top: topPadding + 12,
+              left: 12,
+              child: Material(
+                color: widget.theme.primaryColor,
+                shape: const CircleBorder(),
+                elevation: 4,
+                shadowColor: Colors.black38,
+                child: InkWell(
+                  onTap: () => context.go('/'),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.arrow_back, size: 22, color: Colors.white),
+                  ),
                 ),
               ),
             ),
-          // ✅ NOVO: Botão de compartilhamento (canto superior direito)
-          if (!_showTitleInAppBar)
-            Positioned(
-              top: topPadding + 16,
-              right: 16,
-              child: CircleAvatar(
-                backgroundColor: Colors.black.withOpacity(0.4),
-                child: IconButton(
-                  onPressed: () => _shareProduct(context, product),
-                  icon: const Icon(Icons.share, size: 20, color: Colors.white),
-                ),
-              ),
-            ),
+          // ✅ Botão de compartilhamento (canto superior direito) - removido para ficar igual iFood
           if (_showTitleInAppBar && _currentStickyVariant != null)
             Positioned(
               top: kToolbarHeight + topPadding,
@@ -260,7 +369,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
               child: Container(
                 color: Colors.white,
                 child: VariantHeaderWidget(
-                  key: ValueKey(_currentStickyVariant!.id), //
+                  key: ValueKey(_currentStickyVariant!.id),
                   variant: _currentStickyVariant!,
                 ),
               ),
@@ -268,6 +377,44 @@ class _MobileProductPageState extends State<MobileProductPage> {
         ],
       ),
     );
+  }
+
+  // ✅ NOVO: Abre imagem em fullscreen (igual iFood imagem 2)
+  void _openImageFullscreen(BuildContext context, CartProduct product) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _FullscreenImageViewer(
+            imageUrl: product.product.imageUrl ?? '',
+            productName: product.product.name,
+            productDescription: product.product.description,
+            heroTag: 'product_image_${product.product.id}',
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  // ✅ Helper para obter texto do frete
+  String _getDeliveryFeeText(store) {
+    final config = store.store_operation_config;
+    if (config == null) return 'Grátis';
+    
+    if (config.freeDeliveryThreshold != null && config.freeDeliveryThreshold > 0) {
+      return 'Grátis';
+    }
+    
+    final fee = config.deliveryFee;
+    if (fee != null && fee > 0) {
+      return 'R\$ ${fee.toStringAsFixed(2).replaceAll('.', ',')}';
+    }
+    
+    return 'Grátis';
   }
 
   // ✅ NOVO: Método para compartilhar produto
@@ -319,7 +466,9 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
         // Fallback: usa URL básica sem token
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
-        final productUrl = '$baseUrl/app/products/${store.urlSlug}/${product.product.id}';
+        // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
+        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
         final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
 
         await Share.share(
@@ -351,20 +500,41 @@ class _MobileProductPageState extends State<MobileProductPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ✅ IFOOD STYLE: Título grande (22px, bold)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
-            product.product.name, //
-            style: widget.theme.displayMediumTextStyle
-                .colored(widget.theme.productTextColor)
-                .weighted(FontWeight.w900),
+            product.product.name,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+              height: 1.2,
+            ),
           ),
         ),
+        
+        // ✅ IFOOD STYLE: Descrição (14px, cinza, line-height 1.4)
+        if (product.product.description != null &&
+            product.product.description!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              product.product.description!,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
         
         // ✅ AVISO DE INDISPONIBILIDADE
         if (!isAvailable)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -400,9 +570,33 @@ class _MobileProductPageState extends State<MobileProductPage> {
             ),
           ),
 
+        // ✅ IFOOD STYLE: Preço BASE (não muda ao selecionar opções)
+        // O preço total com opções aparece apenas no botão do carrinho (bottom)
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: product.category.isCustomizable && product.basePrice == 0
+              ? Text(
+                  'A partir de ${product.startingPrice.toCurrency}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                )
+              : Text(
+                  product.basePrice.toCurrency,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+        ),
+
         // ✅ TAGS ALIMENTARES E DE BEBIDAS
         if (product.product.dietaryTags.isNotEmpty || product.product.beverageTags.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Wrap(
@@ -430,71 +624,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
           ),
         ],
 
-        // ✅ REGRAS DE PIZZA OU DESCRIÇÃO
-        if (product.category.isCustomizable) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Importante:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'A pizza de mais de 1 sabor será cobrada pelo preço cheio do sabor mais caro.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ] else if (product.product.description != null &&
-            product.product.description!.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              product.product.description!,
-              style: widget.theme.bodyTextStyle.colored(Colors.grey.shade600),
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: product.category.isCustomizable && product.totalPrice == 0
-              ? Text(
-                  'A partir de ${product.startingPrice.toCurrency}',
-                  style: widget.theme.displayLargeTextStyle
-                      .colored(Colors.green.shade700)
-                      .weighted(FontWeight.bold),
-                )
-              : Text(
-                  product.totalPrice.toCurrency,
-                  style: widget.theme.displayLargeTextStyle
-                      .colored(widget.theme.productTextColor)
-                      .weighted(FontWeight.bold),
-                ),
-        ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 20),
         // ✅ ADICIONADO: Seleção de tamanho para produtos customizáveis (pizza, etc)
         if (product.category.isCustomizable) ...[
           Padding(
@@ -592,33 +722,179 @@ class _MobileProductPageState extends State<MobileProductPage> {
             },
           ),
         const SizedBox(height: 24),
+        // ✅ IFOOD STYLE: Campo de observação
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text('Alguma observação?',
-              style: widget.theme.bodyTextStyle.weighted(FontWeight.bold)),
+          child: Row(
+            children: [
+
+              const Text(
+                'Alguma observação?',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              // Contador de caracteres
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: widget.observationController,
+                builder: (context, value, child) {
+                  return Text(
+                    '${value.text.length}/140',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: TextField(
             controller: widget.observationController,
-            keyboardType: TextInputType.multiline,
-            maxLines: 4,
-            minLines: 3,
+            keyboardType: TextInputType.text,
+            maxLength: 140,
+            maxLines: 2,
+            style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Ex: tirar a cebola, maionese à parte etc.',
-              hintStyle: TextStyle(color: Colors.grey.shade400),
+              hintStyle: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 14,
+              ),
+              counterText: '', // Esconde o contador padrão (já temos o nosso)
+              filled: true,
+              fillColor: Colors.grey.shade50,
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
               focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: widget.theme.primaryColor)),
-              contentPadding: const EdgeInsets.all(12),
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade400),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// ✅ IFOOD STYLE: Visualizador de imagem em fullscreen
+/// Fundo preto, imagem centralizada, X no canto, nome/descrição embaixo
+class _FullscreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+  final String productName;
+  final String? productDescription;
+  final String heroTag;
+
+  const _FullscreenImageViewer({
+    required this.imageUrl,
+    required this.productName,
+    this.productDescription,
+    required this.heroTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Imagem centralizada
+          Center(
+            child: Hero(
+              tag: heroTag,
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (context, url) => const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                  errorWidget: (context, url, error) => const Icon(
+                    Icons.image_not_supported,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Botão X para fechar (canto superior direito)
+          Positioned(
+            top: topPadding + 16,
+            right: 16,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                customBorder: const CircleBorder(),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(
+                    Icons.close,
+                    size: 28,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Nome e descrição na parte inferior
+          Positioned(
+            bottom: bottomPadding + 24,
+            left: 16,
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  productName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                if (productDescription != null && productDescription!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    productDescription!,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade400,
+                      height: 1.4,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

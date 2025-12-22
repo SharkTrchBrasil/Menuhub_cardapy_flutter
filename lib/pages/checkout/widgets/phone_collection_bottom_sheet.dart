@@ -2,21 +2,53 @@
 import 'package:brasil_fields/brasil_fields.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/responsive_builder.dart';
 
-/// ✅ Bottom sheet para coletar telefone do cliente (estilo similar ao do troco)
-class PhoneCollectionBottomSheet extends StatefulWidget {
+
+/// ✅ Helper para mostrar dialog no desktop e bottomsheet no mobile
+Future<String?> showPhoneCollectionDialog(BuildContext context, {String? initialPhone}) {
+  final isDesktop = ResponsiveBuilder.isDesktop(context);
+  
+  if (isDesktop) {
+    // ✅ Desktop: Mostra como Dialog
+    return showDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: PhoneCollectionWidget(initialPhone: initialPhone),
+        ),
+      ),
+    );
+  } else {
+    // ✅ Mobile: Mostra como BottomSheet
+    return showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: PhoneCollectionWidget(initialPhone: initialPhone),
+      ),
+    );
+  }
+}
+
+/// ✅ Widget reutilizável para coletar telefone (usado em dialog e bottomsheet)
+class PhoneCollectionWidget extends StatefulWidget {
   final String? initialPhone;
 
-  const PhoneCollectionBottomSheet({
+  const PhoneCollectionWidget({
     super.key,
     this.initialPhone,
   });
 
   @override
-  State<PhoneCollectionBottomSheet> createState() => _PhoneCollectionBottomSheetState();
+  State<PhoneCollectionWidget> createState() => _PhoneCollectionWidgetState();
 }
 
-class _PhoneCollectionBottomSheetState extends State<PhoneCollectionBottomSheet> {
+class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
   final _controller = TextEditingController();
   String? _errorMessage;
   bool _isSubmitting = false;
@@ -35,6 +67,7 @@ class _PhoneCollectionBottomSheetState extends State<PhoneCollectionBottomSheet>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDesktop = ResponsiveBuilder.isDesktop(context);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -70,24 +103,53 @@ class _PhoneCollectionBottomSheetState extends State<PhoneCollectionBottomSheet>
               border: const OutlineInputBorder(),
             ),
             enabled: !_isSubmitting,
+            autofocus: isDesktop, // ✅ Desktop: foca automaticamente no campo
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _isSubmitting ? null : _validateAndSubmit,
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: _isSubmitting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text(
-                    'Confirmar',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          if (isDesktop)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _isSubmitting ? null : () => Navigator.pop(context, null),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _isSubmitting ? null : _validateAndSubmit,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
                   ),
-          ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Confirmar',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                ),
+              ],
+            )
+          else
+            ElevatedButton(
+              onPressed: _isSubmitting ? null : _validateAndSubmit,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      'Confirmar',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+            ),
         ],
       ),
     );
@@ -119,6 +181,23 @@ class _PhoneCollectionBottomSheetState extends State<PhoneCollectionBottomSheet>
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+}
+
+/// ✅ DEPRECATED: Mantido para compatibilidade
+/// Use showPhoneCollectionDialog() que detecta automaticamente desktop/mobile
+@Deprecated('Use showPhoneCollectionDialog() instead')
+class PhoneCollectionBottomSheet extends StatelessWidget {
+  final String? initialPhone;
+
+  const PhoneCollectionBottomSheet({
+    super.key,
+    this.initialPhone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PhoneCollectionWidget(initialPhone: initialPhone);
   }
 }
 

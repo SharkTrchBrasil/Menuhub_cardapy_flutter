@@ -4,7 +4,7 @@
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:flutter/material.dart';
 /// Status de uma feature
 enum FeatureStatus {
   enabled,
@@ -289,6 +289,5 @@ class FeatureFlag extends StatelessWidget {
   }
 }
 
-// Importação necessária para StatelessWidget
-import 'package:flutter/material.dart';
+
 

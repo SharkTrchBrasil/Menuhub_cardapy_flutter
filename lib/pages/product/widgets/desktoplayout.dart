@@ -92,8 +92,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final screenSize = MediaQuery.of(context).size;
     final product = widget.productState.product!;
 
-    // ✅ Layout igual ao iFood: mais largo e alto
-    // iFood usa aproximadamente 90% da largura e 85% da altura
+    // ✅ Layout: mais largo e alto (aproximadamente 90% da largura e 85% da altura)
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: min(screenSize.width * 0.90, 1200), // ✅ Aumentado de 800 para 1200px
@@ -105,17 +104,17 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
-        elevation: 4, // ✅ Sombra sutil como no iFood
+        elevation: 4, // ✅ Sombra sutil
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ✅ Imagem à esquerda - proporção similar ao iFood (40% da largura)
+            // ✅ Imagem à esquerda - 40% da largura
             Expanded(
               flex: 4,
               child: Container(
                 constraints: const BoxConstraints(minWidth: 300),
                 child: CachedNetworkImage(
-                  imageUrl: product.product.coverImageUrl ?? '',
+                  imageUrl: product.product.imageUrl ?? '',
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
@@ -130,14 +129,14 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                 ),
               ),
             ),
-            // ✅ Conteúdo à direita - proporção similar ao iFood (60% da largura)
+            // ✅ Conteúdo à direita - 60% da largura
             Expanded(
               flex: 6,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ✅ Header com título e botões - estilo iFood
+                  // ✅ Header com título e botões
                   Padding(
                     padding: const EdgeInsets.fromLTRB(32, 24, 24, 20),
                     child: Row(
@@ -156,7 +155,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // ✅ NOVO: Botão de compartilhamento - estilo iFood
+                        // ✅ NOVO: Botão de compartilhamento
                         IconButton(
                           icon: const Icon(Icons.share, size: 20),
                           onPressed: () => _shareProduct(context, product),
@@ -175,7 +174,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                       ],
                     ),
                   ),
-                  // ✅ Conteúdo scrollável - estilo iFood
+                  // ✅ Conteúdo scrollável
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
@@ -183,7 +182,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ✅ Descrição do produto - estilo iFood
+                          // ✅ Descrição do produto
                           if (product.product.description != null && product.product.description!.isNotEmpty) ...[
                             Text(
                               product.product.description!,
@@ -195,7 +194,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             ),
                             const SizedBox(height: 24),
                           ],
-                          // ✅ Preço - estilo iFood (maior e mais destacado)
+                          // ✅ Preço (maior e mais destacado)
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -221,7 +220,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                               if (product.product.unit.requiresQuantityInput) ...[
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Preço por ${product.product.unit.shortName}',
+                                  'Preço por ${product.product.unit.displayName}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade600,
@@ -462,7 +461,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
   Widget _buildWeightQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
     final cubit = context.read<ProductPageCubit>();
     final currentWeight = product.weightQuantity ?? 0.5; // Valor padrão: 0.5 kg/L
-    final unitName = product.product.unit.shortName;
+    final unitName = product.product.unit.displayName;
     
     return Container(
       decoration: BoxDecoration(
@@ -557,7 +556,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
 
         // Fallback: usa URL básica sem token
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
-        final productUrl = '$baseUrl/app/products/${store.urlSlug}/${product.product.id}';
+        // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
+        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
         final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
 
         await Share.share(

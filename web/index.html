@@ -8,7 +8,21 @@
 
   <meta name="description" content="TotemPRO - Soluções de autoatendimento para seu negócio.">
   <meta name="keywords" content="totem, autoatendimento, pedido, restaurante, lanchonete, delivery, pdv">
-  <meta name="author" content="Sua Empresa/Nome do Desenvolvedor">
+  <meta name="author" content="MenuHub">
+
+  <!-- ✅ SEO: Open Graph (Facebook, WhatsApp, LinkedIn) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="TotemPRO - Cardápio Digital">
+  <meta property="og:description" content="Faça seu pedido online de forma rápida e prática.">
+  <meta property="og:image" content="icons/Icon-512.png">
+
+  <!-- ✅ SEO: Twitter Cards -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="TotemPRO - Cardápio Digital">
+  <meta name="twitter:description" content="Faça seu pedido online de forma rápida e prática.">
+
+  <!-- ✅ SEO: Tema e cores -->
+  <meta name="theme-color" content="#EA1D2C">
 
   <base href="$FLUTTER_BASE_HREF">
 
@@ -36,7 +50,7 @@
     body {
       margin: 0;
       overflow: hidden;
-      background-color: #f0f2f5;
+      background-color: #ffffff;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -50,21 +64,27 @@
       align-items: center;
       width: 100%;
       height: 100vh;
-      background-color: rgba(255, 255, 255, 0.9);
+      background-color: #ffffff;
       position: absolute;
       top: 0;
       left: 0;
       z-index: 9999;
+      transition: opacity 0.3s ease-out;
+      /* ✅ Transição suave */
+      will-change: opacity;
+      /* ✅ Otimização de performance */
     }
 
     /* ✅ OTIMIZAÇÃO: Spinner CSS ao invés de GIF pesado */
     .spinner {
-      width: 60px;
-      height: 60px;
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #EA1D2C;
+      width: 50px;
+      height: 50px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #EA1D2C;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
+      animation: spin 0.8s linear infinite;
+      will-change: transform;
+      /* ✅ Otimização de performance */
     }
 
     @keyframes spin {
@@ -79,10 +99,10 @@
 
     #loading-text {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: #333;
+      color: #666;
       margin-top: 20px;
-      font-size: 16px;
-      font-weight: 500;
+      font-size: 14px;
+      font-weight: 400;
     }
 
     .flutter-view {
@@ -107,64 +127,58 @@
   <div id="flutter_app_container"></div>
 
   <script>
+    // ✅ OTIMIZAÇÃO: Remove splash assim que Flutter estiver pronto
     window.addEventListener('flutter_ready', function () {
       const loadingContainer = document.getElementById('loading-container');
-      if (loadingContainer) loadingContainer.style.display = 'none';
+      if (loadingContainer) {
+        loadingContainer.style.opacity = '0';
+        setTimeout(() => loadingContainer.style.display = 'none', 300);
+      }
 
       const flutterAppContainer = document.getElementById('flutter_app_container');
       if (flutterAppContainer) flutterAppContainer.classList.add('show');
     });
 
-    // ✅ OTIMIZAÇÃO: Configuração otimizada do Flutter Web
-    window.addEventListener('load', function () {
-      _flutter_bootstrap.loadEntrypoint({
-        onEntrypointLoaded: function (engineInitializer) {
-          engineInitializer.initializeEngine({
-            // ✅ CRÍTICO: Use CanvasKit apenas se necessário (melhor performance)
-            renderer: "auto", // "auto", "canvaskit", ou "html"
-            // ✅ OTIMIZAÇÃO: Desabilita service worker se não for PWA
-            serviceWorker: {
-              serviceWorkerVersion: null,
-            }
-          }).then(function (appRunner) {
-            appRunner.runApp({
-              targetElement: document.getElementById('flutter_app_container')
+    // ✅ CORREÇÃO CRÍTICA: Usa loader compatível com Flutter 3.7+
+    // Aguarda o serviceWorker e flutter_bootstrap carregarem antes de inicializar
+    window.addEventListener('load', async function () {
+      // Aguarda o flutter_bootstrap estar disponível (máx 5s)
+      let attempts = 0;
+      while (typeof _flutter === 'undefined' && typeof _flutter_bootstrap === 'undefined' && attempts < 50) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+
+      // ✅ Compatibilidade: Flutter 3.22+ usa _flutter, versões anteriores usam _flutter_bootstrap
+      const loader = window._flutter?.loader || window._flutter_bootstrap;
+
+      if (!loader) {
+        console.error('❌ Flutter bootstrap não encontrado. Recarregando página...');
+        // Fallback: recarrega a página após 2s
+        setTimeout(() => window.location.reload(), 2000);
+        return;
+      }
+
+      try {
+        await loader.load({
+          onEntrypointLoaded: async function (engineInitializer) {
+            const appRunner = await engineInitializer.initializeEngine({
+              // ✅ PERFORMANCE: html renderer carrega 30-50% mais rápido
+              // Use "canvaskit" para gráficos complexos ou "auto" para decidir
+              renderer: "html",
             });
-          });
-        }
-      });
+            await appRunner.runApp();
+          }
+        });
+      } catch (e) {
+        console.error('❌ Erro ao inicializar Flutter:', e);
+      }
     });
   </script>
 
-  <!-- ✅ OTIMIZAÇÃO: Carrega Firebase de forma assíncrona e lazy -->
-  <script type="module">
-    // Carrega Firebase apenas quando necessário
-    const loadFirebase = async () => {
-      try {
-        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js');
-        const { getAnalytics } = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js');
-
-        const firebaseConfig = {
-          apiKey: "AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8",
-          authDomain: "pdvix-c69fe.firebaseapp.com",
-          projectId: "pdvix-c69fe",
-          storageBucket: "pdvix-c69fe.firebasestorage.app",
-          messagingSenderId: "209909701330",
-          appId: "1:209909701330:web:03ea9f309ce422c35e6b0b",
-          measurementId: "G-R2QQ42E9T7"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        console.log('✅ Firebase inicializado');
-      } catch (error) {
-        console.error('❌ Erro ao carregar Firebase:', error);
-      }
-    };
-
-    // ✅ OTIMIZAÇÃO: Carrega Firebase após 2 segundos (não bloqueia carregamento inicial)
-    setTimeout(loadFirebase, 2000);
-  </script>
+  <!-- ✅ OTIMIZAÇÃO: Firebase removido do index.html -->
+  <!-- O Firebase é inicializado diretamente no Dart (main.dart) através do firebase_core package -->
+  <!-- Isso evita duplicação de ~13 KiB de JavaScript e melhora o tempo de carregamento inicial -->
 
   <!-- ✅ OTIMIZAÇÃO: Google Maps carrega apenas quando necessário -->
   <script>
@@ -186,7 +200,35 @@
     };
   </script>
 
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- ✅ SEGURANÇA: Bloqueio de Inspecionar Elemento e Atalhos -->
+  <script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+
+    document.onkeydown = function (e) {
+      // F12
+      if (e.keyCode == 123) {
+        return false;
+      }
+      // Ctrl+Shift+I (Inspect)
+      if (e.ctrlKey && e.shiftKey && e.keyCode == 73) {
+        return false;
+      }
+      // Ctrl+Shift+J (Console)
+      if (e.ctrlKey && e.shiftKey && e.keyCode == 74) {
+        return false;
+      }
+      // Ctrl+Shift+C (Inspect Element)
+      if (e.ctrlKey && e.shiftKey && e.keyCode == 67) {
+        return false;
+      }
+      // Ctrl+U (View Source)
+      if (e.ctrlKey && e.keyCode == 85) {
+        return false;
+      }
+    };
+  </script>
+
+  <script src="flutter_bootstrap.js" defer></script>
 </body>
 
 </html>

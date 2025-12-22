@@ -3,7 +3,7 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:totem/models/customer.dart';
-import 'package:totem/models/order.dart';
+import 'package:totem/models/order.dart' hide Customer;
 import 'package:totem/repositories/customer_repository.dart';
 import 'package:totem/repositories/order_repository.dart';
 

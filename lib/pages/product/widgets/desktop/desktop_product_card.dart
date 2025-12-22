@@ -122,7 +122,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     // ✅ Verifica disponibilidade
     final isAvailable = AvailabilityService.isProductAvailableNow(product.product);
 
-    // ✅ Layout idêntico ao iFood: 50/50 e mais largo
+    // ✅ Layout: 50/50 e mais largo
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: min(screenSize.width * 0.90, 1200),
@@ -138,13 +138,13 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ✅ Imagem à esquerda - 50% da largura (igual iFood)
+            // ✅ Imagem à esquerda - 50% da largura
             Expanded(
               flex: 5,
               child: Container(
                 constraints: const BoxConstraints(minWidth: 350),
                 child: CachedNetworkImage(
-                  imageUrl: product.product.coverImageUrl ?? '',
+                  imageUrl: product.product.imageUrl ?? '',
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
@@ -159,14 +159,14 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                 ),
               ),
             ),
-            // ✅ Conteúdo à direita - 50% da largura (igual iFood)
+            // ✅ Conteúdo à direita - 50% da largura
             Expanded(
               flex: 5,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ✅ Header com botões de ação (compartilhar e fechar) - estilo iFood
+                  // ✅ Header com botões de ação (compartilhar e fechar)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                     child: Row(
@@ -190,7 +190,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                       ],
                     ),
                   ),
-                  // ✅ Conteúdo scrollável - estilo iFood (padding consistente)
+                  // ✅ Conteúdo scrollável (padding consistente)
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
@@ -198,7 +198,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ✅ TÍTULO CENTRALIZADO - estilo iFood
+                          // ✅ TÍTULO CENTRALIZADO
                           Padding(
                             padding: const EdgeInsets.only(top: 8, bottom: 16),
                             child: Center(
@@ -216,7 +216,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                               ),
                             ),
                           ),
-                          // ✅ REGRAS DE PIZZA OU DESCRIÇÃO - estilo iFood
+                          // ✅ REGRAS DE PIZZA OU DESCRIÇÃO
                           if (product.category.isCustomizable) ...[
                             // Mostra regras de cobrança para pizzas
                             Container(
@@ -334,7 +334,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             ),
                           ],
 
-                          // ✅ PREÇO COM DESCONTO - estilo iFood
+                          // ✅ PREÇO COM DESCONTO
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
@@ -408,7 +408,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             Padding(
                               padding: const EdgeInsets.only(bottom: 20),
                               child: Text(
-                                'Preço por ${product.product.unit.shortName}',
+                                'Preço por ${product.product.unit.displayName}',
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: Colors.grey.shade600,
@@ -556,7 +556,17 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         if (context.canPop()) {
           context.pop();
         }
-        context.go('/');
+        
+        // ✅ LÓGICA DE REDIRECT INTELIGENTE
+        // Verifica se veio do carrinho (via query params)
+        final uri = GoRouterState.of(context).uri;
+        final fromCart = uri.queryParameters['fromCart'] == 'true';
+
+        if (fromCart || productState.isEditMode) {
+          context.go('/cart');
+        } else {
+          context.go('/');
+        }
       }
     }
 
@@ -624,7 +634,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
   Widget _buildWeightQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
     final cubit = context.read<ProductPageCubit>();
     final currentWeight = product.weightQuantity ?? 0.5;
-    final unitName = product.product.unit.shortName;
+    final unitName = product.product.unit.displayName;
     
     return Container(
       decoration: BoxDecoration(
@@ -711,7 +721,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         if (store == null || product.product.id == null) return;
 
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
-        final productUrl = '$baseUrl/app/products/${store.urlSlug}/${product.product.id}';
+        // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
+        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
         final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
 
         await Share.share(

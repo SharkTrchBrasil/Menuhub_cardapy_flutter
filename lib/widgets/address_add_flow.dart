@@ -14,7 +14,7 @@ import 'package:totem/services/address_search_service.dart';
 import 'package:totem/widgets/address_autocomplete_field.dart';
 import 'package:totem/widgets/mapbox_address_map.dart';
 
-/// Dialog com múltiplos steps para adicionar endereço (estilo iFood)
+/// Dialog com múltiplos steps para adicionar endereço
 class AddressAddFlow extends StatefulWidget {
   const AddressAddFlow({super.key});
 
@@ -275,6 +275,22 @@ class _AddressAddFlowState extends State<AddressAddFlow> {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

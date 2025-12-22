@@ -5,16 +5,28 @@ import 'package:equatable/equatable.dart';
 class FlavorPrice extends Equatable {
   final int? id;
   final int sizeOptionId; // ID do OptionItem que representa o tamanho
+  final String? sizeOptionName; // Nome do tamanho (ex: "Pequena", "Média", "Grande")
+  final String? sizeOptionImagePath; // Imagem do tamanho
   final int price;
   final bool isAvailable;
   final String? posCode;
+  // ✅ CAMPOS ADICIONAIS DE ALTA PRIORIDADE (alinhados com APIs externas)
+  final List<Map<String, dynamic>>? statusByCatalog; // Status por catálogo
+  final List<Map<String, dynamic>>? priceByCatalog; // Preços por catálogo
+  final List<Map<String, dynamic>>? externalCodeByCatalog; // Códigos externos por catálogo
 
   const FlavorPrice({
     this.id,
     required this.sizeOptionId,
+    this.sizeOptionName,
+    this.sizeOptionImagePath,
     required this.price,
     this.isAvailable = true,
     this.posCode,
+    // ✅ CAMPOS ADICIONAIS
+    this.statusByCatalog,
+    this.priceByCatalog,
+    this.externalCodeByCatalog,
   });
 
   factory FlavorPrice.fromJson(Map<String, dynamic> json) {
@@ -49,18 +61,41 @@ class FlavorPrice extends Equatable {
     return FlavorPrice(
       id: json['id'],
       sizeOptionId: json['size_option_id'],
+      sizeOptionName: json['size_option_name'],
+      sizeOptionImagePath: json['size_option_image_path'],
       price: priceInCents,
       isAvailable: available,
       posCode: json['pos_code'],
+      // ✅ CAMPOS ADICIONAIS DO CATÁLOGO
+      statusByCatalog: json['status_by_catalog'] != null
+          ? (json['status_by_catalog'] as List<dynamic>)
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+          : null,
+      priceByCatalog: json['price_by_catalog'] != null
+          ? (json['price_by_catalog'] as List<dynamic>)
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+          : null,
+      externalCodeByCatalog: json['external_code_by_catalog'] != null
+          ? (json['external_code_by_catalog'] as List<dynamic>)
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+          : null,
     );
   }
 
   const FlavorPrice.empty()
       : id = null,
         sizeOptionId = 0,
+        sizeOptionName = null,
+        sizeOptionImagePath = null,
         price = 0,
         isAvailable = true,
-        posCode = null;
+        posCode = null,
+        statusByCatalog = null,
+        priceByCatalog = null,
+        externalCodeByCatalog = null;
 
   Map<String, dynamic> toJson() {
     return {
@@ -73,5 +108,8 @@ class FlavorPrice extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, sizeOptionId, price, isAvailable, posCode];
+  List<Object?> get props => [
+    id, sizeOptionId, sizeOptionName, sizeOptionImagePath, price, isAvailable, posCode,
+    statusByCatalog, priceByCatalog, externalCodeByCatalog, // ✅ NOVO
+  ];
 }

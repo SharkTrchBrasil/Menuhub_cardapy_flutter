@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nb_utils/nb_utils.dart'; // Certifique-se de que está importado
 import 'package:totem/models/customer.dart';
@@ -15,8 +16,14 @@ import '../core/di.dart';
 
 class CustomerRepository {
   final Dio _dio;
+  final FlutterSecureStorage _secureStorage;
 
-  CustomerRepository(this._dio);
+  // ✅ Chaves de armazenamento para tokens de customer
+  static const String _keyCustomerAccessToken = 'customer_access_token';
+  static const String _keyCustomerRefreshToken = 'customer_refresh_token';
+  static const String _keyCustomerTokenExpiration = 'customer_token_expiration';
+
+  CustomerRepository(this._dio) : _secureStorage = const FlutterSecureStorage();
 
   // Método adaptado para receber o User do Firebase
   Future<Either<String, Customer>> processGoogleSignInCustomer({
@@ -39,6 +46,33 @@ class CustomerRepository {
         final customer = Customer.fromJson(response.data);
         // Salva o cliente localmente
         getIt<CustomerController>().setCustomer(customer);
+        
+        // ✅ CORREÇÃO CRÍTICA: Salva tokens de customer retornados pelo backend
+        final responseData = response.data as Map<String, dynamic>;
+        final customerAccessToken = responseData['access_token'] as String?;
+        final customerRefreshToken = responseData['refresh_token'] as String?;
+        final expiresIn = responseData['expires_in'] as int? ?? 1800;
+        
+        if (customerAccessToken != null) {
+          print('✅ [CUSTOMER_REPO] Salvando tokens de customer...');
+          final customerExpiration = DateTime.now().add(Duration(seconds: expiresIn));
+          
+          // Salva tokens em chaves separadas (não sobrescreve tokens de menu)
+          await _secureStorage.write(key: _keyCustomerAccessToken, value: customerAccessToken);
+          print('   ✅ Customer access token salvo');
+          
+          if (customerRefreshToken != null) {
+            await _secureStorage.write(key: _keyCustomerRefreshToken, value: customerRefreshToken);
+            print('   ✅ Customer refresh token salvo');
+          }
+          
+          await _secureStorage.write(key: _keyCustomerTokenExpiration, value: customerExpiration.toIso8601String());
+          print('   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}');
+          print('✅ [CUSTOMER_REPO] Tokens de customer salvos com sucesso (expira em ${expiresIn}s)');
+        } else {
+          print('⚠️ [CUSTOMER_REPO] Backend não retornou access_token de customer');
+        }
+        
         return Right(customer);
       } else {
         print('Erro na API ao processar cliente Google: ${response.statusCode} - ${response.data}');

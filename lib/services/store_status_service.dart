@@ -59,14 +59,30 @@ class StoreStatusService {
     // 2. Verifica se a loja está aberta manualmente
     final isStoreOpen = config?.isStoreOpen ?? true;
     if (!isStoreOpen) {
+      // ✅ PAUSA RÁPIDA: Verifica se tem paused_until definido
+      final pausedUntil = config?.pausedUntil;
+      String message = 'Loja está fechada temporariamente';
+      
+      if (pausedUntil != null && pausedUntil.isAfter(DateTime.now())) {
+        // Calcula tempo restante
+        final remaining = pausedUntil.difference(DateTime.now());
+        if (remaining.inMinutes < 60) {
+          message = 'Loja pausada. Reabre em ${remaining.inMinutes} min';
+        } else {
+          final hours = remaining.inHours;
+          final mins = remaining.inMinutes % 60;
+          message = 'Loja pausada. Reabre em ${hours}h${mins > 0 ? ' ${mins}min' : ''}';
+        }
+      }
+      
       return StoreStatusResult(
         canReceiveOrders: false,
-        reason: 'store_closed',
-        message: 'Loja está fechada temporariamente',
+        reason: pausedUntil != null ? 'scheduled_quick_pause' : 'store_closed',
+        message: message,
         isStoreOpen: false,
-        deliveryEnabled: config?.deliveryEnabled ?? false,
-        pickupEnabled: config?.pickupEnabled ?? false,
-        tableEnabled: config?.tableEnabled ?? false,
+        deliveryEnabled: config?.isDeliveryAvailable ?? false,
+        pickupEnabled: config?.isPickupAvailable ?? false,
+        tableEnabled: config?.isTableAvailable ?? false,
         withinOpeningHours: false,
       );
     }
@@ -81,9 +97,9 @@ class StoreStatusService {
         reason: 'outside_hours',
         message: helper.statusMessage,
         isStoreOpen: true,
-        deliveryEnabled: config?.deliveryEnabled ?? false,
-        pickupEnabled: config?.pickupEnabled ?? false,
-        tableEnabled: config?.tableEnabled ?? false,
+        deliveryEnabled: config?.isDeliveryAvailable ?? false,
+        pickupEnabled: config?.isPickupAvailable ?? false,
+        tableEnabled: config?.isTableAvailable ?? false,
         withinOpeningHours: false,
       );
     }
@@ -97,9 +113,9 @@ class StoreStatusService {
         reason: 'scheduled_pause',
         message: isInPause,
         isStoreOpen: true,
-        deliveryEnabled: config?.deliveryEnabled ?? false,
-        pickupEnabled: config?.pickupEnabled ?? false,
-        tableEnabled: config?.tableEnabled ?? false,
+        deliveryEnabled: config?.isDeliveryAvailable ?? false,
+        pickupEnabled: config?.isPickupAvailable ?? false,
+        tableEnabled: config?.isTableAvailable ?? false,
         withinOpeningHours: isWithinHours,
       );
     }
@@ -112,19 +128,21 @@ class StoreStatusService {
         reason: 'not_operational',
         message: 'Loja temporariamente indisponível',
         isStoreOpen: true,
-        deliveryEnabled: config?.deliveryEnabled ?? false,
-        pickupEnabled: config?.pickupEnabled ?? false,
-        tableEnabled: config?.tableEnabled ?? false,
+        deliveryEnabled: config?.isDeliveryAvailable ?? false,
+        pickupEnabled: config?.isPickupAvailable ?? false,
+        tableEnabled: config?.isTableAvailable ?? false,
         withinOpeningHours: isWithinHours,
       );
     }
 
-    // 6. Verifica se pelo menos um modelo está ativo
-    final deliveryEnabled = config?.deliveryEnabled ?? false;
-    final pickupEnabled = config?.pickupEnabled ?? false;
-    final tableEnabled = config?.tableEnabled ?? false;
+    // 6. Verifica se pelo menos uma modalidade está DISPONÍVEL
+    // ✅ CORREÇÃO: Usa os getters que consideram tanto enabled quanto paused
+    // isDeliveryAvailable = deliveryEnabled && !deliveryPaused
+    final deliveryAvailable = config?.isDeliveryAvailable ?? false;
+    final pickupAvailable = config?.isPickupAvailable ?? false;
+    final tableAvailable = config?.isTableAvailable ?? false;
 
-    if (!deliveryEnabled && !pickupEnabled && !tableEnabled) {
+    if (!deliveryAvailable && !pickupAvailable && !tableAvailable) {
       return StoreStatusResult(
         canReceiveOrders: false,
         reason: 'no_delivery_methods',
@@ -143,9 +161,9 @@ class StoreStatusService {
       reason: 'ok',
       message: null,
       isStoreOpen: true,
-      deliveryEnabled: deliveryEnabled,
-      pickupEnabled: pickupEnabled,
-      tableEnabled: tableEnabled,
+      deliveryEnabled: deliveryAvailable,  // ✅ Retorna disponibilidade real (enabled && !paused)
+      pickupEnabled: pickupAvailable,
+      tableEnabled: tableAvailable,
       withinOpeningHours: isWithinHours,
     );
   }
@@ -185,6 +203,8 @@ class StoreStatusService {
         return 'Nenhum método de entrega disponível. Entre em contato com a loja.';
       case 'scheduled_pause':
         return result.message ?? 'Loja em pausa temporária. Tente novamente mais tarde.';
+      case 'scheduled_quick_pause':
+        return result.message ?? 'Loja pausada temporariamente. Reabrirá em breve.';
       case 'ok':
         return 'Loja aberta!';
       default:

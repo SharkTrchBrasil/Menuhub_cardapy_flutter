@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page_state.dart';
 import 'package:totem/themes/ds_theme.dart';
-import '../../core/di.dart';
+import 'package:totem/widgets/food_loading_animation.dart';
 import '../../themes/ds_theme_switcher.dart';
-import '../../widgets/menuhub_logo_animated.dart';
+
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -42,28 +42,11 @@ class _SplashPageState extends State<SplashPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo animada do Menuhub
-              MenuhubLogoAnimated(
-                size: 120,
-                color: theme.primaryColor,
-                showText: false,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Carregando...',
-                style: TextStyle(
-                  color: theme.onBackgroundColor.withOpacity(0.7),
-                  fontSize: 14,
-                ),
+              // ✅ NOVO: Animação de loading com ícones de comida
+              FoodLoadingAnimation(
+                size: 80,
+                primaryColor: theme.primaryColor,
+                message: 'Preparando seu cardápio...',
               ),
             ],
           ),

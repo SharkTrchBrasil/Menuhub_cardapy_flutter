@@ -6,10 +6,14 @@ import 'package:totem/core/extensions.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:collection/collection.dart';
+import 'package:totem/core/utils/id_obfuscator.dart'; // ✅ ENTERPRISE: Ofuscação de IDs
 
 import '../models/cart_item.dart';
-import '../models/product.dart';
+
 import '../models/category.dart';
+import '../models/product.dart';
+import '../helpers/enums/product_status.dart';
+import '../helpers/enums/product_type.dart';
 
 /// Classe helper para navegação e exibição de dialogs de produtos
 class NavigationHelper {
@@ -17,12 +21,18 @@ class NavigationHelper {
   /// Funciona para todos os tipos de produtos (GENERAL, CUSTOMIZABLE, etc.)
   static void showProductDialog({
     required BuildContext context,
-    required Product product,
+    Product? product, // ✅ CORREÇÃO: Tornado opcional para suportar pizzas sem produto
     Category? category,
     int? sizeId, // ✅ Novo parâmetro
   }) {
+    // ✅ VALIDAÇÃO: Pelo menos product OU category deve ser fornecido
+    if (product == null && category == null) {
+      print('⚠️ [NavigationHelper] showProductDialog requer product OU category');
+      return;
+    }
+
     // Se categoria não foi passada, tenta encontrar no StoreCubit
-    if (category == null) {
+    if (category == null && product != null) {
       final storeState = context.read<StoreCubit>().state;
       final categoryId = product.categoryLinks.firstOrNull?.categoryId;
       if (categoryId != null) {
@@ -36,9 +46,15 @@ class NavigationHelper {
 }
 
 // Navega para a página de detalhes de um produto para adicioná-lo ao carrinho
-void goToProductPage(BuildContext context, Product product, {Category? category, int? sizeId}) {
+void goToProductPage(BuildContext context, Product? product, {Category? category, int? sizeId, bool fromCart = false}) {
+  // ✅ VALIDAÇÃO: Requer pelo menos product OU category
+  if (product == null && category == null) {
+    print('⚠️ [goToProductPage] Requer product OU category');
+    return;
+  }
+
   // Se categoria não foi passada, tenta encontrar no StoreCubit
-  if (category == null) {
+  if (category == null && product != null) {
     final storeState = context.read<StoreCubit>().state;
     final categoryId = product.categoryLinks.firstOrNull?.categoryId;
     if (categoryId != null) {
@@ -46,12 +62,34 @@ void goToProductPage(BuildContext context, Product product, {Category? category,
     }
   }
 
-  final String slug = product.name.toSlug();
+ // ✅ Para pizzas sem produto, usa a categoria como base
+  if (product == null && category != null) {
+    // Navega para uma página de customização de pizza
+    // Usa ID da categoria como slug temporário
+    String location = '/category/${category.name.toSlug()}/${category.id}';
+    
+    final queryParams = <String>[];
+    if (sizeId != null) queryParams.add('size=$sizeId');
+    if (fromCart) queryParams.add('fromCart=true');
+    
+    if (queryParams.isNotEmpty) {
+      location += '?${queryParams.join('&')}';
+    }
+    
+    context.go(location, extra: category);
+    return;
+  }
 
-  // ✅ Adiciona query param se sizeId existir
-  String location = '/product/$slug/${product.id}';
-  if (sizeId != null) {
-    location += '?size=$sizeId';
+  // ✅ ENTERPRISE: Usa ID ofuscado na URL
+  final productUrl = IdObfuscator.createProductUrl(product!.name, product.id!);
+  String location = '/product/$productUrl';
+  
+  final queryParams = <String>[];
+  if (sizeId != null) queryParams.add('size=$sizeId');
+  if (fromCart) queryParams.add('fromCart=true');
+  
+  if (queryParams.isNotEmpty) {
+    location += '?${queryParams.join('&')}';
   }
 
   context.go(location, extra: product);
@@ -59,10 +97,9 @@ void goToProductPage(BuildContext context, Product product, {Category? category,
 
 // Navega para a página de detalhes para EDITAR um item que JÁ ESTÁ no carrinho
 void goToEditCartItemPage(BuildContext context, CartItem cartItem) {
-  final String slug = cartItem.product.name.toSlug();
-
-  // ✅ CORREÇÃO FINAL: Também usa o caminho absoluto aqui para consistência.
-  context.go('/product/$slug/${cartItem.product.id}', extra: cartItem);
+  // ✅ ENTERPRISE: Usa ID ofuscado na URL
+  final productUrl = IdObfuscator.createProductUrl(cartItem.product.name, cartItem.product.id!);
+  context.go('/product/$productUrl', extra: cartItem);
 }
 
 /// Navega para o carrinho, mas valida o status da loja primeiro

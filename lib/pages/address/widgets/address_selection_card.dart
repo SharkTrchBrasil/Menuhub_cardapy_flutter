@@ -171,7 +171,7 @@ class AddressDisplayAndSelection extends StatelessWidget {
 
     showDialog(
       context: context,
-      // ✅ NOVO: Bordas arredondadas estilo iFood
+      // ✅ NOVO: Bordas arredondadas
       barrierColor: Colors.black54,
       builder: (_) {
         return Dialog(
