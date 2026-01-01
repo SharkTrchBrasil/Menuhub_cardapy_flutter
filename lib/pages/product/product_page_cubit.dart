@@ -1,6 +1,5 @@
-// lib/pages/product/product_page_cubit.dart
-
-import 'dart:ui';
+import 'dart:async'; // ✅ Import necessário para StreamSubscription
+import 'dart:ui'; // ✅ Necessário para VoidCallback
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:collection/collection.dart';
@@ -12,18 +11,20 @@ import 'package:totem/models/cart_variant_option.dart';
 import 'package:totem/models/option_item.dart';
 import 'package:totem/pages/product/product_page_state.dart';
 import '../../cubit/store_cubit.dart';
+import '../../cubit/store_state.dart'; // ✅ Necessário para StoreState
 import '../../models/cart_item.dart';
 import '../../models/category.dart';
 import '../../models/image_model.dart';
 import '../../models/option_group.dart';
 import '../../repositories/storee_repository.dart';
-import 'package:totem/helpers/pizza_adapter_helper.dart'; // ✅ Import do helper
+import 'package:totem/helpers/pizza_adapter_helper.dart';
 import '../../helpers/enums/product_status.dart';
 
 class ProductPageCubit extends Cubit<ProductPageState> {
   final StoreRepository _repository;
   final StoreCubit _storeCubit;
   final int productId;
+  StreamSubscription? _storeSubscription; // ✅ Subscription para ouvir mudanças
 
   ProductPageCubit({
     required this.productId,
@@ -31,7 +32,54 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     required StoreCubit storeCubit,
   })  : _repository = repository,
         _storeCubit = storeCubit,
-        super(ProductPageState.initial());
+        super(ProductPageState.initial()) {
+    // ✅ Inicia escuta de atualizações da loja
+    _storeSubscription = _storeCubit.stream.listen(_onStoreStateChanged);
+  }
+
+  @override
+  Future<void> close() {
+    _storeSubscription?.cancel();
+    return super.close();
+  }
+
+  // ✅ Reage a mudanças no estado da loja (ex: update granular de categoria)
+  void _onStoreStateChanged(StoreState storeState) {
+    if (state.status is PageStatusLoading) return; // Evita recarrregar se já estiver carregando
+    
+    // Verifica se temos um produto carregado
+    if (state.product != null) {
+      final currentCategory = state.product!.category;
+      
+      // Busca a versão mais recente da categoria na memória
+      final updatedCategory = storeState.categories?.firstWhereOrNull((c) => c.id == currentCategory.id);
+      
+      // Se a categoria foi atualizada (ou se o produto mudou), recarrega
+      // Aqui fazemos um reload simples se a categoria existir e for diferente
+      if (updatedCategory != null && updatedCategory != currentCategory) {
+        print("🔄 [ProductPageCubit] Detectada atualização na categoria ${updatedCategory.name}. Recarregando produto...");
+        
+        // Preserva o estado atual (seleções) se possível
+        // Mas para garantir consistência visual (novos grupos, preços), recarregamos
+        // Idealmente, deveríamos tentar "reidratar" as seleções
+        
+        // Vamos chamar loadProduct mantendo o sizeId se for pizza
+        final currentSizeId = state.product!.selectedSize?.id;
+        
+        // Se estivermos editando um item (cartItemToEdit), talvez seja melhor não mexer, 
+        // ou avisar o usuário. Mas o requisito é "reagir".
+        if (!state.isEditMode) {
+        // Tenta buscar a versão mais recente do produto na memória (caso tenha mudado preço/status)
+        final currentProduct = state.product!.product;
+        final latestProduct = storeState.products?.firstWhereOrNull((p) => p.id == currentProduct.id) ?? currentProduct;
+
+        loadProduct(sizeId: currentSizeId, initialProduct: latestProduct);
+        } else {
+             print("⚠️ [ProductPageCubit] Em modo edição, ignorando update automático para evitar perda de dados complexos.");
+        }
+      }
+    }
+  }
 
   Future<void> loadProduct({
     Product? initialProduct,
@@ -257,14 +305,10 @@ class ProductPageCubit extends Cubit<ProductPageState> {
 
   CartProduct _configureForEdit(Product product, Category category, CartItem cartItem) {
     print('🔧 [_configureForEdit] Iniciando configuração para edição');
-    print('   - Produto: ${product.name}');
-    print('   - Categoria customizável: ${category.isCustomizable}');
-    print('   - Variantes salvas: ${cartItem.variants.length}');
-    print('   - Nota salva: ${cartItem.note}');
-    
     var configuredProduct = CartProduct.fromProduct(product, category);
     OptionItem? selectedSize;
     
+    // 1. Identifica o tamanho
     if (category.isCustomizable) {
       final sizeGroup = category.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
       if (sizeGroup != null) {
@@ -273,42 +317,65 @@ class ProductPageCubit extends Cubit<ProductPageState> {
       }
     }
     
-    // ✅ CORREÇÃO: Cria mapa usando effectiveId (funciona para produtos normais E pizzas)
-    // Para produtos normais: effectiveId = variantOptionId
-    // Para pizzas: effectiveId = optionItemId (quando variantOptionId é null)
-    final savedVariantOptionsById = <int, int>{};
-    final savedVariantOptionsByName = <String, int>{};
+    // 2. Extrai o que está salvo no carrinho (IDs e Qtd)
+    final savedOptionIds = <int, int>{};
+    final savedOptionNames = <String, int>{};
+    final savedFlavors = <Product>[];
+    
+    // Busca todos os produtos da loja para reidratar sabores (pizzas)
+    final allProducts = _storeCubit.state.products ?? [];
     
     for (var v in cartItem.variants) {
-      print('   - Variant "${v.name}" (id: ${v.effectiveId}) com ${v.options.length} opções');
       for (var o in v.options) {
-        final effectiveId = o.effectiveId;
-        if (effectiveId > 0) {
-          savedVariantOptionsById[effectiveId] = o.quantity;
+        final id = o.effectiveId;
+        if (id > 0) savedOptionIds[id] = o.quantity;
+        if (o.name.isNotEmpty) savedOptionNames[o.name.toLowerCase()] = o.quantity;
+        
+        // Se for um sabor (Pizza...), adiciona à lista de sabores recuperados
+        if (o.name.toLowerCase().contains('pizza') || o.name.toLowerCase().contains('sabor')) {
+           final flavorId = o.effectiveId;
+           final flavorProduct = allProducts.firstWhereOrNull((p) => p.id == flavorId);
+           
+           if (flavorProduct != null) {
+             savedFlavors.add(flavorProduct);
+             print('      ✅ Sabor Recuperado por ID: "${flavorProduct.name}" (id: ${flavorProduct.id})');
+           } else {
+             final flavorByName = allProducts.firstWhereOrNull((p) {
+                final cleanName = o.name.replaceAll(RegExp(r'1/\d\s*'), '').toLowerCase();
+                return p.name.toLowerCase() == cleanName;
+             });
+             if (flavorByName != null) {
+               savedFlavors.add(flavorByName);
+               print('      ✅ Sabor Recuperado por Nome: "${flavorByName.name}"');
+             }
+           }
         }
-        // ✅ Fallback por nome (caso IDs não batam)
-        if (o.name.isNotEmpty) {
-          savedVariantOptionsByName[o.name.toLowerCase()] = o.quantity;
-        }
-        print('      - Opção "${o.name}" (effectiveId: $effectiveId, qty: ${o.quantity})');
       }
     }
     
-    print('   - Mapa por ID: $savedVariantOptionsById');
-    print('   - Mapa por Nome: $savedVariantOptionsByName');
+    print('   - savedOptionIds: $savedOptionIds');
     
+    // 3. Reconstrói a seleção de variantes (incluindo Combos de Pizza)
     final newSelectedVariants = configuredProduct.selectedVariants.map((variant) {
       final newOptions = variant.cartOptions.map((option) {
-        // ✅ Tenta primeiro por ID, depois por nome
-        int quantity = savedVariantOptionsById[option.id] ?? 0;
-        
-        // ✅ Fallback: tenta por nome se não encontrou por ID
-        if (quantity == 0 && option.name.isNotEmpty) {
-          quantity = savedVariantOptionsByName[option.name.toLowerCase()] ?? 0;
-        }
-        
-        if (quantity > 0) {
-          print('      ✅ Opção "${option.name}" (id: ${option.id}) -> qty: $quantity');
+        int quantity = 0;
+
+        // ✅ LÓGICA DE COMBO (Massas e Bordas combinadas na UI)
+        if (category.isCustomizable && (option.crustId != null || option.edgeId != null)) {
+          final cid = option.crustId ?? option.id;
+          final eid = option.edgeId ?? option.parentCustomizationOptionId;
+          
+          if (savedOptionIds.containsKey(cid) && savedOptionIds.containsKey(eid)) {
+            quantity = 1;
+            print('      ✅ [Reidratação] Combo Match: "${option.name}" (crust: $cid, edge: $eid)');
+          }
+        } 
+        // LÓGICA NORMAL (Item único)
+        else {
+          quantity = savedOptionIds[option.id] ?? 0;
+          if (quantity == 0 && option.name.isNotEmpty) {
+            quantity = savedOptionNames[option.name.toLowerCase()] ?? 0;
+          }
         }
         
         return option.copyWith(quantity: quantity);
@@ -316,13 +383,14 @@ class ProductPageCubit extends Cubit<ProductPageState> {
       return variant.copyWith(options: newOptions);
     }).toList();
     
-    print('🔧 [_configureForEdit] Configuração concluída');
+    print('🔧 [_configureForEdit] Configuração concluída. Sabores recuperados: ${savedFlavors.length}');
     
     return configuredProduct.copyWith(
       quantity: cartItem.quantity,
       note: cartItem.note,
       selectedSize: selectedSize,
       selectedVariants: newSelectedVariants,
+      selectedFlavors: savedFlavors, // ✅ Restaura sabores selecionados
     );
   }
 

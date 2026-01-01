@@ -4,18 +4,24 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Step 3: Formulário final para completar detalhes do endereço
+/// Estilo iFood: mostra endereço completo no header, com opção de editar
 class AddressCompleteFormStep extends StatefulWidget {
   final String street;
   final String neighborhood;
   final String city;
   final String state;
+  final double? latitude;
+  final double? longitude;
   final VoidCallback onSave;
   final VoidCallback onBack;
   final TextEditingController numberController;
   final TextEditingController complementController;
   final TextEditingController referenceController;
+  final TextEditingController? streetController;
+  final TextEditingController? neighborhoodController;
   final String favoriteLabel;
   final Function(String) onFavoriteLabelChanged;
+  final bool isSaving;
 
   const AddressCompleteFormStep({
     super.key,
@@ -23,13 +29,18 @@ class AddressCompleteFormStep extends StatefulWidget {
     required this.neighborhood,
     required this.city,
     required this.state,
+    this.latitude,
+    this.longitude,
     required this.onSave,
     required this.onBack,
     required this.numberController,
     required this.complementController,
     required this.referenceController,
+    this.streetController,
+    this.neighborhoodController,
     required this.favoriteLabel,
     required this.onFavoriteLabelChanged,
+    this.isSaving = false,
   });
 
   @override
@@ -37,11 +48,42 @@ class AddressCompleteFormStep extends StatefulWidget {
 }
 
 class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
+  // Estado de edição - começa true se bairro estiver vazio
+  late bool _isEditing;
+  
+  // Checkboxes
+  bool _noNumber = false;
+  bool _noComplement = false;
+  
+  // Verifica se bairro está vazio
+  bool get _neighborhoodEmpty => 
+      widget.neighborhood.isEmpty && 
+      (widget.neighborhoodController?.text.trim().isEmpty ?? true);
+
+  @override
+  void initState() {
+    super.initState();
+    // Se bairro estiver vazio, começa em modo edição
+    _isEditing = _neighborhoodEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final fullAddress = '${widget.neighborhood}, ${widget.city} - ${widget.state}';
+    final streetDisplay = widget.streetController?.text.isNotEmpty == true
+        ? widget.streetController!.text
+        : widget.street;
+    final numberDisplay = widget.numberController.text.isNotEmpty
+        ? widget.numberController.text
+        : 'S/N';
+    final neighborhoodDisplay = widget.neighborhoodController?.text.isNotEmpty == true
+        ? widget.neighborhoodController!.text
+        : widget.neighborhood;
+    
+    final addressTitle = '$streetDisplay, $numberDisplay';
+    final addressSubtitle = '$neighborhoodDisplay, ${widget.city} - ${widget.state}';
 
     return Scaffold(
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
           // Mapa
@@ -52,7 +94,7 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
             bottom: 0,
             left: 0,
             right: 0,
-            child: _buildFormContent(fullAddress),
+            child: _buildFormContent(addressTitle, addressSubtitle),
           ),
 
           // Header
@@ -70,62 +112,99 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
   Widget _buildMap() {
     final mapboxToken = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
 
-    return Stack(
-      children: [
-        // Mapa real usando Flutter Map
-        if (mapboxToken.isNotEmpty)
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: const LatLng(-19.880714, -43.866214), // Coordenadas do exemplo
-              initialZoom: 16.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
+    return SizedBox(
+      height: 250,
+      child: Stack(
+        children: [
+          // Mapa real usando Flutter Map
+          if (mapboxToken.isNotEmpty)
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: LatLng(
+                  widget.latitude ?? -19.880714,
+                  widget.longitude ?? -43.866214,
+                ),
+                initialZoom: 16.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.none, // Desabilita interação no mini mapa
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=$mapboxToken',
+                  userAgentPackageName: 'com.menuhub.totem',
+                  tileSize: 512,
+                  zoomOffset: -1,
+                ),
+              ],
+            )
+          else
+            Container(
+              color: Colors.grey.shade200,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.map, size: 64, color: Colors.grey.shade400),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Configure MAPBOX_ACCESS_TOKEN para ver o mapa',
+                      style: TextStyle(color: Colors.grey.shade600),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=$mapboxToken',
-                userAgentPackageName: 'com.menuhub.totem',
-                tileSize: 512,
-                zoomOffset: -1,
-              ),
-            ],
-          )
-        else
-          Container(
-            color: Colors.grey.shade200,
+
+          // Pin no centro do mapa
+          const Center(
+            child: Icon(
+              Icons.location_on,
+              color: Colors.red,
+              size: 40,
+            ),
+          ),
+          
+          // Botão "Ajustar marcador"
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.map, size: 64, color: Colors.grey.shade400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Configure MAPBOX_ACCESS_TOKEN para ver o mapa',
-                    style: TextStyle(color: Colors.grey.shade600),
-                    textAlign: TextAlign.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(25),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Ajustar marcador',
+                  style: TextStyle(
+                    color: Theme.of(context).primaryColor,
+                    fontWeight: FontWeight.w500,
                   ),
-                ],
+                ),
               ),
             ),
           ),
-
-        // Pin no centro do mapa
-        const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(height: 20),
-
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildFormContent(String fullAddress) {
+  Widget _buildFormContent(String addressTitle, String addressSubtitle) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.65,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
@@ -134,7 +213,7 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withAlpha(25),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -145,12 +224,8 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Powered by
-            _buildPoweredBy(),
-            const SizedBox(height: 16),
-
-            // Informações do endereço
-            _buildAddressInfo(fullAddress),
+            // Header do endereço com botão de editar
+            _buildAddressHeader(addressTitle, addressSubtitle),
             const SizedBox(height: 24),
 
             // Formulário
@@ -161,37 +236,41 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     );
   }
 
-  Widget _buildPoweredBy() {
-    return Center(
-      child: SizedBox(
-        width: 96,
-        height: 12,
-        child: Image.network(
-          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbAAAAA2CAYAAACm0MxbAAAauUlEQVR4Aezaw9sdPRjH8by1bbvd1u5MMrVtc1PbSnJqe19va+/ev6Ja1TqTe+p2miwf27/7uj6bYzzn+Q7CMBgMJj9myvW4/OC9yY5BgoZzRXOFjpZxFS3l0swIpPEHH4iasTj+z2L5ASDXdwQA8A5SE67NCqHDu0KTseJMqfA1l3RFKDPF2xVXsVhuAeT4DgAAfF/UXWi6LnT4y4UpN3xJH4Q2ewfs+1LXYgA5le0bAgAIFTUXkq65AOUXX9NHoWgxDi8WT94Tr0K3yxN+p9bj6qSzFitK2boRAADXZqavKZl/8UpFhbeCRLK+xaD4cAGz33+cxpWJ5y1WlDK9EgDALc4Qik66yBQ0X5pnQSLZyWKQawgYAED3C3FFoel6NuPzv1BGch1OdOfIXIg8HXbxddg/SNA8oemM0OHLrB4nkGatxaB4QMAA8pmdctaBVDqy/JslqR57FCtjs2tXXE5IupRpcGT4lUs67O371sZiWXHnubg0wpd0P73H44p2WKz4AAQMAAErccO12Z1pvLS5OVR+bWmx3BAqGuOW1SNe+QYBA0DAELBAGl/I8G/GCy5oU36sGhTaNHaHHhGvPEPAABAwBKzPkb9VuTbPM9n7WmSx/OLOs1mseAIEDAABKzEjFG3LKF5c03aLQdmBgAEgYCVi+h14X1No+pxuwCQ9dAs7LAZlBwIGgICVlIUbKzJYbfiTyy/tLQZlCwIG/9g7C+g2jq0NX1uXTGFm5kJAEI4syY5bQ9AOFxymMrdOncaYx8zMzGj7MTMzYwwpGUJO4+9/vx6do7PvzmpmpbULuef8Nu9V0q68a89/Lsydq1wVsOeFReq6fiqXt3e/CdBVXnxcFbCrXOWqgD3nLVJ7broy93Wq+xpAz0ceXx+Y2hHxl3TEAnvbosHDbdHAno5oaO3ZG0LDALnFlS/lTO37iqfkYot376XWrMOXW7178O/aK1+gYYDcgCtD2VPGwvEycAu3/+KF5GU1/XmAnJBuAWuLLh/fFgsUdsaCu9tjwVs6o4HyjlhwXj9RBiATcLjKVZ53XBUwFyzS0FOl6Br/C0DPJ1i0MDjWd0SCf8Hg2C/RFgk+g9e/1REN7v9bOJwDKEWeFa0Wb31fq+cvfa3efomLrd5n8O+38O/+/q9RDqBU4SbL6ILSiC4o/5SfYdcF7qgSa+xZCognK+xVW5F6UaZDwJ4o9A9vjwTuxf3+pfJ5xPz/7ogGGlngAOnABy1gI8ACsBQsBJOAh9JrI8BMcD1YAuaBEfTCtgwwBiwEy8BiMAvkkTuWDyaCscBr+D3HgUUJ33MmyKX0WhaYBhYDP1gIRpLFBlvAhO+6DCwEI57H1YdvUFQevhzQ84EzRdfnY6B8eVsseEkcKNVi9h8MnjuceAHMlS9TPkTp5RebvZdk4ZKBR/YfeGY7sCQuA5Ah8VZfj6JF13mtfpNY2wevrA6CF5JeFzuqpCBgfD95gtAe8T9u8Dy6Mfk4ovMs+MC2LYFiEDcvWAvuBacFasAWMJqc21Bwo850mAdAMRhK9jYabLMwVlc8hc/qDohe4bNTNH7uEvAIOK3gdrBKU2jG2jxHD1gJ7rScvwmUkb0NB2XghOI7NoFjIASyyLmNB9tAreI694I1wDtIAlYC4jYR7AR1iu96N1iV5H54wFbLM1tB5jZE+N1bBIyNqwwVvQl3A3quw2EoCNfveRB0TDTw7j/eMCcbkC4XWnzz+po9v9cXLlHI3o0QYDYgXdbUd43FQvDvOGuc3P09twWM72N7NPB+p88C4d6394fDWYBU8IGEPz62KeABcFqDelAEMknfMkFMHrCU1IECm+t4wEnLZ2KkZ+uE691Kejbf8rlGkG/jyayUBz8lD2kMzrMUz3EsuMvm3Ettvuc6UG/wPe8H08nMPKAENBlcYwpgqxtAAYuBTAffdRqpbafl/Y8BH5lZRJhQjHFWgdjzW9EDq316FSBTwvXd1+Lzv08LCI8BUnE2GlqEmX6HPBiaEviyrohdaPUtQiiwQxYmM5Ar+7KuiBXVdI+Tn5c+bgpYf2WlB/fxk6k+i/ZY4K12nhgfJAGbIQ2wGuzRnIVngypw2iF7bf7Qt1vee4z07JhwnQaQQ8lto+VzB21EYavDn7kJhAwFbBR41OacNYrnlSkMrro0gsWkZz5BKHSoA9NB9QAK2Bqwy8F3bQDXkWxThfeHTMK6wiSzihyanD9xXsARrusNpHFw/QYgif+E/WPaI8F/JJnN/xfe2RcwqH4EuZZvIBfTm2z2D8gO5J7GwHP6h50oQdz+i7DiFy61ZH0EubFv4P/32guZ5+2A7OCwYVLPq7anA7Qir/VZ9Jv8OYcOB1LAIDx1tvc35v8XwoQfhMf7Bkw8PoWijifUIhY8AkiCD1YBOyEMDE3gCKgEW8EB0ABOC+wGGUlm3Ids/tgPgAqwBRy08QD2K3Jwi4Tvnq8RJjutYImDQWQlyVamuMYJsBtsBBXgCGhUiNhCAwHbl2RwLTUU2YfBLrARVIJjoEkhYrM0PPC9NgK1F2wGW8Bh4X5Ug5oBFLC7JM844X7sAPepRV353Y5a3nsHyCA9myeFUdMtYOxJATIj7QL2a0ASEK8P2QyW3++MhKLWWfx/yvx5XJGI1zttRGwzIBUQrw+phAhi9X1UIEb/J7f1GcrjikSIWqdaxHybAalArrJGfZ+6flZQ11NsXXBeeLp3El5/NQuZ2wKGScJSLpCR76v/b23R0Kb+GsoEFIc9Xrx+t5i7xGQDRSDTAFkhPiSZ9W8AQ4DVckCRQmBWkdpKFQNWTOHt5IJChWAWS/koISzpJ3tbZXMPbkqWexI+M0wUVtkDWgYyFbmNMkEgHgV5GgLWaHmOlWAmyAO5YKIip7hE+J7V4DrFwDoMbFEM7j5SW1QRio6AbMX9KJcF030BE/Jx80CGIP7TwXHhM48q/o6uF947jfTsZmHSkkEODdV7v5EGtcLarjWADEmvgNX2/AmQFRRsrLIRr9cmy6F0FC+biEH15+LnI/6/9vv9XkBWLn0la5WNeL0W3lkWIBVXvkgT+1o8P1d4YX/t/zF5AVkJN/VO4YpCudim+52VNf0+QCogbqUoq7/opoBBhD6veB7feWrNmpGAVHAhjUL43gnICvHBxhu6lpLbDCHvdEoxyI4HTYL3MZmS2xRhxt2oKNLYLXiFdnbYcs4my6DqM8idHVVUqz1ked8jmsUv1wv3rEQlYAKPgVkGIb0TQh5nOCW3kHDtKMk2Qpj4nJQLX8SJQMMgCtg+jTyVRwhlM1skT1T43cBnk9owwStdTmpzXMSBjuQ3AzIkrQLG+R5AVhB++rjsPfk/rFtR2B4OTsA4eEaRD9sOyAq8qI8rijE+rF1R+DWaAE/sjHSeyy3e7YCs8N5r0v2BKH2Bd84GlAxuxuyWgCEUOEtR5fnPp9avGAVICcTtWS/M3yeEHPt4sgEoET6oBGwl6dsC4fPrgdV2CSJpkvSfKQzm24DVFguDuIdkG2o550HG8vnrgWjCe9cBqwUFz9bk5y4VBnuvpoDNJ31bI0wQJpK+VQgiLXmX5cL9mE36tnKQBOxe4DMoUjos3M9hGpOgBo2wd0zw5r3AsfGOyYqtU14DyJRww1NzkKv5lCmih4GqOUCJ8NoiKeTUFvE/zXkxQLpgUe0uRf7lM4AS6W+h4VK5PPJbT3NeDJAul5u9u0QhbMn6DKBEWKAK6nvahbDhefbMAOnAi525Cxs3BAy5r/uk+8j3F5AEhxzxubdhEnHOtqAjGrofUCJ8kARMHYdX2x5rCMlyjhxhxriBDE3Iz0geUo4wS5+lORiuZLQ8OPlnGgWsdkQ+n7blCz/PQg0Bu4XM7A7ZY9C2kcJ3mCF4JzXyJMSoeOGOQRCweaZLA4RzhBVh8lrV+zS9thvTsA7sVsXM/PfC3l+uwCEwDMh9goh+HFAi3MFBUQr/GkAmcNUcrwWT1iTxa4DiIA9VrggfvgaQCf0fIQ+vBbOeCwLZza8BiqP0aOu63wHIBF4a4YoHFg187n+9p+CT/ZWLfIDicM6LO3EgTPtdvWpE/284vAgoET5IAhYgc5sunGcciNu1wusjyNzGCeeRChtuFQoWdDyoYYzlv9UqZrfXCsIvDU5NjgdCdbK/REPAriF9GyZ8fiqZ2z1JwogzhOtMJnMLDrCA3ecwv7Tfcp5DmpWsD9gsF1koeHYjKEUrbDo3TRnCa+z1A3KbWENvULFuqQFQIhjYqhXhwyJAprAXIA6ghcvnAooDb6hakbsqAmRMs+dt0vkuNPvmAooTre89JN+b3k2ATGCPG24IGBdpCBOKLwFiuBiDO6SISx6EsCGHgjsKA2E5HBw/yEUIppYp5MJCNmGwO8mhCVV/RcBqAct77lF4Nk2K/NVRDTGo0FhzNkdRtFJrgiCCezUEbCjp2yKXvueuJGHKaofCMHSABaycTE3+eWsVP+8Y4d4tINlulT361A25lJ/Is/yu9wByH9VeZF0VgBJB6OmNYriqcOkkQKZg8L1LPF80FAEUB0Uab5QE50pz7iRApkAQ71IIYgRQHJTE14uig1AtIFM4HJl2AYsEL0gFGNz7kNeFCdWJYok9T064NwnIDj6QkF9xakdtBvQdltd2kHO7RSPpnacR3gvZ5K/WJfm+GaBa9DiFa7jAnRoClmk60LrA4ST5r33k3E4OoICFyJnNFe7JEE1hqlIUwDTJYdrUDZ7NMUWRwDOxU93XAXILDlOKi3NR+s1dJwAlwgOjNAA6bdLLzX4V1YglgOKgevCdooA5bNLLzX5FAUMjYEBxUBjzKunZ8KJmQKbgXv8x3QKm7DmpuYAc4rVRrhzV78RxfxqFZZNNKKWcnFuFZq7nQJLy/n02AjdKqKzMAnGbLCT4JVvrkjA8oCFgJlbo0ve8Pcmz20XO7f4BFLDryJlNEu6Jqvp0tlDcYp10FVnecxvISOuGlrU9TyhyLd8P1/RnAXKDgrrejYoS+m8DsqD0wM5GV0wGZErKHlhr7mRAhuh7YPXdTWKrr8bzswCZAo/3jAshxPNG7aKwgBmh25dZwrTa8IGExarmJgvCRpvXtpBz2y50AJFshTjblz00KX91u5hrk6vAijXXmJ0E5WkgmmYBiwjrlspTRajK3CI/O0f20AAK2GJgbnK3jZE2xSl32hRnZAq9M5dSmg0z/YeUJe11Pa8AlG5uqDk7DAP0XxUl9AcUJfSPiAn/wmAxIFPw2XeI5wsvnQMoDoouHhEFp9lTDMiYFs87pPOd/1r2HEBxMIE4LgoYtk4BZEK45skR7uTAgn/SKsqIBH/YHg3e+s8VK3IBOYUPJJTwZpIzu8sghHgrOTShPHkzyTZUXtMl5siiGottK5Wtp9SFCEsEYXDBUhawkFBF6oatFzwIJ+YBDQMoYGFyZtcJz8VLagsIvy9ZgO0aIX/ooTQbvKEcDGZ/thGxxwClC648hDfweelanKdR7WXVEQuVKgbI1wEygRcsS2vBENLqslYhQnRKFQuYXwfIBF6wLK0Fw3/rslYh8oLytG02Wt+9zRUBiwY/phYu/3lu0dVZGAwASgd8IKedAIScU5McdhHF4KRDocwSSo5XG+TlFgG2Ko381VjhO3uE4o8HQYZBCGnEc1DAZoq5mvTbEnkZhHPPxn0BkzuyOFzD96DG7/cJycsSWm8VkmubW3at49yTnSeWjnBiYdMTwyFeX1YvYO6+DZAE57owk78olb6fKVo5DpAu6OhRpcjLfBJQIpzrwkz+olT6jq1TxgHS5eJXvFXiOrDmrE8CSoSFHt1SnhLyk73hl/RMAKQL5xpxnm+6sw4s+Eexnu4HchcOGa46TLrwGfCB5B55xrZciN8PTTJALiBTk1vvTASkmYPaIqwTuwfUdrfQAr/U8t/KknhKp+RikeeUgHlBvbAmLt02Qviey8jc1g2wgNUZ7n0mrtfSWfNWJHR3GWmZNDWkdYIhd6evFoUlISeWSmGHShR2nl5BXdcPk4kkN+cVhQcNYq399pTFd2w+Ky9e9VcAssLNeRWdOLSvzZtfQgjPKvohVgCyUlDf/UbFMgbd7/LmlxDCs4p+iBWArBTUd79RsYxBN7u8+SWE8KyiH2IFICsF9d1vVCxj0M0ub34JITyr6IdYAchKQX33GxXLGHSzy5tfQgjPKvohVgCyUlDf/UbFMgbd7PLmlxDCs4p+iBWArBTUd79RsYxBN7u8+SWE8KyiH2IFICsF9d1vVMw/9w9lVn8tHAAAAABJRU5ErkJggg==',
-          fit: BoxFit.contain,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddressInfo(String fullAddress) {
-    return Column(
+  Widget _buildAddressHeader(String title, String subtitle) {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.street,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3F3E3E),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title.isNotEmpty ? title : 'Endereço não encontrado',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3F3E3E),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          fullAddress,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
+        // Botão de editar
+        IconButton(
+          onPressed: () {
+            setState(() => _isEditing = !_isEditing);
+          },
+          icon: Icon(
+            _isEditing ? Icons.check : Icons.edit_outlined,
+            color: Theme.of(context).primaryColor,
           ),
         ),
       ],
@@ -202,55 +281,105 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Número e Complemento
-        Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: _buildFormField(
-                controller: widget.numberController,
-                label: 'Número',
-                hintText: '',
-                isNumber: true,
+        // Modo edição: mostra todos os campos
+        if (_isEditing) ...[
+          // Rua
+          if (widget.streetController != null)
+            _buildFormField(
+              controller: widget.streetController!,
+              label: 'Rua *',
+              hintText: 'Nome da rua',
+            ),
+          if (widget.streetController != null)
+            const SizedBox(height: 16),
+          
+          // Bairro
+          if (widget.neighborhoodController != null)
+            _buildFormField(
+              controller: widget.neighborhoodController!,
+              label: 'Bairro *',
+              hintText: 'Nome do bairro',
+            ),
+          if (widget.neighborhoodController != null)
+            const SizedBox(height: 16),
+          
+          // Número
+          _buildFormField(
+            controller: widget.numberController,
+            label: 'Número *',
+            hintText: 'Nº',
+            isNumber: true,
+            enabled: !_noNumber,
+          ),
+          // Checkbox "Endereço sem número"
+          CheckboxListTile(
+            value: _noNumber,
+            onChanged: (value) {
+              setState(() {
+                _noNumber = value ?? false;
+                if (_noNumber) {
+                  widget.numberController.text = 'S/N';
+                } else {
+                  widget.numberController.clear();
+                }
+              });
+            },
+            title: Text(
+              'Endereço sem número',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade700,
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFormField(
-                    controller: widget.complementController,
-                    label: 'Complemento',
-                    hintText: 'Complemento',
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Apartamento/Bloco/Casa',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // Complemento (sempre visível)
+        _buildFormField(
+          controller: widget.complementController,
+          label: 'Complemento *',
+          hintText: 'Apto, Bloco, Casa...',
+          enabled: !_noComplement,
+        ),
+        // Checkbox "Endereço sem complemento"
+        CheckboxListTile(
+          value: _noComplement,
+          onChanged: (value) {
+            setState(() {
+              _noComplement = value ?? false;
+              if (_noComplement) {
+                widget.complementController.clear();
+              }
+            });
+          },
+          title: Text(
+            'Endereço sem complemento',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade700,
             ),
-          ],
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
         ),
         const SizedBox(height: 16),
 
-        // Ponto de referência
+        // Ponto de referência (sempre visível)
         _buildFormField(
           controller: widget.referenceController,
-          label: 'Ponto de referência',
-          hintText: 'Ponto de referência',
+          label: 'Ponto de referência (opcional)',
+          hintText: 'Próximo ao mercado, em frente à praça...',
         ),
         const SizedBox(height: 24),
 
         // Favoritar como
         const Text(
-          'Favoritar como',
+          'Favoritar endereço',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF3F3E3E),
@@ -273,14 +402,23 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
               ),
               elevation: 2,
             ),
-            onPressed: widget.onSave,
-            child: const Text(
-              'Salvar endereço',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            onPressed: widget.isSaving ? null : widget.onSave,
+            child: widget.isSaving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Salvar endereço',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
         ),
       ],
@@ -292,6 +430,7 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     required String label,
     required String hintText,
     bool isNumber = false,
+    bool enabled = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,9 +445,16 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
+          enabled: enabled,
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
           decoration: InputDecoration(
             hintText: hintText,
+            hintStyle: TextStyle(
+              color: Colors.grey.shade400,
+              fontWeight: FontWeight.normal,
+            ),
+            filled: !enabled,
+            fillColor: enabled ? Colors.white : Colors.grey.shade100,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: Colors.grey.shade300),
@@ -321,6 +467,10 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: Theme.of(context).primaryColor),
             ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
         ),
@@ -331,26 +481,20 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
   Widget _buildFavoriteButtons() {
     return Row(
       children: [
-        Expanded(
-          child: _buildFavoriteButton(
-            icon: Icons.home,
-            label: 'Casa',
-            isSelected: widget.favoriteLabel == 'Casa',
-            onTap: () => widget.onFavoriteLabelChanged(
-                widget.favoriteLabel == 'Casa' ? '' : 'Casa'
-            ),
-          ),
+        _buildFavoriteButton(
+          icon: Icons.home,
+          label: 'Casa',
+          isSelected: widget.favoriteLabel == 'Casa',
+          onTap: () => widget.onFavoriteLabelChanged(
+              widget.favoriteLabel == 'Casa' ? '' : 'Casa'),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: _buildFavoriteButton(
-            icon: Icons.work,
-            label: 'Trabalho',
-            isSelected: widget.favoriteLabel == 'Trabalho',
-            onTap: () => widget.onFavoriteLabelChanged(
-                widget.favoriteLabel == 'Trabalho' ? '' : 'Trabalho'
-            ),
-          ),
+        _buildFavoriteButton(
+          icon: Icons.work,
+          label: 'Trabalho',
+          isSelected: widget.favoriteLabel == 'Trabalho',
+          onTap: () => widget.onFavoriteLabelChanged(
+              widget.favoriteLabel == 'Trabalho' ? '' : 'Trabalho'),
         ),
       ],
     );
@@ -365,18 +509,19 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     return OutlinedButton(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
         side: BorderSide(
           color: isSelected ? Theme.of(context).primaryColor : Colors.grey.shade300,
           width: isSelected ? 2 : 1,
         ),
-        backgroundColor: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+        backgroundColor:
+            isSelected ? Theme.of(context).primaryColor.withAlpha(25) : Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(20),
         ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             icon,
@@ -400,7 +545,7 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      color: Colors.white54,
+      color: Colors.white.withAlpha(230),
       child: Row(
         children: [
           // Botão voltar
@@ -413,22 +558,22 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
               ),
             ),
             icon: Icon(
-              Icons.arrow_back_ios_rounded,
-              size: 18,
+              Icons.arrow_back,
+              size: 24,
               color: Theme.of(context).primaryColor,
             ),
           ),
           const SizedBox(width: 8),
 
           // Título centralizado
-          Expanded(
+          const Expanded(
             child: Center(
               child: Text(
                 'ENDEREÇO',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF3F3E3E),
+                  color: Color(0xFF3F3E3E),
                 ),
               ),
             ),
@@ -441,6 +586,3 @@ class _AddressCompleteFormStepState extends State<AddressCompleteFormStep> {
     );
   }
 }
-
-
-

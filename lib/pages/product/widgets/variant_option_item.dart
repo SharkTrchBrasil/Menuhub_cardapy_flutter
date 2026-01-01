@@ -173,7 +173,7 @@ class VariantOptionItem extends StatelessWidget {
                               fontSize: 13,
                               color: Colors.grey.shade600,
                             ),
-                            maxLines: 2,
+                            maxLines: 3, // ✅ IFOOD STYLE: Máximo 3 linhas para descrição
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -355,7 +355,12 @@ class VariantOptionItem extends StatelessWidget {
         if (hasDescription)
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
-            child: Text(option.description!, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+            child: Text(
+              option.description!, 
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              maxLines: 3, // ✅ Consistência com o layout SINGLE
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         if (hasPrice)
           Padding(

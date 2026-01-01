@@ -110,13 +110,30 @@ class AuthCubit extends Cubit<AuthState> {
           AppLogger.debug("❌ [AuthCubit] ERRO no processGoogleSignInCustomer: $errorMessage");
           emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
         },
-        (customer) async {
+        (loginResponse) async {
           try {
+            final customer = loginResponse.customer;
             await realtimeRepository.linkCustomerToSession(customer.id!);
             emit(state.copyWith(status: AuthStatus.success, customer: customer));
             cartCubit.fetchCart();
-            addressCubit.loadAddresses(customer.id!);
-            ordersCubit.loadOrders(customer.id!);  // ✅ NOVO: Carrega pedidos
+            
+            // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login (sem chamadas HTTP separadas)
+            if (loginResponse.addresses.isNotEmpty) {
+              AppLogger.info('✅ [AuthCubit] Usando ${loginResponse.addresses.length} endereços do login', tag: 'AUTH');
+              addressCubit.setAddressesFromLogin(loginResponse.addresses);
+            } else {
+              // Fallback: carrega do servidor se não veio no login
+              addressCubit.loadAddresses(customer.id!);
+            }
+            
+            if (loginResponse.orders.isNotEmpty) {
+              AppLogger.info('✅ [AuthCubit] Usando ${loginResponse.orders.length} pedidos do login', tag: 'AUTH');
+              ordersCubit.setOrdersFromLogin(loginResponse.orders);
+            } else {
+              // Fallback: carrega do servidor se não veio no login
+              ordersCubit.loadOrders(customer.id!);
+            }
+            
             // ✅ Processa payload pendente após login bem-sucedido
             await _processPendingCartItem();
           } catch (e) {
@@ -179,13 +196,25 @@ class AuthCubit extends Cubit<AuthState> {
         (errorMessage) {
           emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
         },
-        (customer) async {
+        (loginResponse) async {
           try {
+            final customer = loginResponse.customer;
             await realtimeRepository.linkCustomerToSession(customer.id!);
             emit(state.copyWith(status: AuthStatus.success, customer: customer));
             cartCubit.fetchCart();
-            addressCubit.loadAddresses(customer.id!);
-            ordersCubit.loadOrders(customer.id!);  // ✅ NOVO: Carrega pedidos
+            
+            // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login
+            if (loginResponse.addresses.isNotEmpty) {
+              addressCubit.setAddressesFromLogin(loginResponse.addresses);
+            } else {
+              addressCubit.loadAddresses(customer.id!);
+            }
+            
+            if (loginResponse.orders.isNotEmpty) {
+              ordersCubit.setOrdersFromLogin(loginResponse.orders);
+            } else {
+              ordersCubit.loadOrders(customer.id!);
+            }
           } catch (e) {
             emit(state.copyWith(
               status: AuthStatus.error,
@@ -273,13 +302,25 @@ class AuthCubit extends Cubit<AuthState> {
         (errorMessage) {
           emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
         },
-        (customer) async {
+        (loginResponse) async {
           try {
+            final customer = loginResponse.customer;
             await realtimeRepository.linkCustomerToSession(customer.id!);
             emit(state.copyWith(status: AuthStatus.success, customer: customer));
             cartCubit.fetchCart();
-            addressCubit.loadAddresses(customer.id!);
-            ordersCubit.loadOrders(customer.id!);  // ✅ NOVO: Carrega pedidos
+            
+            // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login
+            if (loginResponse.addresses.isNotEmpty) {
+              addressCubit.setAddressesFromLogin(loginResponse.addresses);
+            } else {
+              addressCubit.loadAddresses(customer.id!);
+            }
+            
+            if (loginResponse.orders.isNotEmpty) {
+              ordersCubit.setOrdersFromLogin(loginResponse.orders);
+            } else {
+              ordersCubit.loadOrders(customer.id!);
+            }
           } catch (e) {
             emit(state.copyWith(
               status: AuthStatus.error,

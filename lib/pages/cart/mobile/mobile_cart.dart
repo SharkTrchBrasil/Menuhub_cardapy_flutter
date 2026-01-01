@@ -182,6 +182,8 @@ class MobileCart extends StatelessWidget {
                           subtotalInCents: cart.subtotal,
                           discountInCents: cart.discount,
                           deliveryFeeInCents: deliveryFeeInCents,
+                          isFreeDelivery: cart.isFreeDelivery,
+                          couponCode: cart.couponCode,
                         ),
                         const SizedBox(height: 40),
                       ],
@@ -282,15 +284,16 @@ class _RecommendedProductsSection extends StatefulWidget {
 class _RecommendedProductsSectionState extends State<_RecommendedProductsSection> {
   List<Product> _cachedRecommendations = [];
   List<int> _lastProductIds = []; // ✅ Lista ordenada para comparação estável
+  int _lastAllProductsCount = 0; // ✅ NOVO: Rastreia quando allProducts muda
   String _stableKey = ''; // ✅ Chave estável para o widget
 
   @override
   void initState() {
     super.initState();
-    _updateRecommendations(widget.itemsInCart);
+    _updateRecommendations(widget.itemsInCart, forceUpdate: true);
   }
 
-  void _updateRecommendations(List<CartItem> items) {
+  void _updateRecommendations(List<CartItem> items, {bool forceUpdate = false}) {
     // ✅ Cria lista ordenada de IDs para comparação estável
     final currentProductIds = items
         .map((item) => item.product.id ?? 0)
@@ -298,16 +301,29 @@ class _RecommendedProductsSectionState extends State<_RecommendedProductsSection
         .toList()
       ..sort();
     
-    // ✅ Só recalcula se os PRODUTOS mudaram (ignora mudança de quantidade)
-    if (!_listEquals(_lastProductIds, currentProductIds)) {
+    final productsChanged = !_listEquals(_lastProductIds, currentProductIds);
+    final allProductsChanged = _lastAllProductsCount != widget.allProducts.length;
+    
+    // ✅ CORREÇÃO: Recalcula se produtos do carrinho mudaram OU se allProducts foi carregada
+    if (productsChanged || allProductsChanged || forceUpdate) {
       _lastProductIds = currentProductIds;
-      _stableKey = currentProductIds.join('-'); // Chave estável baseada nos IDs
+      _lastAllProductsCount = widget.allProducts.length;
+      _stableKey = '${currentProductIds.join('-')}_${widget.allProducts.length}';
+      
+      // ✅ LOG para debug
+      debugPrint('📦 [RECOMENDAÇÕES] Recalculando...');
+      debugPrint('   ├─ allProducts: ${widget.allProducts.length}');
+      debugPrint('   ├─ allCategories: ${widget.allCategories.length}');
+      debugPrint('   └─ itemsInCart: ${items.length}');
+      
       _cachedRecommendations = ProductRecommendationService.getRecommendedProducts(
         allProducts: widget.allProducts,
         allCategories: widget.allCategories,
         itemsInCart: items,
         maxItems: 10,
       );
+      
+      debugPrint('   ✅ Recomendações geradas: ${_cachedRecommendations.length}');
     }
   }
   
@@ -341,7 +357,7 @@ class _RecommendedProductsSectionState extends State<_RecommendedProductsSection
   @override
   void didUpdateWidget(covariant _RecommendedProductsSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // ✅ Recalcula apenas se a lista de itens do carrinho mudou
+    // ✅ CORREÇÃO: Também verifica se allProducts mudou (caso seja carregada assincronamente)
     _updateRecommendations(widget.itemsInCart);
   }
 }

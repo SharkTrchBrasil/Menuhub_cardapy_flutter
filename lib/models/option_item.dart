@@ -39,6 +39,14 @@ class OptionItem extends Equatable {
   final List<Map<String, dynamic>>? priceByCatalog; // Preços por catálogo
   final List<Map<String, dynamic>>? externalCodes; // Códigos externos por catálogo
   final List<int>? fractions; // Número de sabores permitidos (ex: [2] = 2 sabores)
+  
+  // ✅ IDs reais para combos de pizza (Massa + Borda)
+  final int? crustId;
+  final int? edgeId;
+  final String? crustName;
+  final String? edgeName;
+  final int? crustPrice; // Centavos
+  final int? edgePrice; // Centavos
 
   const OptionItem({
     this.id,
@@ -65,6 +73,12 @@ class OptionItem extends Equatable {
     this.priceByCatalog,
     this.externalCodes,
     this.fractions,
+    this.crustId,
+    this.edgeId,
+    this.crustName,
+    this.edgeName,
+    this.crustPrice,
+    this.edgePrice,
   });
 
   /// Retorna o preço para um tamanho específico
@@ -153,6 +167,12 @@ class OptionItem extends Equatable {
               .map((item) => item is int ? item : (item as num).toInt())
               .toList()
           : null,
+      crustId: json['crust_id'],
+      edgeId: json['edge_id'],
+      crustName: json['crust_name'],
+      edgeName: json['edge_name'],
+      crustPrice: json['crust_price'],
+      edgePrice: json['edge_price'],
     );
   }
 
@@ -189,6 +209,12 @@ class OptionItem extends Equatable {
       'external_product_id': externalProductId,
       'external_product_id': externalProductId,
       'linked_product_id': linkedProductId, // ✅ NOVO
+      'crust_id': crustId,
+      'edge_id': edgeId,
+      'crust_name': crustName,
+      'edge_name': edgeName,
+      'crust_price': crustPrice,
+      'edge_price': edgePrice,
     };
   }
 
@@ -238,6 +264,12 @@ class OptionItem extends Equatable {
       priceByCatalog: priceByCatalog ?? this.priceByCatalog,
       externalCodes: externalCodes ?? this.externalCodes,
       fractions: fractions ?? this.fractions,
+      crustId: crustId ?? this.crustId,
+      edgeId: edgeId ?? this.edgeId,
+      crustName: crustName ?? this.crustName,
+      edgeName: edgeName ?? this.edgeName,
+      crustPrice: crustPrice ?? this.crustPrice,
+      edgePrice: edgePrice ?? this.edgePrice,
     );
   }
 
@@ -267,6 +299,12 @@ class OptionItem extends Equatable {
     priceByCatalog,
     externalCodes,
     fractions,
+    crustId,
+    edgeId,
+    crustName,
+    edgeName,
+    crustPrice,
+    edgePrice,
   ];
 
   @override

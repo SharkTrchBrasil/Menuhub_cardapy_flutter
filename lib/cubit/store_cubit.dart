@@ -38,6 +38,9 @@ class StoreCubit extends Cubit<StoreState> {
       }
 
       emit(state.copyWith(store: storeData));
+      
+      // ✅ NOVO: Configura timer para atualizar quando pausa expirar
+      _setupPauseExpirationTimer(storeData);
 
       // ✅ SEO: Atualiza título e descrição da página com dados da loja
       if (kIsWeb) {
@@ -77,8 +80,41 @@ class StoreCubit extends Cubit<StoreState> {
   late final StreamSubscription<List<BannerModel>> _bannersSub;
   late StreamSubscription<List<Product>> _subscription;
   late final StreamSubscription<Store> _storeSub;
+  Timer? _pauseExpirationTimer; // ✅ Timer para expiração da pausa
 
   final RealtimeRepository _realtimeRepository;
+
+  /// ✅ NOVO: Configura timer para atualizar automaticamente quando a pausa expirar
+  void _setupPauseExpirationTimer(Store store) {
+    _pauseExpirationTimer?.cancel();
+    
+    final pausedUntil = store.store_operation_config?.pausedUntil;
+    
+    if (pausedUntil != null && pausedUntil.isAfter(DateTime.now())) {
+      final duration = pausedUntil.difference(DateTime.now());
+      
+      AppLogger.debug('⏰ StoreCubit: Pausa ativa. Timer configurado para ${duration.inMinutes} min ${duration.inSeconds % 60}s');
+      
+      _pauseExpirationTimer = Timer(duration + const Duration(seconds: 2), () {
+        AppLogger.debug('⏰ StoreCubit: Pausa expirou! Forçando atualização do estado...');
+        
+        // ✅ Limpa o pausedUntil localmente e re-emite o estado
+        if (state.store != null) {
+          final updatedConfig = state.store!.store_operation_config?.copyWith(
+            isStoreOpen: true,
+            pausedUntil: null,
+          );
+          
+          final updatedStore = state.store!.copyWith(
+            store_operation_config: updatedConfig,
+          );
+          
+          emit(state.copyWith(store: updatedStore));
+          AppLogger.debug('✅ StoreCubit: Estado atualizado - Loja agora está ABERTA!');
+        }
+      });
+    }
+  }
 
   void selectCategory(Category category) {
     emit(state.copyWith(selectedCategory: category));
@@ -86,6 +122,7 @@ class StoreCubit extends Cubit<StoreState> {
 
   @override
   Future<void> close() {
+    _pauseExpirationTimer?.cancel(); // ✅ Cancela timer
     _storeSub.cancel();
     _subscription.cancel();
     _bannersSub.cancel();

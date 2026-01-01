@@ -169,18 +169,35 @@ class PizzaAdapterHelper {
     final List<OptionItem> combos = [];
 
     // Gera todas as combinações de massa + borda
-    // ✅ CORREÇÃO: Usa IDs reais dos itens de massa e borda
+    // ✅ CORREÇÃO: Limpa prefixos duplicados e usa IDs reais
     for (var dough in doughGroup.items.where((item) => item.isActive)) {
       for (var edge in edgeGroup.items.where((item) => item.isActive)) {
-        final comboName = '${dough.name} + ${edge.name}';
+        // ✅ Remove prefixos duplicados dos nomes
+        String cleanDoughName = dough.name;
+        if (cleanDoughName.toLowerCase().startsWith('massa ')) {
+          cleanDoughName = cleanDoughName.substring(6);
+        }
+        
+        String cleanEdgeName = edge.name;
+        while (cleanEdgeName.toLowerCase().startsWith('borda ')) {
+          cleanEdgeName = cleanEdgeName.substring(6);
+        }
+        
+        final comboName = 'Massa $cleanDoughName + Borda $cleanEdgeName';
         final comboPrice = dough.price + edge.price; // Soma dos preços em centavos
 
         combos.add(OptionItem(
-          id: dough.id, // ✅ Usa o ID real da massa como ID principal
+          id: dough.id, // ID virtual principal
           name: comboName,
           price: comboPrice,
           isActive: true,
-          parentCustomizationOptionId: edge.id, // ✅ Armazena ID da borda
+          parentCustomizationOptionId: edge.id, // Fallback legacy
+          crustId: dough.id, // ID real da massa
+          edgeId: edge.id,   // ID real da borda
+          crustName: dough.name,
+          edgeName: edge.name,
+          crustPrice: dough.price,
+          edgePrice: edge.price,
         ));
       }
     }
@@ -268,7 +285,22 @@ class PizzaAdapterHelper {
         final List<OptionItem> combos = [];
         for (var dough in doughGroup.items.where((item) => item.isActive)) {
           for (var edge in edgeGroup.items.where((item) => item.isActive)) {
-            final comboName = '${dough.name} + ${edge.name}';
+            // ✅ CORREÇÃO: Remove prefixos duplicados dos nomes
+            // Ex: "Massa Tradicional" -> "Tradicional" (para depois adicionar "Massa ")
+            // Ex: "Borda de Catupiry" -> "de Catupiry" (para depois adicionar "Borda ")
+            String cleanDoughName = dough.name;
+            if (cleanDoughName.toLowerCase().startsWith('massa ')) {
+              cleanDoughName = cleanDoughName.substring(6); // Remove "Massa "
+            }
+            
+            String cleanEdgeName = edge.name;
+            // Remove múltiplos prefixos "Borda " se existirem
+            while (cleanEdgeName.toLowerCase().startsWith('borda ')) {
+              cleanEdgeName = cleanEdgeName.substring(6); // Remove "Borda "
+            }
+            
+            // ✅ Monta o nome combinado com prefixos corretos
+            final comboName = 'Massa $cleanDoughName + Borda $cleanEdgeName';
             final comboPrice = dough.price + edge.price;
             
             combos.add(OptionItem(
@@ -277,6 +309,12 @@ class PizzaAdapterHelper {
               price: comboPrice,
               isActive: true,
               parentCustomizationOptionId: edge.id,
+              crustId: dough.id, // ID real da massa
+              edgeId: edge.id,   // ID real da borda
+              crustName: dough.name,
+              edgeName: edge.name,
+              crustPrice: dough.price,
+              edgePrice: edge.price,
             ));
           }
         }
@@ -304,6 +342,7 @@ class PizzaAdapterHelper {
       
       print("✅ [PizzaAdapter] Grupos extras encontrados: ${otherGroups.length}");
     } else {
+      print("⚠️ [PizzaAdapter] Usando fallback para preferências (bloco else)");
       // ✅ Fallback: Usa createPreferencesGroup da categoria original
       preferencesGroup = createPreferencesGroup(category);
       
@@ -318,22 +357,51 @@ class PizzaAdapterHelper {
       }).toList();
     }
 
-    // Combina os grupos para a NOVA CATEGORIA
-    final adaptedGroups = <OptionGroup>[
-      ...flavorGroups,
-      if (preferencesGroup != null) preferencesGroup, // ✅ Grupo combinado de preferências
-      ...otherGroups, // ✅ Outros grupos extras
-    ];
+    // ✅ IFOOD STYLE: Ordem correta dos grupos
+    // 1. Preferências (Massa + Borda) - PRIMEIRO
+    // 2. Sabores
+    // 3. Outros grupos extras
     
-    print("🍕 [PizzaAdapter] Grupos finais adaptados: ${adaptedGroups.length}");
-    print("   └─ Grupos de sabores: ${flavorGroups.length}");
-    for (var group in flavorGroups) {
-      print("      - ${group.name} (${group.items.length} itens, min: ${group.minSelection}, max: ${group.maxSelection})");
-    }
+    print("🛠️ [PizzaAdapter] Montando lista final de grupos...");
+    final adaptedGroups = <OptionGroup>[];
+    
     if (preferencesGroup != null) {
-      print("   └─ Grupo de preferências combinado: ${preferencesGroup.items.length} combinações");
+      print("   👉 [1] Adicionando Preferências (${preferencesGroup.items.length} itens)");
+      adaptedGroups.add(preferencesGroup);
+    } else {
+       print("   ⚠️ [1] Preferências é NULL - não adicionado");
     }
-    print("   └─ Grupos extras: ${otherGroups.length}");
+    
+    if (flavorGroups.isNotEmpty) {
+      print("   👉 [2] Adicionando ${flavorGroups.length} grupos de Sabores");
+      adaptedGroups.addAll(flavorGroups);
+    }
+    
+    if (otherGroups.isNotEmpty) {
+      print("   👉 [3] Adicionando ${otherGroups.length} grupos Extras");
+      adaptedGroups.addAll(otherGroups);
+    }
+    
+    print("🏁 [PizzaAdapter] Total de grupos final: ${adaptedGroups.length}");
+    for (var i = 0; i < adaptedGroups.length; i++) {
+        print("   [$i] ${adaptedGroups[i].name} (type: ${adaptedGroups[i].groupType})");
+    }
+
+    // ✅ REORDENAÇÃO FINAL FORÇADA (BALA DE PRATA)
+    // Garante que o grupo "Escolha a sua preferência" fique SEMPRE no topo,
+    // corrigindo casos onde ele pode ter entrado na lista errada (ex: vindo como flavorGroup)
+    final prefIndex = adaptedGroups.indexWhere((g) => g.name.toLowerCase().contains('preferência'));
+    if (prefIndex > 0) { // Se existe e não está na primeira posição
+        print("🔄 [PizzaAdapter] Grupo '${adaptedGroups[prefIndex].name}' encontrado na posição $prefIndex, movendo para o topo (posição 0).");
+        final prefGroup = adaptedGroups.removeAt(prefIndex);
+        adaptedGroups.insert(0, prefGroup);
+        
+        // Log da nova ordem
+        print("🏁 [PizzaAdapter] Nova ordem após correção:");
+        for (var i = 0; i < adaptedGroups.length; i++) {
+            print("   [$i] ${adaptedGroups[i].name}");
+        }
+    }
 
     // Cria uma nova categoria com os grupos adaptados
     final adaptedCategory = Category(

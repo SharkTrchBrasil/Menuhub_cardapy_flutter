@@ -29,6 +29,7 @@ import '../cart/cart_state.dart' as CartCubitState;
 
 import '../../core/helpers/side_panel.dart';
 import '../../pages/signin/signin_page.dart';
+import '../../widgets/clear_cart_confirmation.dart';
 
 
 class ProductPage extends StatefulWidget {
@@ -295,12 +296,52 @@ class _ProductPageState extends State<ProductPage> {
         // e precisa ser expandida em duas opções separadas para o backend validar
         final expandedOptions = <CartItemVariantOption>[];
         for (final option in selectedOptions) {
+          // ✅ NOVA LÓGICA: Se tem IDs de combo (Massa + Borda) vindos do Backend, usa eles!
+          // Isso garante que estamos enviando os IDs REAIS do banco de dados, e não IDs virtuais.
+          if (isCustomizable && option.crustId != null && option.edgeId != null) {
+              // 1. Adiciona MASSA com ID e Preço real
+              expandedOptions.add(CartItemVariantOption(
+                 variantOptionId: null,
+                 optionItemId: option.crustId, // ID REAL DO BANCO
+                 quantity: option.quantity,
+                 // Adiciona prefixo se não tiver, para clareza no carrinho
+                 name: (option.crustName?.toLowerCase().startsWith('massa') ?? false) 
+                      ? (option.crustName ?? 'Massa') 
+                      : 'Massa ${option.crustName ?? ''}',
+                 price: option.crustPrice ?? 0, // Preço real do componente em centavos
+              ));
+
+              // 2. Adiciona BORDA com ID e Preço real
+              expandedOptions.add(CartItemVariantOption(
+                 variantOptionId: null,
+                 optionItemId: option.edgeId, // ID REAL DO BANCO
+                 quantity: option.quantity,
+                 name: (option.edgeName?.toLowerCase().startsWith('borda') ?? false)
+                      ? (option.edgeName ?? 'Borda')
+                      : 'Borda ${option.edgeName ?? ''}',
+                 price: option.edgePrice ?? 0, // Preço real do componente em centavos
+              ));
+              
+              continue; // ✅ Processado com sucesso, pula fallback
+          }
+
+          // ⚠️ FALLBACK (Lógica Antiga): Baseada em split de string e IDs virtuais
+          // ✅ Se tem parentCustomizationOptionId, é uma combinação (massa + borda)
+          // Precisamos limpar o nome da opção principal (Massa) para enviar apenas "Massa Tradicional"
+          String mainOptionName = option.name;
+          if (isCustomizable && option.parentCustomizationOptionId != null) {
+             final parts = option.name.split(' + ');
+             if (parts.isNotEmpty) {
+                mainOptionName = parts.first;
+             }
+          }
+
           // Adiciona a opção principal (ex: massa)
           expandedOptions.add(CartItemVariantOption(
             variantOptionId: isCustomizable ? null : option.id,
             optionItemId: isCustomizable ? option.id : null,
             quantity: option.quantity,
-            name: option.name,
+            name: mainOptionName, // ✅ Usa nome limpo
             price: option.price,
           ));
           
@@ -335,6 +376,17 @@ class _ProductPageState extends State<ProductPage> {
     );
 
     Future<void> updateAndPop() async {
+      // ✅ SEGURANÇA: Verifica se o carrinho tem itens de outra loja
+      final productStoreId = product.product.storeId;
+      final canProceed = await canAddToCart(
+        context: context,
+        productStoreId: productStoreId,
+      );
+      
+      if (!canProceed) {
+        return; // Usuário cancelou, não adiciona
+      }
+      
       await cartCubit.updateItem(payload);
       if (context.mounted) {
         // ✅ Fecha a tela de detalhes do produto

@@ -16,6 +16,7 @@ import 'package:totem/core/router.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
+import 'package:totem/pages/cart/cart_state.dart';
 import 'package:totem/repositories/auth_repository.dart';
 import 'package:totem/repositories/realtime_repository.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
@@ -26,6 +27,7 @@ import 'core/di.dart';
 import 'cubit/auth_cubit.dart';
 import 'cubit/orders_cubit.dart';
 import 'cubit/store_cubit.dart';
+import 'cubit/store_state.dart';
 import 'package:web/web.dart' as web;
 import 'utils/performance_optimizer.dart';
 
@@ -155,7 +157,8 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         return hostname.split('.').first;
       }
     }
-    return 'topburguer';
+    // ✅ Fallback para localhost - mude para a loja que deseja testar
+    return 'topburger';
   }
 
   @override
@@ -254,28 +257,103 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider<DsThemeSwitcher>.value(value: getIt()),
         ChangeNotifierProvider<MenuAppController>.value(value: getIt()),
       ],
-      child: Builder(
-        builder: (context) {
-          final theme = context.watch<DsThemeSwitcher>().theme;
-          return MaterialApp.router(
-            title: 'TotemPRO',
-            debugShowCheckedModeBanner: false,
-            theme: theme.toThemeData().copyWith(
-              appBarTheme: const AppBarTheme(
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
+      child: MultiBlocListener(
+        listeners: [
+          // ✅ AUTO-CÁLCULO DE FRETE: Quando endereço muda, recalcula frete automaticamente
+          BlocListener<AddressCubit, AddressState>(
+            listenWhen: (previous, current) {
+              // Escuta quando: status muda para success OU selectedAddress muda
+              return (previous.status != AddressStatus.success && current.status == AddressStatus.success) ||
+                     (previous.selectedAddress?.id != current.selectedAddress?.id);
+            },
+            listener: (context, addressState) {
+              if (addressState.selectedAddress != null && addressState.status == AddressStatus.success) {
+                // Pega o store atual
+                final storeState = context.read<StoreCubit>().state;
+                if (storeState.store != null) {
+                  // Calcula frete com subtotal 0 (apenas para mostrar estimativa inicial)
+                  context.read<DeliveryFeeCubit>().calculate(
+                    address: addressState.selectedAddress,
+                    store: storeState.store!,
+                    cartSubtotal: 0, // Sem itens no carrinho por enquanto
+                  );
+                }
+              }
+            },
+          ),
+          // ✅ RECALCULA FRETE: Quando regras de frete mudam (atualização em tempo real do admin)
+          BlocListener<StoreCubit, StoreState>(
+            listenWhen: (previous, current) {
+              // Escuta quando as regras de frete mudam
+              if (previous.store == null || current.store == null) return false;
+              
+              // Compara se as regras de frete mudaram
+              final prevRules = previous.store!.deliveryFeeRules;
+              final currRules = current.store!.deliveryFeeRules;
+              
+              // Se quantidade de regras mudou, recalcula
+              if (prevRules.length != currRules.length) return true;
+              
+              // Verifica se alguma regra foi modificada (compara por updated_at ou config)
+              for (int i = 0; i < currRules.length; i++) {
+                if (i >= prevRules.length) return true;
+                if (prevRules[i].id != currRules[i].id ||
+                    prevRules[i].isActive != currRules[i].isActive ||
+                    prevRules[i].ruleType != currRules[i].ruleType) {
+                  return true;
+                }
+              }
+              return false;
+            },
+            listener: (context, storeState) {
+              if (storeState.store != null) {
+                // Pega o endereço atual
+                final addressState = context.read<AddressCubit>().state;
+                if (addressState.selectedAddress != null) {
+                  // Pega subtotal atual do carrinho
+                  final cartState = context.read<CartCubit>().state;
+                  final subtotal = cartState.status == CartStatus.success ? cartState.cart.subtotal / 100.0 : 0.0;
+                  
+                  // ✅ Recalcula frete com as novas regras
+                  // Força recálculo limpando o cache
+                  final deliveryFeeCubit = context.read<DeliveryFeeCubit>();
+                  
+                  // Força recálculo chamando com um pequeno delay para garantir que o store foi atualizado
+                  Future.microtask(() {
+                    deliveryFeeCubit.calculate(
+                      address: addressState.selectedAddress,
+                      store: storeState.store!,
+                      cartSubtotal: subtotal,
+                    );
+                  });
+                }
+              }
+            },
+          ),
+        ],
+        child: Builder(
+          builder: (context) {
+            final theme = context.watch<DsThemeSwitcher>().theme;
+            return MaterialApp.router(
+              title: 'TotemPRO',
+              debugShowCheckedModeBanner: false,
+              theme: theme.toThemeData().copyWith(
+                appBarTheme: const AppBarTheme(
+                  scrolledUnderElevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                ),
+                textTheme: GoogleFonts.getTextTheme(
+                  theme.fontFamily.nameGoogle,
+                ).apply(
+                  bodyColor: theme.onBackgroundColor,
+                  displayColor: theme.onBackgroundColor,
+                ),
               ),
-              textTheme: GoogleFonts.getTextTheme(
-                theme.fontFamily.nameGoogle,
-              ).apply(
-                bodyColor: theme.onBackgroundColor,
-                displayColor: theme.onBackgroundColor,
-              ),
-            ),
-            routerConfig: router,
-            builder: (context, child) => BotToastInit()(context, child),
-          );
-        },
+              routerConfig: router,
+              builder: (context, child) => BotToastInit()(context, child),
+            );
+          },
+        ),
       ),
     );
   }

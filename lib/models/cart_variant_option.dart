@@ -17,6 +17,14 @@ class CartVariantOption {
   // Quando selecionamos "Massa Tradicional + Borda Catupiry", 
   // id = ID da massa, parentCustomizationOptionId = ID da borda
   final int? parentCustomizationOptionId;
+  
+  // ✅ Metadados REAIS para combos de pizza
+  final int? crustId;
+  final int? edgeId;
+  final String? crustName;
+  final String? edgeName;
+  final int? crustPrice;
+  final int? edgePrice;
 
   // --- Propriedade de Estado do Carrinho (A única que muda na tela) ---
   final int quantity;
@@ -31,6 +39,12 @@ class CartVariantOption {
     this.description,
     this.imageUrl,
     this.parentCustomizationOptionId,
+    this.crustId,
+    this.edgeId,
+    this.crustName,
+    this.edgeName,
+    this.crustPrice,
+    this.edgePrice,
     this.quantity = 0,
   });
 
@@ -46,6 +60,12 @@ class CartVariantOption {
       description: null,
       imageUrl: null,
       parentCustomizationOptionId: null,
+      crustId: null,
+      edgeId: null,
+      crustName: null,
+      edgeName: null,
+      crustPrice: null,
+      edgePrice: null,
       quantity: 0,
     );
   }
@@ -110,6 +130,12 @@ class CartVariantOption {
     int? stockQuantity,
     bool? isActuallyAvailable,
     int? parentCustomizationOptionId,
+    int? crustId,
+    int? edgeId,
+    String? crustName,
+    String? edgeName,
+    int? crustPrice,
+    int? edgePrice,
     int? quantity,
   }) {
     return CartVariantOption(
@@ -122,6 +148,12 @@ class CartVariantOption {
       stockQuantity: stockQuantity ?? this.stockQuantity,
       isActuallyAvailable: isActuallyAvailable ?? this.isActuallyAvailable,
       parentCustomizationOptionId: parentCustomizationOptionId ?? this.parentCustomizationOptionId,
+      crustId: crustId ?? this.crustId,
+      edgeId: edgeId ?? this.edgeId,
+      crustName: crustName ?? this.crustName,
+      edgeName: edgeName ?? this.edgeName,
+      crustPrice: crustPrice ?? this.crustPrice,
+      edgePrice: edgePrice ?? this.edgePrice,
       quantity: quantity ?? this.quantity,
     );
   }

@@ -1,3 +1,6 @@
+import 'package:totem/models/customer_address.dart';
+import 'package:totem/models/order.dart';
+
 class Customer {
   final int? id;
   final String name;
@@ -45,4 +48,55 @@ class Customer {
 
 
 
+}
+
+/// ✅ OTIMIZAÇÃO: Resposta completa do login incluindo addresses e orders
+/// Evita chamadas HTTP separadas após o login
+class LoginResponse {
+  final Customer customer;
+  final String accessToken;
+  final String refreshToken;
+  final int expiresIn;
+  final List<CustomerAddress> addresses;
+  final List<Order> orders;
+
+  LoginResponse({
+    required this.customer,
+    required this.accessToken,
+    required this.refreshToken,
+    required this.expiresIn,
+    required this.addresses,
+    required this.orders,
+  });
+
+  factory LoginResponse.fromJson(Map<String, dynamic> json) {
+    // Parse customer data
+    final customer = Customer.fromJson(json);
+    
+    // Parse addresses
+    final addressesList = (json['addresses'] as List<dynamic>?) ?? [];
+    final addresses = addressesList
+        .map((addr) => CustomerAddress.fromJson(addr as Map<String, dynamic>))
+        .toList();
+    
+    // Parse orders
+    final ordersList = (json['orders'] as List<dynamic>?) ?? [];
+    final orders = <Order>[];
+    for (final orderJson in ordersList) {
+      try {
+        orders.add(Order.fromJson(orderJson as Map<String, dynamic>));
+      } catch (e) {
+        print('⚠️ [LoginResponse] Erro ao parsear order: $e');
+      }
+    }
+    
+    return LoginResponse(
+      customer: customer,
+      accessToken: json['access_token'] as String? ?? '',
+      refreshToken: json['refresh_token'] as String? ?? '',
+      expiresIn: json['expires_in'] as int? ?? 1800,
+      addresses: addresses,
+      orders: orders,
+    );
+  }
 }

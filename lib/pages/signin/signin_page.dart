@@ -2,39 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/responsive_builder.dart';
 import '../../cubit/auth_cubit.dart';
-
+import '../../cubit/store_cubit.dart';
+import '../../cubit/store_state.dart';
+import '../../pages/address/cubits/address_cubit.dart';
 
 class OnboardingPage extends StatelessWidget {
-  // ✅ 1. DECLARE a variável final que receberá a rota.
-
-
-  // ✅ 2. ADICIONE a variável ao construtor do widget.
-  const OnboardingPage({
-    super.key,
-
-  });
+  const OnboardingPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final bool isDesktop = ResponsiveBuilder.isDesktop(context);
 
-
-
     return BlocListener<AuthCubit, AuthState>(
-      listener: (context, state) {
+      listener: (context, state) async {
         print("👂 [OnboardingPage] BlocListener ouviu uma mudança! Novo estado: ${state.status}");
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
         if (state.status == AuthStatus.success) {
-          print("✅ [OnboardingPage] Estado de SUCESSO detectado. Tentando fechar a página (pop).");
+          print("✅ [OnboardingPage] Estado de SUCESSO detectado. Verificando endereços...");
+          
+          // ✅ NOVO: Verifica se o usuário tem endereço cadastrado
+          final customer = state.customer;
+          if (customer != null && customer.id != null) {
+            // Carrega os endereços do usuário
+            await context.read<AddressCubit>().loadAddresses(customer.id!);
+            
+            final addressState = context.read<AddressCubit>().state;
+            final hasAddresses = addressState.addresses.isNotEmpty;
+            
+            if (!hasAddresses) {
+              // ✅ Não tem endereço: vai para onboarding de endereço
+              print("📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding");
+              if (context.mounted) {
+                context.go('/address-onboarding');
+              }
+              return;
+            }
+          }
+          
+          // ✅ Tem endereço: continua normalmente
+          print("✅ [OnboardingPage] Usuário tem endereço. Fechando página.");
           if (context.canPop()) {
             context.pop(true);
           } else {
-            print("⚠️ [OnboardingPage] Não foi possível dar pop. Redirecionando para /address como fallback.");
-            context.go('/address');
+            print("⚠️ [OnboardingPage] Não foi possível dar pop. Redirecionando para / como fallback.");
+            context.go('/');
           }
         } else if (state.status == AuthStatus.error) {
           print("❌ [OnboardingPage] Estado de ERRO detectado. Mostrando SnackBar.");
@@ -49,13 +65,12 @@ class OnboardingPage extends StatelessWidget {
       child: Scaffold(
         body: Stack(
           children: [
-            // Seu layout original, sem alterações
+            // Layout responsivo
             isDesktop
                 ? _buildDesktopLayout(context)
                 : _buildMobileLayout(context),
 
-            // ✅ LÓGICA 2: O BlocBuilder mostra um overlay de loading sobre a tela
-            // quando o estado de autenticação está "carregando".
+            // Overlay de loading
             BlocBuilder<AuthCubit, AuthState>(
               builder: (context, state) {
                 if (state.status == AuthStatus.loading) {
@@ -66,7 +81,6 @@ class OnboardingPage extends StatelessWidget {
                     ),
                   );
                 }
-                // Se não estiver carregando, retorna um widget vazio
                 return const SizedBox.shrink();
               },
             ),
@@ -107,31 +121,245 @@ class OnboardingPage extends StatelessWidget {
     );
   }
 
+  // ✅ NOVO: Layout mobile inspirado no iFood
   Widget _buildMobileLayout(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-          // Imagem no topo
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: SvgPicture.asset(
-              'assets/images/login.svg',
+    return BlocBuilder<StoreCubit, StoreState>(
+      builder: (context, storeState) {
+        // Tenta pegar a imagem do banner da loja, ou usa uma imagem padrão
+        final store = storeState.store;
+        final String? storeImage = store?.image?.url;
+        final String? bannerImage = store?.banner?.url;
+        
+        // Usa banner, depois imagem da loja, depois imagem padrão de comida
+        final String backgroundImage = bannerImage ?? 
+            storeImage ?? 
+            'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80';
 
-              height: 250,
-              fit: BoxFit.contain,
+        return Stack(
+          children: [
+            // ✅ 1. IMAGEM DE FUNDO (ocupa toda a tela)
+            Positioned.fill(
+              child: CachedNetworkImage(
+                imageUrl: backgroundImage,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  color: Colors.grey.shade300,
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  color: Colors.grey.shade300,
+                  child: const Icon(Icons.restaurant, size: 100, color: Colors.grey),
+                ),
+              ),
+            ),
+
+            // ✅ 2. GRADIENTE para melhorar legibilidade
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.3),
+                    ],
+                    stops: const [0.5, 1.0],
+                  ),
+                ),
+              ),
+            ),
+
+            // ✅ 3. CONTAINER BRANCO com bordas arredondadas no topo
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 20,
+                      offset: Offset(0, -5),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Handle visual (opcional, estilo sheet)
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 24),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+
+                        // Título
+                        Text(
+                          'Falta um clique para matar sua fome!',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade900,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // Subtítulo
+                        Text(
+                          'Entre para continuar seu pedido',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey.shade600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // ✅ Botão de Google (estilo iFood)
+                        _buildGoogleButton(context),
+
+                        const SizedBox(height: 16),
+
+                        // Separador "ou"
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(
+                                'ou',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ✅ Botão "Continuar como visitante"
+                        TextButton(
+                          onPressed: () {
+                            // Fecha a tela de login e continua como visitante
+                            if (context.canPop()) {
+                              context.pop(false);
+                            } else {
+                              context.go('/address');
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                          ),
+                          child: Text(
+                            'Continuar como visitante',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ✅ Botão de voltar (se puder voltar)
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                child: IconButton(
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    }
+                  },
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.black87,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ✅ Botão de Google estilizado (estilo iFood)
+  Widget _buildGoogleButton(BuildContext context) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        minimumSize: const Size(double.infinity, 54),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+        ),
+      ),
+      onPressed: () {
+        context.read<AuthCubit>().signInWithGoogle();
+      },
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SvgPicture.asset(
+            'assets/images/google.svg',
+            height: 22,
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'Continuar com Google',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
           ),
-
-          const SizedBox(height: 40),
-
-          // Card de login
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: _buildLoginCard(context),
-          ),
-
-          const SizedBox(height: 40),
         ],
       ),
     );

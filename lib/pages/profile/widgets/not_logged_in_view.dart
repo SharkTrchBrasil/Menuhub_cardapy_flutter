@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
-/// Not Logged In View
-/// Tela exibida quando o usuário não está logado
+/// Not Logged In View - Estilo iFood
+/// Tela exibida quando o usuário não está logado na tab de perfil
 class NotLoggedInView extends StatelessWidget {
   final bool isDesktop;
 
@@ -13,28 +13,26 @@ class NotLoggedInView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.watch<DsThemeSwitcher>().theme;
-    final maxWidth = isDesktop ? 600.0 : double.infinity;
-
     return Stack(
       children: [
         SingleChildScrollView(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Padding(
-                padding: EdgeInsets.all(isDesktop ? 32.0 : 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 24),
-                    _LoginSection(theme: theme, isDesktop: isDesktop),
-                  ],
-                ),
-              ),
-            ),
+          child: Column(
+            children: [
+              // ✅ Header com ilustração e botão de login
+              _buildLoginHeader(context),
+              
+              const SizedBox(height: 16),
+              
+              // ✅ Lista de opções do menu
+              _buildMenuOptions(context),
+              
+              // Espaço extra no final
+              const SizedBox(height: 32),
+            ],
           ),
         ),
+        
+        // Loading overlay
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) {
             if (state.status == AuthStatus.loading) {
@@ -51,123 +49,300 @@ class NotLoggedInView extends StatelessWidget {
       ],
     );
   }
-}
 
-class _LoginSection extends StatelessWidget {
-  final theme;
-  final bool isDesktop;
+  // ✅ Header com ilustração de sacola feliz e botão de login
+  Widget _buildLoginHeader(BuildContext context) {
+    final theme = context.watch<DsThemeSwitcher>().theme;
+    
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        isDesktop ? 32 : 20,
+        isDesktop ? 40 : 24,
+        isDesktop ? 32 : 20,
+        isDesktop ? 32 : 20,
+      ),
+      color: Colors.white,
+      child: Column(
+        children: [
+          // ✅ Row com texto e ilustração
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Texto de boas-vindas
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    Text(
+                      'Falta pouco para matar sua fome!',
+                      style: TextStyle(
+                        fontSize: isDesktop ? 28 : 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              // ✅ Ilustração de sacola feliz (estilo iFood)
+              _buildHappyBagIllustration(),
+            ],
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // ✅ Botão "Entrar ou cadastrar-se" (estilo iFood - borda vermelha)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                context.push('/onboarding');
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.primaryColor,
+                side: BorderSide(color: theme.primaryColor, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Entrar ou cadastrar-se',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: theme.primaryColor,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  const _LoginSection({required this.theme, required this.isDesktop});
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<AuthCubit, AuthState>(
-      builder: (context, authState) {
-        final isLoading = authState.status == AuthStatus.loading;
-        
-        return Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
+  // ✅ Ilustração de sacola feliz (estilo iFood)
+  Widget _buildHappyBagIllustration() {
+    return Container(
+      width: isDesktop ? 120 : 100,
+      height: isDesktop ? 120 : 100,
+      decoration: BoxDecoration(
+        color: Colors.pink.shade50,
+        shape: BoxShape.circle,
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Sacola principal
+          Icon(
+            Icons.shopping_bag,
+            size: isDesktop ? 60 : 50,
+            color: Colors.red.shade400,
+          ),
+          // Olhinhos felizes
+          Positioned(
+            top: isDesktop ? 40 : 35,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 8,
+                  height: 8,
                   decoration: BoxDecoration(
+                    color: Colors.white,
                     shape: BoxShape.circle,
-                    color: theme.primaryColor.withOpacity(0.1),
-                  ),
-                  child: Icon(
-                    Icons.person_outline,
-                    size: 48,
-                    color: theme.primaryColor,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'Falta um clique para matar sua fome!',
-                  style: TextStyle(
-                    fontSize: isDesktop ? 24 : 20,
-                    fontWeight: FontWeight.bold,
-                    color: theme.onBackgroundColor,
+                const SizedBox(width: 12),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Como deseja continuar?',
-                  style: TextStyle(
-                    fontSize: isDesktop ? 16 : 14,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    elevation: 0,
-                  ),
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          context.read<AuthCubit>().signInWithGoogle();
-                        },
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Builder(
-                              builder: (context) {
-                                try {
-                                  return SvgPicture.asset(
-                                    'assets/images/google.svg',
-                                    height: 24,
-                                    width: 24,
-                                  );
-                                } catch (e) {
-                                  return Image.asset(
-                                    'assets/images/google.png',
-                                    height: 24,
-                                    width: 24,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return const Icon(
-                                        Icons.login,
-                                        size: 24,
-                                      );
-                                    },
-                                  );
-                                }
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Continuar com Google',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
                 ),
               ],
             ),
           ),
-        );
+          // Sorriso
+          Positioned(
+            top: isDesktop ? 55 : 48,
+            child: Container(
+              width: 20,
+              height: 10,
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.white,
+                    width: 3,
+                  ),
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(10),
+                  bottomRight: Radius.circular(10),
+                ),
+              ),
+            ),
+          ),
+          // Caixa no topo da sacola
+          Positioned(
+            top: isDesktop ? 15 : 12,
+            child: Container(
+              width: isDesktop ? 35 : 28,
+              height: isDesktop ? 25 : 20,
+              decoration: BoxDecoration(
+                color: Colors.orange.shade400,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ Lista de opções do menu
+  Widget _buildMenuOptions(BuildContext context) {
+    return Column(
+      children: [
+        // ✅ Opções que PRECISAM de login
+        Container(
+          color: Colors.white,
+          child: Column(
+            children: [
+              _buildMenuItem(
+                context,
+                icon: Icons.notifications_outlined,
+                title: 'Notificações',
+                requiresLogin: true,
+              ),
+              _buildMenuItem(
+                context,
+                icon: Icons.local_offer_outlined,
+                title: 'Cupons',
+                requiresLogin: true,
+              ),
+              _buildMenuItem(
+                context,
+                icon: Icons.location_on_outlined,
+                title: 'Endereços',
+                requiresLogin: true,
+              ),
+            ],
+          ),
+        ),
+        
+        // Separador
+        Container(
+          height: 8,
+          color: Colors.grey.shade100,
+        ),
+        
+        // ✅ Opções que NÃO precisam de login
+        Container(
+          color: Colors.white,
+          child: Column(
+            children: [
+              _buildMenuItem(
+                context,
+                icon: Icons.help_outline,
+                title: 'Ajuda',
+                requiresLogin: false,
+                onTap: () {
+                  // TODO: Navegar para tela de ajuda
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ajuda - Em breve')),
+                  );
+                },
+              ),
+              _buildMenuItem(
+                context,
+                icon: Icons.settings_outlined,
+                title: 'Configurações',
+                requiresLogin: false,
+                onTap: () {
+                  // TODO: Navegar para tela de configurações
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Configurações - Em breve')),
+                  );
+                },
+              ),
+              _buildMenuItem(
+                context,
+                icon: Icons.store_outlined,
+                title: 'Sugerir restaurantes',
+                requiresLogin: false,
+                onTap: () {
+                  // TODO: Navegar para tela de sugestão
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Sugerir restaurantes - Em breve')),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Item do menu
+  Widget _buildMenuItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    bool requiresLogin = true,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: () {
+        if (requiresLogin) {
+          // Se precisa de login, leva para onboarding
+          context.push('/onboarding');
+        } else if (onTap != null) {
+          // Se não precisa de login, executa a ação específica
+          onTap();
+        }
       },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200, width: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: Colors.grey.shade700,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 24,
+              color: Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

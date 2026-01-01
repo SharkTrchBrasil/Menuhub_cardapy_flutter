@@ -1,7 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:collection/collection.dart'; // Import para usar o 'firstOrNull'
+import 'package:collection/collection.dart';
 import 'package:totem/core/extensions.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/themes/ds_theme.dart';
@@ -23,31 +23,15 @@ class CartItemListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
 
-    // ✅ FUNÇÃO CORRIGIDA COM VALIDAÇÃO DE cartItemId
     UpdateCartItemPayload? createUpdatePayload(int newQuantity) {
-      // 1. Pega o primeiro vínculo de categoria do produto.
       final firstCategoryLink = item.product.categoryLinks.firstOrNull;
+      if (firstCategoryLink == null) return null;
+      if (item.id <= 0) return null;
 
-      // 2. Validação de segurança: se o produto no carrinho não tem categoria,
-      // não podemos atualizá-lo. Isso indica um problema de dados.
-      if (firstCategoryLink == null) {
-        print("ERRO: O produto '${item.product.name}' no carrinho não tem uma categoria associada.");
-        // Retorna nulo para indicar que o payload não pôde ser criado.
-        return null;
-      }
-      
-      // ✅ VALIDAÇÃO ADICIONAL: Garante que item.id é válido para modo edição
-      if (item.id <= 0) {
-        print("ERRO: O item '${item.product.name}' não tem ID válido (id: ${item.id}).");
-        return null;
-      }
-
-      // 3. Cria o payload com o categoryId correto.
-      print("🔍 [CART] Criando payload: cartItemId=${item.id}, productId=${item.product.id}, qty=$newQuantity");
       return UpdateCartItemPayload(
         cartItemId: item.id,
         productId: item.product.id!,
-        categoryId: firstCategoryLink.categoryId, // Usa o ID da categoria encontrada
+        categoryId: firstCategoryLink.categoryId,
         quantity: newQuantity,
         note: item.note,
         variants: item.variants,
@@ -58,44 +42,7 @@ class CartItemListItem extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: CachedNetworkImage(
-                // ✅ Usa sizeImageUrl (imagem do tamanho) se disponível, senão usa imageUrl do produto
-                imageUrl: item.sizeImageUrl ?? item.product.imageUrl ?? 'https://placehold.co/72/e0e0e0/a0a0a0?text=Sem+Foto',
-                height: 72,
-                width: 72,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(
-                  height: 72,
-                  width: 72,
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.image_not_supported),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              right: 0,
-              child: GestureDetector(
-                onTap: () => goToEditCartItemPage(context, item),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: theme.cartBackgroundColor,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(12),
-                      bottomLeft: Radius.circular(8),
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.edit, size: 14, color: theme.primaryColor),
-                ),
-              ),
-            ),
-          ],
-        ),
+        _buildImageSection(context, theme),
         const SizedBox(width: 12),
         Expanded(
           child: Row(
@@ -105,7 +52,6 @@ class CartItemListItem extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ TÍTULO DO PRODUTO
                     Text(
                       item.sizeName ?? item.product.name, 
                       style: TextStyle(
@@ -116,9 +62,11 @@ class CartItemListItem extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-
-                    // ✅ DESCRIÇÃO DO PRODUTO (se houver)
-                    if (item.product.description != null && item.product.description!.trim().isNotEmpty) ...[
+                    // ✅ Oculta descrições genéricas de pizza (ex: "Pizza tamanho X - Categoria: Pizza")
+                    if (item.product.description != null && 
+                        item.product.description!.trim().isNotEmpty &&
+                        !item.product.description!.toLowerCase().contains('categoria:') &&
+                        !item.product.description!.toLowerCase().contains('tamanho')) ...[
                       const SizedBox(height: 4),
                       Text(
                         item.product.description!,
@@ -131,43 +79,32 @@ class CartItemListItem extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-
                     const SizedBox(height: 8),
                     _buildPriceSection(context, item, theme),
-                    
-                    // ✅ COMPLEMENTOS
                     if (item.variants.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      _buildVariantsSection(item, theme),
+                      _buildVariantsSection(context, theme),
                     ],
-                    
-                    // ✅ OBSERVAÇÃO
                     if (item.note != null && item.note!.trim().isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        "Observação: ${item.note!.trim()}",
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        "Obs: ${item.note!.trim()}",
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
                       ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              // ✅ CONTROLE DE QUANTIDADE AGORA ALINHADO À DIREITA DE TODO BLOCO
               CartQuantityControl(
                 quantity: item.quantity,
                 textStyle: theme.bodyTextStyle.copyWith(fontWeight: FontWeight.bold),
                 onRemove: () {
                   final payload = createUpdatePayload(item.quantity - 1);
-                  if (payload != null) {
-                    context.read<CartCubit>().updateItem(payload);
-                  }
+                  if (payload != null) context.read<CartCubit>().updateItem(payload);
                 },
                 onAdd: () {
                   final payload = createUpdatePayload(item.quantity + 1);
-                  if (payload != null) {
-                    context.read<CartCubit>().updateItem(payload);
-                  }
+                  if (payload != null) context.read<CartCubit>().updateItem(payload);
                 },
               ),
             ],
@@ -177,180 +114,210 @@ class CartItemListItem extends StatelessWidget {
     );
   }
 
-  // ✅ MÉTODO: Exibe preço e preço com desconto (se houver)
-  Widget _buildPriceSection(BuildContext context, CartItem item, DsTheme theme) {
-    final firstCategoryLink = item.product.categoryLinks.firstOrNull;
-    
-    // Verifica se há promoção na categoria
-    if (firstCategoryLink != null && 
-        firstCategoryLink.isOnPromotion && 
-        firstCategoryLink.promotionalPrice != null) {
-      // Calcula o preço total original (sem desconto)
-      final originalTotalPrice = firstCategoryLink.price * item.quantity;
-      // O totalPrice já vem com o desconto aplicado do backend
-      final discountedTotalPrice = item.totalPrice;
-      
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            discountedTotalPrice.toCurrency,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-              color: theme.productTextColor,
+  Widget _buildImageSection(BuildContext context, DsTheme theme) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: CachedNetworkImage(
+            imageUrl: (item.sizeImageUrl != null && item.sizeImageUrl!.isNotEmpty)
+                ? item.sizeImageUrl!
+                : (item.product.imageUrl != null && item.product.imageUrl!.isNotEmpty)
+                    ? item.product.imageUrl!
+                    : 'https://placehold.co/72/e0e0e0/a0a0a0?text=Sem+Foto',
+            height: 72,
+            width: 72,
+            fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => Container(
+              height: 72,
+              width: 72,
+              color: Colors.grey[300],
+              child: const Icon(Icons.image_not_supported),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            originalTotalPrice.toCurrency,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade600,
-              decoration: TextDecoration.lineThrough,
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: GestureDetector(
+            onTap: () => goToEditCartItemPage(context, item),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.cartBackgroundColor,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(12),
+                  bottomLeft: Radius.circular(8),
+                ),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.edit, size: 14, color: theme.primaryColor),
             ),
           ),
-        ],
-      );
-    }
-
-    // Sem desconto, mostra apenas o preço atual
-    return Text(
-      item.formattedTotalPrice,
-      style: TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 16,
-        color: theme.productTextColor,
-      ),
+        ),
+      ],
     );
   }
 
-  // ✅ MÉTODO: Exibe complementos estilo iFood (linhas separadas)
-  // Formato iFood (imagem 04):
-  // - 1 Massa Tradicional + Borda Calabresa
-  // - 1 1/2 Pepperoni
-  // - 1 1/2 Pizza 4 queijos
-  Widget _buildVariantsSection(CartItem item, DsTheme theme) {
-    // Agrupa opções por tipo
+  Widget _buildPriceSection(BuildContext context, CartItem item, DsTheme theme) {
+    final firstCategoryLink = item.product.categoryLinks.firstOrNull;
+    if (firstCategoryLink != null && firstCategoryLink.isOnPromotion && firstCategoryLink.promotionalPrice != null) {
+      final originalTotalPrice = firstCategoryLink.price * item.quantity;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(item.totalPrice.toCurrency, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: theme.productTextColor)),
+          const SizedBox(width: 8),
+          Text(originalTotalPrice.toCurrency, style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)),
+        ],
+      );
+    }
+    return Text(item.formattedTotalPrice, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: theme.productTextColor));
+  }
+
+  Widget _buildVariantsSection(BuildContext context, DsTheme theme) {
     String? massaText;
     String? bordaText;
-    final flavorTexts = <String>[];
-    final otherTexts = <String>[];
+    final flavorOptions = <CartItemVariantOption>[];
+    final otherOptions = <CartItemVariantOption>[];
 
     for (final variant in item.variants) {
-      // ✅ Ignora variant de tamanho (SIZE) - já está no size_name
-      final isSizeGroup = variant.name.toLowerCase().contains('tamanho') || 
-          variant.name.toLowerCase().contains('size');
+      if (variant.name.toLowerCase().contains('tamanho')) continue;
       
-      if (isSizeGroup) {
-        continue;
-      }
-      
-      // Identifica tipo de grupo
-      final isMassaGroup = variant.name.toLowerCase().contains('massa');
-      final isBordaGroup = variant.name.toLowerCase().contains('borda') || 
-                           variant.name.toLowerCase().contains('edge');
-      final isFlavorGroup = variant.name.toLowerCase().contains('sabor') ||
-                            variant.name.toLowerCase().contains('topping') ||
-                            variant.name.toLowerCase().contains('flavor');
-      
+      final variantNameLower = variant.name.toLowerCase();
+      final isFlavorGroup = variantNameLower.contains('sabor') || 
+                            variantNameLower.contains('topping');
+      // ✅ NOVO: Detecta grupo de Massa pelo NOME DO GRUPO
+      final isMassaGroup = variantNameLower.contains('massa') || 
+                           variantNameLower.contains('dough');
+      // ✅ NOVO: Detecta grupo de Borda pelo NOME DO GRUPO  
+      final isBordaGroup = variantNameLower.contains('borda') || 
+                           variantNameLower.contains('edge') ||
+                           variantNameLower.contains('crust');
+      // ✅ NOVO: Detecta grupo de Preferência (combo Massa + Borda)
+      final isPreferenceGroup = variantNameLower.contains('preferência') || 
+                                variantNameLower.contains('preferencia');
+
       for (final option in variant.options) {
-        if (option.quantity > 0 && option.name.isNotEmpty) {
-          if (isMassaGroup) {
-            massaText = option.name;
-          } else if (isBordaGroup) {
-            bordaText = option.name;
-          } else if (isFlavorGroup) {
-            // ✅ Formato sabor: "1 1/2 Pepperoni" ou "1 Calabresa"
-            String displayText;
-            if (option.name.toLowerCase().contains('1/2') || 
-                option.name.toLowerCase().contains('1/3') ||
-                option.name.toLowerCase().contains('meio')) {
-              // Nome já contém fração
-              displayText = '1 ${option.name}';
-            } else {
-              // Adiciona "1" na frente (individual)
-              displayText = '1 ${option.name}';
+        if (option.quantity <= 0) continue;
+        
+        final optionNameLower = option.name.toLowerCase();
+        
+        // ✅ Detecta combo "Massa + Borda" pelo nome da OPÇÃO (grupo Preferência)
+        if (optionNameLower.contains(' + ') || isPreferenceGroup) {
+          if (optionNameLower.contains(' + ')) {
+            final parts = option.name.split(' + ');
+            if (parts.length >= 2) {
+              massaText = parts[0].trim();
+              bordaText = parts[1].trim();
             }
-            flavorTexts.add(displayText);
-          } else {
-            // Outros complementos (adiconais etc)
-            if (option.quantity > 1) {
-              otherTexts.add('${option.quantity}x ${option.name}');
-            } else {
-              otherTexts.add('1x ${option.name}');
-            }
+            continue;
           }
+        }
+        
+        // ✅ Detecta Massa pelo GRUPO ou pelo NOME da opção
+        if (isMassaGroup || optionNameLower.startsWith('massa')) {
+          massaText = option.name;
+          continue;
+        }
+        
+        // ✅ Detecta Borda pelo GRUPO ou pelo NOME da opção
+        if (isBordaGroup || optionNameLower.startsWith('borda')) {
+          bordaText = option.name;
+          continue;
+        }
+        
+        // Sabores
+        if (isFlavorGroup) {
+          flavorOptions.add(option);
+        } else {
+          otherOptions.add(option);
         }
       }
     }
 
-    // ✅ Monta lista de widgets em linhas separadas
     final lineWidgets = <Widget>[];
-    
-    // Primeira linha: Massa + Borda (se houver)
+
+    // 1. Massa + Borda (Unificado)
     if (massaText != null || bordaText != null) {
-      String combinedLine = '';
+      String cleanMassa = massaText ?? '';
+      String cleanBorda = bordaText ?? '';
+      
+      // Limpeza de prefixos redundantes (evita "Massa Massa Fina" ou "Borda Borda de Catupiry")
+      // Remove TODOS os prefixos consecutivos
+      while (RegExp(r'^[Mm]assa\s+', caseSensitive: false).hasMatch(cleanMassa)) {
+        cleanMassa = cleanMassa.replaceFirst(RegExp(r'^[Mm]assa\s+', caseSensitive: false), '');
+      }
+      while (RegExp(r'^[Bb]orda\s+', caseSensitive: false).hasMatch(cleanBorda)) {
+        cleanBorda = cleanBorda.replaceFirst(RegExp(r'^[Bb]orda\s+', caseSensitive: false), '');
+      }
+
+      String combinedText = '';
       if (massaText != null && bordaText != null) {
-        combinedLine = '1 $massaText + Borda $bordaText';
+        combinedText = 'Massa $cleanMassa + Borda $cleanBorda';
       } else if (massaText != null) {
-        combinedLine = '1 $massaText';
-      } else if (bordaText != null) {
-        combinedLine = '1 Borda $bordaText';
+        combinedText = 'Massa $cleanMassa';
+      } else {
+        combinedText = 'Borda $cleanBorda';
       }
-      if (combinedLine.isNotEmpty) {
-        lineWidgets.add(_buildVariantLine(combinedLine, theme));
-      }
-    }
-    
-    // Linhas de sabores (um por linha)
-    for (final flavor in flavorTexts) {
-      lineWidgets.add(_buildVariantLine(flavor, theme));
-    }
-    
-    // Linhas de outros complementos (um por linha)
-    for (final other in otherTexts) {
-      lineWidgets.add(_buildVariantLine(other, theme));
+      lineWidgets.add(_buildVariantRow(context, '1', combinedText, theme));
     }
 
-    if (lineWidgets.isEmpty) {
-      return const SizedBox.shrink();
+    // 2. Sabores com Frações
+    final flavorCount = flavorOptions.length;
+    final fraction = flavorCount > 1 ? '1/$flavorCount ' : '';
+    for (final flavor in flavorOptions) {
+      String name = flavor.name;
+      // Remove frações existentes se houver
+      name = name.replaceAll(RegExp(r'1/\d\s*'), '').trim();
+      lineWidgets.add(_buildVariantRow(context, '1', '$fraction$name', theme));
     }
+
+    // 3. Outros
+    for (final other in otherOptions) {
+      lineWidgets.add(_buildVariantRow(context, other.quantity.toString(), other.name, theme));
+    }
+
+    if (lineWidgets.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: lineWidgets,
       ),
     );
   }
-  
-  // ✅ Helper: Cria linha individual de variant
-  Widget _buildVariantLine(String text, DsTheme theme) {
+
+  Widget _buildVariantRow(BuildContext context, String quantity, String text, DsTheme theme) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Bullet point estilo iFood
-          Padding(
-            padding: const EdgeInsets.only(top: 6, right: 8),
-            child: Container(
-              width: 4,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.cartTextColor.withOpacity(0.5),
-                shape: BoxShape.circle,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Text(
+              quantity,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: theme.cartTextColor.withOpacity(0.8),
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
               style: TextStyle(
                 fontSize: 13,
-                color: theme.cartTextColor.withOpacity(0.7),
+                color: theme.cartTextColor.withOpacity(0.75),
+                height: 1.2,
               ),
             ),
           ),

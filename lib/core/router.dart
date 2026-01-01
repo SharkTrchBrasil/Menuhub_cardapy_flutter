@@ -40,13 +40,14 @@ import '../pages/auth/email_auth_page.dart';
 import '../pages/auth/reset_password_page.dart';
 import '../pages/search/search_page.dart';
 import '../pages/delivery_persons/delivery_persons_page.dart';
+import '../pages/address/address_onboarding_page.dart';
+import '../pages/address/cubits/address_cubit.dart';
+import '../cubit/auth_cubit.dart';
 import '../repositories/realtime_repository.dart';
 import '../repositories/storee_repository.dart';
-import '../pages/home/simple_home_page.dart';
 import '../pages/home/desktop_home_wrapper.dart';
 import '../pages/main_tab/main_tab_page.dart';
 import '../widgets/desktop_page_wrapper.dart';
-import '../core/responsive_builder.dart';
 import '../pages/checkout/order_submission_page.dart'; // ✅ NOVO: Página de animação ao enviar pedido
 import '../pages/checkout/checkout_cubit.dart'; // ✅ CORREÇÃO: Import para o cubit
 import '../pages/pix_payment/pix_payment_page.dart'; // ✅ NOVO: Página de pagamento PIX
@@ -88,6 +89,12 @@ GoRouter createGoRouter() {
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingPage(),
+      ),
+      
+      // ✅ NOVO: Rota de onboarding de endereço obrigatório
+      GoRoute(
+        path: '/address-onboarding',
+        builder: (context, state) => const AddressOnboardingPage(),
       ),
 
       ShellRoute(
@@ -220,7 +227,7 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'add-coupon',
                 pageBuilder: (context, __) => CustomTransitionPage(
-                  child: CouponPage(realtimeRepository: getIt<RealtimeRepository>()),
+                  child: const CouponPage(),
                   opaque: false,
                   barrierDismissible: true,
                   barrierColor: Colors.black45,
@@ -559,7 +566,7 @@ GoRouter createGoRouter() {
         ],
       ),
     ],
-    redirect: (context, state) {
+    redirect: (context, state) async {
       // 🕵️‍♂️ DEBUG PRINT: Este é o nosso "dedo-duro" de navegação.
       print("🔀 [GoRouter] Redirect sendo verificado. Localização atual: ${state.matchedLocation}. Tentando ir para: ${state.uri}");
 
@@ -570,7 +577,44 @@ GoRouter createGoRouter() {
         print("🔀 [GoRouter] App não inicializado. Redirecionando para /splash.");
         return isSplash ? null : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
       }
+      
       if (isSplash) {
+        // ✅ CORRIGIDO: Verifica se usuário está logado sem endereço
+        // Agora aguarda o carregamento dos endereços antes de decidir
+        try {
+          final authCubit = getIt<AuthCubit>();
+          final addressCubit = getIt<AddressCubit>();
+          final customer = authCubit.state.customer;
+          
+          if (customer != null && customer.id != null) {
+            print("📍 [GoRouter] Usuário logado (${customer.name}). Verificando endereços...");
+            
+            // ✅ CORREÇÃO: Sempre carrega endereços e AGUARDA se ainda não carregou
+            if (addressCubit.state.status == AddressStatus.initial || 
+                (addressCubit.state.addresses.isEmpty && addressCubit.state.status != AddressStatus.success)) {
+              print("📍 [GoRouter] Carregando endereços do servidor...");
+              await addressCubit.loadAddresses(customer.id!);
+              print("📍 [GoRouter] Endereços carregados: ${addressCubit.state.addresses.length}");
+            }
+            
+            // ✅ CORREÇÃO: Só verifica após o carregamento ter sido concluído (success ou error)
+            final hasAddresses = addressCubit.state.addresses.isNotEmpty;
+            
+            if (!hasAddresses && addressCubit.state.status == AddressStatus.success) {
+              // ✅ CORREÇÃO: Só redireciona se os endereços foram carregados com sucesso E a lista está vazia
+              print("📍 [GoRouter] Usuário SEM endereço (confirmado). Redirecionando para /address-onboarding");
+              return '/address-onboarding';
+            }
+            
+            print("✅ [GoRouter] Usuário tem ${addressCubit.state.addresses.length} endereço(s). Indo para home.");
+          } else {
+            // ✅ CORREÇÃO: Usuário não logado não precisa de endereço obrigatório
+            print("👤 [GoRouter] Usuário não está logado. Indo para home (sem exigir endereço).");
+          }
+        } catch (e) {
+          print("❌ [GoRouter] Erro ao verificar endereços: $e. Indo para home.");
+        }
+        
         final redirectTo = state.uri.queryParameters['redirectTo'] ?? '/';
         print("_ [GoRouter] Saindo do Splash. Redirecionando para: $redirectTo");
         return redirectTo;

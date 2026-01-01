@@ -13,6 +13,7 @@ import 'package:totem/models/category.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/models/update_cart_payload.dart';
 import 'package:totem/services/availability_service.dart';
+import 'package:totem/widgets/clear_cart_confirmation.dart';
 
 class ProductItemGrid extends StatelessWidget {
   final Product product;
@@ -212,6 +213,16 @@ class ProductItemGrid extends StatelessWidget {
 
   // ✅ NOVO: Função para adicionar produto simples ao carrinho rapidamente
   Future<void> _handleQuickAdd(BuildContext context) async {
+    // ✅ SEGURANÇA: Verifica se o carrinho tem itens de outra loja
+    final canProceed = await canAddToCart(
+      context: context,
+      productStoreId: product.storeId,
+    );
+    
+    if (!canProceed) {
+      return; // Usuário cancelou, não adiciona
+    }
+    
     final firstCategoryLink = product.categoryLinks.firstOrNull;
     if (firstCategoryLink == null) {
       if (context.mounted) {

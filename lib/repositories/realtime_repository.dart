@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
@@ -845,6 +846,58 @@ class RealtimeRepository {
   // as listas locais de forma eficiente (adicionar, atualizar, remover)
   // ============================================================
 
+  /// ✅ HELPER: Converte recursivamente um Map para Map<String, dynamic>
+  /// ULTRA-ROBUSTO: Garante que o resultado seja um Map dart puro, sem proxies de JS
+  Map<String, dynamic> _convertToStringDynamicMap(dynamic data) {
+    if (data == null) return {};
+    
+    final Map<String, dynamic> result = {};
+    try {
+      // Tenta tratar como Map genérico
+      if (data is Map) {
+        for (final key in data.keys) {
+          if (key != null) {
+            result[key.toString()] = _convertValue(data[key]);
+          }
+        }
+      } else {
+        // Tenta fallback para interop dinâmico se tiver keys
+        try {
+          final dynamic dynData = data;
+          if (dynData.keys != null) {
+            for (final key in dynData.keys) {
+              result[key.toString()] = _convertValue(dynData[key]);
+            }
+          }
+        } catch (_) {
+          // Ignora se não for possível iterar
+        }
+      }
+    } catch (e) {
+      AppLogger.error('❌ Erro fatal ao converter Map (JS Interop): $e');
+    }
+    return result;
+  }
+
+  /// ✅ HELPER: Converte valores recursivamente (para listas e maps aninhados)
+  dynamic _convertValue(dynamic value) {
+    if (value == null) return null;
+    
+    // Tipos primitivos retornam direto
+    if (value is String || value is num || value is bool) {
+      return value;
+    }
+    
+    // Tratamento de lista
+    if (value is List) {
+      return value.map((item) => _convertValue(item)).toList();
+    }
+    
+    // Se chegou aqui, assume que é um objeto/mapa e tenta converter
+    // Isso captura objetos JS que não passam no teste 'is Map' mas têm estrutura
+    return _convertToStringDynamicMap(value);
+  }
+
   /// Handler para eventos granulares de produtos
   void _handleGranularProductEvent(dynamic data, String action) {
     try {
@@ -867,27 +920,36 @@ class RealtimeRepository {
       switch (action) {
         case 'created':
           // ✅ CORREÇÃO: Backend envia 'product', não 'item'
-          final productData = payload['product'] as Map<String, dynamic>?;
-          if (productData != null) {
-            final newProduct = Product.fromJson(productData);
-            
-            // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-            final hasPrice = (newProduct.price != null && newProduct.price! > 0) ||
-                newProduct.variantLinks.any((link) => 
-                  link.variant.options.any((opt) => opt.resolvedPrice > 0));
-            if (!hasPrice) {
-              AppLogger.debug('⏸️ [GRANULAR] Produto ${newProduct.name} ignorado (preço zero)');
-              return;
-            }
-            
-            // Verifica se já existe (para evitar duplicatas)
-            final existingIndex = currentProducts.indexWhere((p) => p.id == newProduct.id);
-            if (existingIndex == -1) {
-              currentProducts.add(newProduct);
-              productsController.add(currentProducts);
-              AppLogger.debug('✅ [GRANULAR] Produto ${newProduct.name} adicionado à lista');
-            } else {
-              AppLogger.debug('⚠️ [GRANULAR] Produto ${newProduct.id} já existe, ignorando criação');
+          final rawProductData = payload['product'];
+          
+          if (rawProductData != null) {
+            try {
+              // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
+              // Isso remove qualquer vestígio de Proxy JS que causa crash no DDC
+              final Map<String, dynamic> productData = jsonDecode(jsonEncode(rawProductData));
+              final newProduct = Product.fromJson(productData);
+              
+              // ✅ FILTRO: Ignora produtos com preço zero (pausados)
+              final hasPrice = (newProduct.price != null && newProduct.price! > 0) ||
+                  newProduct.variantLinks.any((link) => 
+                    link.variant.options.any((opt) => opt.resolvedPrice > 0));
+              if (!hasPrice) {
+                AppLogger.debug('⏸️ [GRANULAR] Produto ${newProduct.name} ignorado (preço zero)');
+                return;
+              }
+              
+              // Verifica se já existe (para evitar duplicatas)
+              final existingIndex = currentProducts.indexWhere((p) => p.id == newProduct.id);
+              if (existingIndex == -1) {
+                currentProducts.add(newProduct);
+                productsController.add(currentProducts);
+                AppLogger.debug('✅ [GRANULAR] Produto ${newProduct.name} adicionado à lista');
+              } else {
+                AppLogger.debug('⚠️ [GRANULAR] Produto ${newProduct.id} já existe, ignorando criação');
+              }
+            } catch (e, stackTrace) {
+              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar produto criado: $e');
+              AppLogger.error('📍 StackTrace: $stackTrace');
             }
           } else {
             AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "product" para criação');
@@ -896,36 +958,72 @@ class RealtimeRepository {
 
         case 'updated':
           // ✅ CORREÇÃO: Backend envia 'product', não 'item'
-          final productData = payload['product'] as Map<String, dynamic>?;
-          if (productData != null) {
-            final updatedProduct = Product.fromJson(productData);
-            
-            // ✅ FILTRO: Verifica se produto tem preço válido
-            final hasPrice = (updatedProduct.price != null && updatedProduct.price! > 0) ||
-                updatedProduct.variantLinks.any((link) => 
-                  link.variant.options.any((opt) => opt.resolvedPrice > 0));
-            
-            final existingIndex = currentProducts.indexWhere((p) => p.id == updatedProduct.id);
-            
-            if (hasPrice) {
-              // Produto tem preço válido - adiciona ou atualiza
+          final rawProductDataUpdated = payload['product'];
+          
+          if (rawProductDataUpdated != null) {
+            try {
+              // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
+              final Map<String, dynamic> productData = jsonDecode(jsonEncode(rawProductDataUpdated));
+              var updatedProduct = Product.fromJson(productData);
+              
+              final existingIndex = currentProducts.indexWhere((p) => p.id == updatedProduct.id);
+              
+              // ✅ SMART MERGE PARA PRODUTOS
+              // Se o produto já existe, preservamos campos complexos caso não venham no payload
               if (existingIndex != -1) {
-                currentProducts[existingIndex] = updatedProduct;
-                productsController.add(currentProducts);
-                AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} atualizado na lista');
+                final oldProduct = currentProducts[existingIndex];
+                
+                if (!productData.containsKey('prices')) {
+                   updatedProduct = updatedProduct.copyWith(prices: oldProduct.prices);
+                }
+                if (!productData.containsKey('variant_links')) {
+                   updatedProduct = updatedProduct.copyWith(variantLinks: oldProduct.variantLinks);
+                }
+                if (!productData.containsKey('category_links')) {
+                   updatedProduct = updatedProduct.copyWith(categoryLinks: oldProduct.categoryLinks);
+                }
+                if (!productData.containsKey('gallery_images') && !productData.containsKey('images')) {
+                   updatedProduct = updatedProduct.copyWith(images: oldProduct.images);
+                }
+                // Preserva linked_product_id se não vier (crítico para pizzas)
+                if (!productData.containsKey('linked_product_id')) {
+                    updatedProduct = updatedProduct.copyWith(linkedProductId: oldProduct.linkedProductId);
+                }
+                
+                AppLogger.debug('✅ [GRANULAR] Merge inteligente aplicado ao produto ${updatedProduct.name}');
+              }
+              
+              // ✅ FILTRO: Verifica se produto tem preço válido (após possível merge de preços/variantes)
+              final hasPrice = (updatedProduct.price != null && updatedProduct.price! > 0) ||
+                  updatedProduct.variantLinks.any((link) => 
+                    link.variant.options.any((opt) => opt.resolvedPrice > 0)) ||
+                  // Também considera Flavor Prices (pizzas)
+                  updatedProduct.prices.any((p) => (p.price) > 0);
+              
+              if (hasPrice) {
+                // Produto tem preço válido - adiciona ou atualiza
+                if (existingIndex != -1) {
+                  currentProducts[existingIndex] = updatedProduct;
+                  productsController.add(currentProducts);
+                  AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} atualizado na lista');
+                } else {
+                  // Produto não existe, adiciona
+                  currentProducts.add(updatedProduct);
+                  productsController.add(currentProducts);
+                  AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} adicionado (update para novo)');
+                }
               } else {
-                // Produto não existe, adiciona
-                currentProducts.add(updatedProduct);
-                productsController.add(currentProducts);
-                AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} adicionado (update para novo)');
+                 if (existingIndex != -1) {
+                   final removedProduct = currentProducts.removeAt(existingIndex);
+                   productsController.add(currentProducts);
+                   AppLogger.debug('⏸️ [GRANULAR] Produto ${removedProduct.name} removido (preço zerado/indisponível)');
+                 } else {
+                    AppLogger.debug('⏸️ [GRANULAR] Produto ${updatedProduct.name} ignorado (preço zerado)');
+                 }
               }
-            } else {
-              // ✅ Produto com preço zero - remove se existir (foi pausado)
-              if (existingIndex != -1) {
-                final removedProduct = currentProducts.removeAt(existingIndex);
-                productsController.add(currentProducts);
-                AppLogger.debug('⏸️ [GRANULAR] Produto ${removedProduct.name} removido (preço zerado = pausado)');
-              }
+            } catch (e, stackTrace) {
+              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar produto atualizado: $e');
+              AppLogger.error('📍 StackTrace: $stackTrace');
             }
           } else {
             AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "product" para atualização');
@@ -977,40 +1075,72 @@ class RealtimeRepository {
       switch (action) {
         case 'created':
           // ✅ CORREÇÃO: Backend envia 'category', não 'item'
-          final categoryData = payload['category'] as Map<String, dynamic>?;
-          if (categoryData != null) {
-            final newCategory = models.Category.fromJson(categoryData);
-            final existingIndex = currentCategories.indexWhere((c) => c.id == newCategory.id);
-            if (existingIndex == -1) {
-              currentCategories.add(newCategory);
-              final updatedStore = currentStore.copyWith(categories: currentCategories);
-              storeController.add(updatedStore);
-              AppLogger.debug('✅ [GRANULAR] Categoria ${newCategory.name} adicionada');
+          final rawCategoryDataCreated = payload['category'];
+          AppLogger.debug('🔍 [GRANULAR] Payload criação: ${payload.keys.toList()}');
+          
+          if (rawCategoryDataCreated != null) {
+            try {
+              // ✅ NUCLEAR OPTION: Sanitização via JSON
+              final Map<String, dynamic> categoryDataCreated = jsonDecode(jsonEncode(rawCategoryDataCreated));
+              final newCategory = models.Category.fromJson(categoryDataCreated);
+              final existingIndex = currentCategories.indexWhere((c) => c.id == newCategory.id);
+              if (existingIndex == -1) {
+                currentCategories.add(newCategory);
+                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                storeController.add(updatedStore);
+                AppLogger.debug('✅ [GRANULAR] Categoria ${newCategory.name} adicionada');
+              }
+            } catch (e, stackTrace) {
+              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar categoria criada: $e');
+              AppLogger.error('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "category" para criação');
+            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "category" válido para criação. Keys: ${payload.keys.toList()}');
           }
           break;
-
+          
         case 'updated':
           // ✅ CORREÇÃO: Backend envia 'category', não 'item'
-          final categoryData = payload['category'] as Map<String, dynamic>?;
-          if (categoryData != null) {
-            final updatedCategory = models.Category.fromJson(categoryData);
-            final existingIndex = currentCategories.indexWhere((c) => c.id == updatedCategory.id);
-            if (existingIndex != -1) {
-              currentCategories[existingIndex] = updatedCategory;
-              final updatedStore = currentStore.copyWith(categories: currentCategories);
-              storeController.add(updatedStore);
-              AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada');
-            } else {
-              currentCategories.add(updatedCategory);
-              final updatedStore = currentStore.copyWith(categories: currentCategories);
-              storeController.add(updatedStore);
-              AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada (update para nova)');
+          final rawCategoryData = payload['category'];
+          
+          if (rawCategoryData != null) {
+            try {
+              // ✅ NUCLEAR OPTION
+              final Map<String, dynamic> categoryData = jsonDecode(jsonEncode(rawCategoryData));
+              var updatedCategory = models.Category.fromJson(categoryData);
+              
+              final existingIndex = currentCategories.indexWhere((c) => c.id == updatedCategory.id);
+              if (existingIndex != -1) {
+                final oldCategory = currentCategories[existingIndex];
+                
+                // ✅ SMART MERGE: Preserva campos complexos se não vierem no payload
+                // Isso evita que updates parciais (ex: só mudou o nome) apaguem as opções/preços
+                if (!categoryData.containsKey('option_groups')) {
+                  updatedCategory = updatedCategory.copyWith(optionGroups: oldCategory.optionGroups);
+                }
+                if (!categoryData.containsKey('product_option_groups')) {
+                  updatedCategory = updatedCategory.copyWith(productOptionGroups: oldCategory.productOptionGroups);
+                }
+                if (!categoryData.containsKey('product_links')) {
+                  updatedCategory = updatedCategory.copyWith(productLinks: oldCategory.productLinks);
+                }
+
+                currentCategories[existingIndex] = updatedCategory;
+                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                storeController.add(updatedStore);
+                AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (com merge inteligente)');
+              } else {
+                currentCategories.add(updatedCategory);
+                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                storeController.add(updatedStore);
+                AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada (update para nova)');
+              }
+            } catch (e, stackTrace) {
+              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar categoria: $e');
+              AppLogger.error('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "category" para atualização');
+            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo \"category\" válido para atualização. Payload keys: ${payload.keys.toList()}');
           }
           break;
 
@@ -2034,4 +2164,46 @@ class RealtimeRepository {
 
 
 
-}
+  // ... (código existente)
+
+  Future<Map<String, dynamic>> applyPromotions({
+    required int subtotal,
+    required int deliveryFee,
+  }) async {
+    if (!storeController.hasValue) {
+      throw Exception('Loja não carregada');
+    }
+    
+    final storeId = storeController.value.id;
+    // Remove /socket.io se estiver na URL base
+    String baseUrl = dotenv.env['API_URL'] ?? 'http://localhost:8000';
+    baseUrl = baseUrl.replaceAll('/socket.io', '').replaceAll('/ws', '');
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+    
+    final dio = Dio(BaseOptions(baseUrl: baseUrl));
+    
+    try {
+      AppLogger.info('🚀 Calculando promoções: subtotal=$subtotal, fee=$deliveryFee', tag: 'PROMO');
+      
+      final response = await dio.post('/app/promotions/apply', data: {
+        'store_id': storeId,
+        'subtotal': subtotal,
+        'delivery_fee': deliveryFee,
+      });
+      
+      return response.data;
+    } catch (e) {
+      AppLogger.error('❌ Erro ao calcular promoções: $e', tag: 'PROMO');
+      // Retorna objeto vazio em caso de erro para não bloquear o fluxo
+      return {
+        'total_order_discount': 0,
+        'total_delivery_discount': 0,
+        'final_subtotal': subtotal,
+        'final_delivery_fee': deliveryFee,
+        'final_total': subtotal + deliveryFee,
+        'promotions_applied': [],
+        'message': null,
+      };
+    }
+  }
+} // Fim da classe

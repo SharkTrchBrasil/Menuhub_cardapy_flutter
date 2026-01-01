@@ -6,7 +6,7 @@ import 'package:totem/pages/profile/profile_cubit.dart';
 import 'package:totem/pages/profile/widgets/not_logged_in_view.dart';
 import 'package:totem/pages/profile/widgets/profile_menu_item.dart';
 
-/// Mobile Profile Page
+/// Mobile Profile Page - Estilo iFood
 /// Implementação específica para dispositivos móveis
 class MobileProfile extends StatelessWidget {
   const MobileProfile({super.key});
@@ -14,110 +14,182 @@ class MobileProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Perfil'),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-      ),
-      body: BlocBuilder<AuthCubit, AuthState>(
-        buildWhen: (previous, current) => previous.customer != current.customer,
-        builder: (context, state) {
-          final customer = state.customer;
+      // ✅ Remove AppBar para ficar no estilo iFood (sem barra de título)
+      body: SafeArea(
+        child: BlocBuilder<AuthCubit, AuthState>(
+          buildWhen: (previous, current) => previous.customer != current.customer,
+          builder: (context, state) {
+            final customer = state.customer;
 
-          if (customer == null) {
-            return BlocListener<AuthCubit, AuthState>(
-              listener: (context, state) {
-                if (state.status == AuthStatus.error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(state.errorMessage ?? 'Ocorreu um erro no login.'),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                }
-              },
-              child: const NotLoggedInView(isDesktop: false),
-            );
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundImage: customer.photo != null
-                          ? NetworkImage(customer.photo!)
-                          : null,
-                      child: customer.photo == null
-                          ? const Icon(Icons.person, size: 50)
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      customer.name ?? 'Usuário',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    if (customer.email != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        customer.email!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey,
-                            ),
+            if (customer == null) {
+              return BlocListener<AuthCubit, AuthState>(
+                listener: (context, state) {
+                  if (state.status == AuthStatus.error) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(state.errorMessage ?? 'Ocorreu um erro no login.'),
+                        backgroundColor: Colors.redAccent,
                       ),
-                    ],
-                    const SizedBox(height: 32),
-                    ProfileMenuItem(
-                      icon: Icons.history,
-                      title: 'Histórico de pedidos',
-                      onTap: () {
-                        if (customer.id != null) {
-                          context.read<ProfileCubit>().loadOrderHistory(customer.id!);
-                          context.push('/orders/history');
-                        }
-                      },
-                    ),
-                    ProfileMenuItem(
-                      icon: Icons.edit,
-                      title: 'Editar perfil',
-                      onTap: () => context.push('/profile/edit'),
-                    ),
-                    ProfileMenuItem(
-                      icon: Icons.location_on,
-                      title: 'Meus endereços',
-                      onTap: () => context.push('/select-address'),
-                    ),
-                    ProfileMenuItem(
-                      icon: Icons.payment,
-                      title: 'Formas de pagamento',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Em breve')),
-                        );
-                      },
-                    ),
-                    const Divider(height: 32),
-                    ProfileMenuItem(
-                      icon: Icons.logout,
-                      title: 'Sair',
-                      iconColor: Colors.red,
-                      textColor: Colors.red,
-                      onTap: () {
-                        context.read<AuthCubit>().signOut();
-                      },
-                    ),
-                  ],
+                    );
+                  }
+                },
+                child: const NotLoggedInView(isDesktop: false),
+              );
+            }
+
+            // ✅ Quando logado, mostra perfil do usuário
+            return _buildLoggedInView(context, customer);
+          },
+        ),
+      ),
+    );
+  }
+
+  // ✅ View quando usuário está logado
+  Widget _buildLoggedInView(BuildContext context, dynamic customer) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // ✅ Header do perfil
+          _buildProfileHeader(context, customer),
+          
+          const SizedBox(height: 16),
+          
+          // ✅ Menu de opções
+          Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                ProfileMenuItem(
+                  icon: Icons.history,
+                  title: 'Histórico de pedidos',
+                  onTap: () {
+                    if (customer.id != null) {
+                      context.read<ProfileCubit>().loadOrderHistory(customer.id!);
+                      context.push('/orders/history');
+                    }
+                  },
                 ),
-              ),
+                ProfileMenuItem(
+                  icon: Icons.edit,
+                  title: 'Editar perfil',
+                  onTap: () => context.push('/profile/edit'),
+                ),
+                ProfileMenuItem(
+                  icon: Icons.location_on_outlined,
+                  title: 'Meus endereços',
+                  onTap: () => context.push('/select-address'),
+                ),
+                ProfileMenuItem(
+                  icon: Icons.local_offer_outlined,
+                  title: 'Cupons',
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Em breve')),
+                    );
+                  },
+                ),
+              ],
             ),
-          );
-        },
+          ),
+          
+          // Separador
+          Container(
+            height: 8,
+            color: Colors.grey.shade100,
+          ),
+          
+          // ✅ Opções secundárias
+          Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                ProfileMenuItem(
+                  icon: Icons.help_outline,
+                  title: 'Ajuda',
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Em breve')),
+                    );
+                  },
+                ),
+                ProfileMenuItem(
+                  icon: Icons.logout,
+                  title: 'Sair',
+                  iconColor: Colors.red,
+                  textColor: Colors.red,
+                  showChevron: false,
+                  onTap: () {
+                    context.read<AuthCubit>().signOut();
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  // ✅ Header do perfil (quando logado)
+  Widget _buildProfileHeader(BuildContext context, dynamic customer) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      color: Colors.white,
+      child: Row(
+        children: [
+          // Avatar
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage: customer.photo != null
+                ? NetworkImage(customer.photo!)
+                : null,
+            child: customer.photo == null
+                ? Icon(Icons.person, size: 32, color: Colors.grey.shade500)
+                : null,
+          ),
+          
+          const SizedBox(width: 16),
+          
+          // Nome e email
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  customer.name ?? 'Usuário',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                if (customer.email != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    customer.email!,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          
+          // Botão de editar
+          IconButton(
+            onPressed: () => context.push('/profile/edit'),
+            icon: Icon(
+              Icons.edit_outlined,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
       ),
     );
   }

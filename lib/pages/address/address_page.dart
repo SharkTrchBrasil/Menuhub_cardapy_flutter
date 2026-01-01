@@ -195,6 +195,10 @@ class _AddressPageState extends State<AddressPage> {
 
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
           builder: (context, feeState) {
+            // ✅ NOVO: Verifica se há erro de frete (fora da área)
+            final bool hasDeliveryError = feeState is DeliveryFeeError && 
+                feeState.deliveryType == DeliveryType.delivery;
+            
             return Column(
               children: [
                 if (deliveryEnabled)
@@ -207,6 +211,9 @@ class _AddressPageState extends State<AddressPage> {
                       context.read<DeliveryFeeCubit>().updateDeliveryType(DeliveryType.delivery);
                     },
                   ),
+                // ✅ NOVO: Mostra alerta de erro quando endereço está fora da área
+                if (hasDeliveryError)
+                  _OutOfAreaWarning(message: (feeState as DeliveryFeeError).message),
                 if (pickupEnabled)
                   _DeliveryOptionTile(
                     title: 'Retirar na loja',
@@ -240,20 +247,26 @@ class _AddressPageState extends State<AddressPage> {
                 }
                 final grandTotal = cartTotal + deliveryFee;
 
-                continueAction() {
-                  if (feeState.deliveryType == DeliveryType.delivery && addressState.selectedAddress == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Por favor, selecione um endereço.')),
-                    );
-                    return;
-                  }
-                  context.go('/checkout');
+                // ✅ NOVO: Verifica se pode continuar (não pode se tiver erro de frete no delivery)
+                final bool hasDeliveryError = feeState is DeliveryFeeError && 
+                    feeState.deliveryType == DeliveryType.delivery;
+                final bool noAddressForDelivery = feeState.deliveryType == DeliveryType.delivery && 
+                    addressState.selectedAddress == null;
+                final bool canContinue = !hasDeliveryError && !noAddressForDelivery;
+
+                VoidCallback? continueAction;
+                if (canContinue) {
+                  continueAction = () {
+                    context.go('/checkout');
+                  };
                 }
 
                 return AddressBottomBar(
                   totalPrice: grandTotal,
                   totalItems: cartState.cart.items.length,
                   onContinuePressed: continueAction,
+                  // ✅ NOVO: Passa mensagem de erro para exibir se necessário
+                  errorMessage: hasDeliveryError ? (feeState as DeliveryFeeError).message : null,
                 );
               },
             );
@@ -356,6 +369,10 @@ class _DeliveryOptionTile extends StatelessWidget {
     if (state is DeliveryFeeRequiresAddress) {
       return 'A calcular';
     }
+    // ✅ NOVO: Se houver erro e for delivery, mostra "Indisponível"
+    if (state is DeliveryFeeError && title == 'Delivery') {
+      return 'Indisponível';
+    }
     if (state is DeliveryFeeLoaded) {
       if (state.deliveryFee > 0) {
         return 'R\$ ${state.deliveryFee.toStringAsFixed(2)}';
@@ -399,9 +416,12 @@ class _DeliveryOptionTile extends StatelessWidget {
             Text(
               _getFeeText(context),
               style: TextStyle(
-                color: (feeState is DeliveryFeeLoaded && (feeState as DeliveryFeeLoaded).deliveryFee > 0)
-                    ? null
-                    : Colors.green,
+                // ✅ NOVO: Mostra vermelho se for erro/indisponível
+                color: (feeState is DeliveryFeeError && title == 'Delivery')
+                    ? Colors.red
+                    : (feeState is DeliveryFeeLoaded && (feeState as DeliveryFeeLoaded).deliveryFee > 0)
+                        ? null
+                        : Colors.green,
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
               ),
@@ -414,6 +434,74 @@ class _DeliveryOptionTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ✅ NOVO: Widget de aviso quando endereço está fora da área de entrega
+class _OutOfAreaWarning extends StatelessWidget {
+  final String message;
+  const _OutOfAreaWarning({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12.0),
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: Colors.red.shade200, width: 1.0),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.red.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.location_off_rounded,
+              color: Colors.red.shade700,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Endereço fora da área',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade900,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.red.shade800,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Escolha outro endereço ou selecione "Retirar na loja".',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

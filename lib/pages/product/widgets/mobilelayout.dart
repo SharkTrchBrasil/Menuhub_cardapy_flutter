@@ -120,34 +120,35 @@ class _MobileProductPageState extends State<MobileProductPage> {
   }
 
   // ✅ Método para rolar até próximo grupo obrigatório não selecionado
+  // ✅ CORREÇÃO: Agora funciona corretamente para pizzas com 3+ sabores
   void _scrollToNextRequiredVariant() {
     if (!mounted) return;
     final product = widget.productState.product;
     if (product == null) return;
     
-    // Encontra o próximo grupo obrigatório que ainda não foi completado
-    int? currentIndex;
-    if (_currentStickyVariant != null) {
-      currentIndex = product.selectedVariants.indexWhere(
-        (v) => v.id == _currentStickyVariant!.id,
-      );
-    }
-    
-    // Procura a partir do grupo atual (ou início se não houver)
-    final startIndex = (currentIndex ?? -1) + 1;
-    for (int i = startIndex; i < product.selectedVariants.length; i++) {
+    // ✅ CORREÇÃO: Itera por TODOS os grupos, não apenas a partir do atual
+    // Isso garante que pizzas com 3 sabores rolem por todos os grupos
+    for (int i = 0; i < product.selectedVariants.length; i++) {
       final variant = product.selectedVariants[i];
+      
+      // ✅ Verifica se é obrigatório E ainda não foi completado
       if (variant.isRequired && !variant.isValid) {
-        // Encontrou próximo obrigatório não completado
+        // Verifica se a key existe e tem contexto válido
         final key = _variantKeys[variant.id];
-        if (key?.currentContext != null) {
-          Scrollable.ensureVisible(
-            key!.currentContext!,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-            alignment: 0.1, // Rola até mostrar 10% do topo do widget
-          );
-          return;
+        if (key != null && key.currentContext != null) {
+          // ✅ Usa Future.delayed para garantir que o scroll aconteça após o rebuild
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (!mounted) return;
+            if (key.currentContext == null) return;
+            
+            Scrollable.ensureVisible(
+              key.currentContext!,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              alignment: 0.15, // ✅ Rola até mostrar 15% do topo (melhor visibilidade)
+            );
+          });
+          return; // Para no primeiro grupo não completado
         }
       }
     }
@@ -570,28 +571,24 @@ class _MobileProductPageState extends State<MobileProductPage> {
             ),
           ),
 
-        // ✅ IFOOD STYLE: Preço BASE (não muda ao selecionar opções)
-        // O preço total com opções aparece apenas no botão do carrinho (bottom)
+        // ✅ IFOOD STYLE: Preço BASE FIXO (não muda ao selecionar sabores)
+        // Para pizzas: mostra o preço do tamanho selecionado (startingPrice)
+        // O preço total com opções extras aparece apenas no botão "Adicionar"
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: product.category.isCustomizable && product.basePrice == 0
-              ? Text(
-                  'A partir de ${product.startingPrice.toCurrency}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                )
-              : Text(
-                  product.basePrice.toCurrency,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
+          child: Text(
+            // ✅ Para pizzas: usa startingPrice (preço do tamanho escolhido)
+            // ✅ Para outros: usa basePrice normal
+            product.category.isCustomizable
+                ? product.startingPrice.toCurrency
+                : product.basePrice.toCurrency,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
         ),
 
         // ✅ TAGS ALIMENTARES E DE BEBIDAS
@@ -624,80 +621,11 @@ class _MobileProductPageState extends State<MobileProductPage> {
           ),
         ],
 
+        // ✅ Espaçamento antes dos grupos de opções
         const SizedBox(height: 20),
-        // ✅ ADICIONADO: Seleção de tamanho para produtos customizáveis (pizza, etc)
-        if (product.category.isCustomizable) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              'Tamanho',
-              style: widget.theme.bodyTextStyle.weighted(FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Builder(
-              builder: (context) {
-                final sizeGroup = product.category.optionGroups
-                    .firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
-                if (sizeGroup == null || sizeGroup.items.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: sizeGroup.items.map((sizeOption) {
-                    final isSelected = product.selectedSize?.id == sizeOption.id;
-                    return GestureDetector(
-                      onTap: () => context.read<ProductPageCubit>().selectSize(sizeOption),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? widget.theme.primaryColor.withOpacity(0.1)
-                              : Colors.grey.shade100,
-                          border: Border.all(
-                            color: isSelected
-                                ? widget.theme.primaryColor
-                                : Colors.grey.shade300,
-                            width: isSelected ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sizeOption.name,
-                              style: TextStyle(
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected
-                                    ? widget.theme.primaryColor
-                                    : Colors.grey.shade800,
-                              ),
-                            ),
-                            if (sizeOption.description != null && sizeOption.description!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                sizeOption.description!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
+        
+        // ✅ REMOVIDO: Texto "Tamanho" redundante (já aparece no nome do produto)
+        // O tamanho já é selecionado antes de abrir esta tela
         if (product.selectedVariants.isNotEmpty) //
           ListView.builder(
             padding: EdgeInsets.zero,

@@ -34,12 +34,10 @@ Widget _buildPlaceholder() {
   return Container(
     color: Colors.grey.shade100,
     child: Center(
-      child: SvgPicture.asset(
-        'assets/icons/burguer.svg',
-        width: 42,
-        height: 42,
-        colorFilter: ColorFilter.mode(Colors.grey.shade400, BlendMode.srcIn),
-        semanticsLabel: 'Imagem padrão do produto',
+      child: Icon(
+        Icons.fastfood_rounded,
+        size: 42,
+        color: Colors.grey.shade400,
       ),
     ),
   );

@@ -475,6 +475,12 @@ class MenuAdapter {
       isIndustrialized: false,
       isShared: null,
       externalProductId: garnish.code,
+      crustId: garnish.crustId,
+      edgeId: garnish.edgeId,
+      crustName: garnish.crustName,
+      edgeName: garnish.edgeName,
+      crustPrice: garnish.crustPrice != null ? (garnish.crustPrice! * 100).round() : null,
+      edgePrice: garnish.edgePrice != null ? (garnish.edgePrice! * 100).round() : null,
     );
   }
   

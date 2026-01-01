@@ -88,44 +88,86 @@ class Category extends Equatable {
   }
 
   factory Category.fromJson(Map<String, dynamic> json) {
-    // ✅ Parse de availability_type
+    // ✅ Parse de availability_type robusto
     AvailabilityType availabilityType = AvailabilityType.always;
-    if (json['availability_type'] != null) {
-      final typeStr = json['availability_type'].toString().toUpperCase();
-      if (typeStr == 'SCHEDULED') {
-        availabilityType = AvailabilityType.scheduled;
+    try {
+      if (json['availability_type'] != null) {
+        final typeStr = json['availability_type'].toString().toUpperCase();
+        if (typeStr == 'SCHEDULED') {
+          availabilityType = AvailabilityType.scheduled;
+        } else if (typeStr == 'ALWAYS') {
+          availabilityType = AvailabilityType.always;
+        }
       }
-      // Se for 'NEVER' ou outro valor, mantém 'always' como padrão (ou pode criar enum com 'never')
+    } catch (e) {
+      // Ignora erro de parse e mantem default
     }
 
     // ✅ Parse de schedules
     List<ScheduleRule> schedules = [];
-    if (json['schedules'] != null && json['schedules'] is List) {
-      schedules = (json['schedules'] as List<dynamic>)
-          .map((scheduleJson) => ScheduleRule.fromJson(scheduleJson as Map<String, dynamic>))
-          .toList();
+    try {
+      if (json['schedules'] != null && json['schedules'] is List) {
+        schedules = (json['schedules'] as List<dynamic>)
+            .map((scheduleJson) => ScheduleRule.fromJson(scheduleJson as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      // Ignora erro de parse
     }
 
     // ✅ Detecta tipo da categoria
-    CategoryType categoryType = CategoryType.fromString(json['type']);
+    CategoryType categoryType = CategoryType.GENERAL;
+    try {
+      if (json['type'] != null) {
+        categoryType = CategoryType.fromString(json['type'].toString());
+      }
+    } catch (e) {
+      // Mantem general
+    }
     
     // ✅ Se não tiver tipo definido, tenta detectar pelo nome (para compatibilidade com formato antigo)
     if (categoryType == CategoryType.UNKNOWN || categoryType == CategoryType.GENERAL) {
-      final categoryName = (json['name'] ?? '').toLowerCase();
+      final categoryName = (json['name']?.toString() ?? '').toLowerCase();
       // Detecta categorias de pizza pelo nome
       if (categoryName.contains('pizza') || categoryName.contains('pizzas')) {
         categoryType = CategoryType.CUSTOMIZABLE;
       }
     }
 
+    // ✅ Parse de imagem (suporte a image object ou image_path string)
+    ImageModel? imageModel;
+    if (json['image'] != null && json['image'] is Map) {
+      imageModel = ImageModel.fromJson(json['image']);
+    } else if (json['image_path'] != null && json['image_path'].toString().isNotEmpty) {
+      imageModel = ImageModel(url: json['image_path'].toString());
+    }
+
+    // ✅ Parse de productOptionGroups
+    Map<int, List<OptionGroup>>? productOptionGroups;
+    try {
+      if (json['product_option_groups'] != null && json['product_option_groups'] is Map) {
+        productOptionGroups = {};
+        (json['product_option_groups'] as Map).forEach((key, value) {
+            final productId = int.tryParse(key.toString());
+            if (productId != null && value is List) {
+                productOptionGroups![productId] = (value as List)
+                    .map((v) => OptionGroup.fromJson(v))
+                    .toList();
+            }
+        });
+      }
+    } catch (e) {
+      // Ignora erro de parse
+    }
+
     return Category(
-      id: json['id'],
-      name: json['name'] ?? '',
-      description: json['description'],
-      priority: json['priority'] ?? 0,
-      isActive: json['is_active'] ?? true,
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0'),
+      name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
+      priority: json['priority'] is int ? json['priority'] : (int.tryParse(json['priority']?.toString() ?? '0') ?? 0),
+      isActive: json['is_active'] == true || json['is_active'] == 1, // Suporte a bool ou int
       type: categoryType,
-      image: json['image'] != null ? ImageModel.fromJson(json['image']) : null,
+      image: imageModel,
       optionGroups: (json['option_groups'] as List<dynamic>? ?? [])
           .map((groupJson) => OptionGroup.fromJson(groupJson))
           .toList(),
@@ -134,6 +176,7 @@ class Category extends Equatable {
           .toList(),
       availabilityType: availabilityType,
       schedules: schedules,
+      productOptionGroups: productOptionGroups,
     );
   }
 

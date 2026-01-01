@@ -26,7 +26,8 @@ class CustomerRepository {
   CustomerRepository(this._dio) : _secureStorage = const FlutterSecureStorage();
 
   // Método adaptado para receber o User do Firebase
-  Future<Either<String, Customer>> processGoogleSignInCustomer({
+  // ✅ OTIMIZAÇÃO: Retorna LoginResponse com addresses e orders
+  Future<Either<String, LoginResponse>> processGoogleSignInCustomer({
     required User firebaseUser, // Recebe o User diretamente
   }) async {
     try {
@@ -43,11 +44,13 @@ class CustomerRepository {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final customer = Customer.fromJson(response.data);
-        // Salva o cliente localmente
-        getIt<CustomerController>().setCustomer(customer);
+        // ✅ OTIMIZAÇÃO: Usa LoginResponse que inclui addresses e orders
+        final loginResponse = LoginResponse.fromJson(response.data);
         
-        // ✅ CORREÇÃO CRÍTICA: Salva tokens de customer retornados pelo backend
+        // Salva o cliente localmente
+        getIt<CustomerController>().setCustomer(loginResponse.customer);
+        
+        // ✅ Salva tokens de customer retornados pelo backend
         final responseData = response.data as Map<String, dynamic>;
         final customerAccessToken = responseData['access_token'] as String?;
         final customerRefreshToken = responseData['refresh_token'] as String?;
@@ -69,11 +72,12 @@ class CustomerRepository {
           await _secureStorage.write(key: _keyCustomerTokenExpiration, value: customerExpiration.toIso8601String());
           print('   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}');
           print('✅ [CUSTOMER_REPO] Tokens de customer salvos com sucesso (expira em ${expiresIn}s)');
+          print('✅ [CUSTOMER_REPO] Login incluiu ${loginResponse.addresses.length} endereços e ${loginResponse.orders.length} pedidos');
         } else {
           print('⚠️ [CUSTOMER_REPO] Backend não retornou access_token de customer');
         }
         
-        return Right(customer);
+        return Right(loginResponse);
       } else {
         print('Erro na API ao processar cliente Google: ${response.statusCode} - ${response.data}');
         return Left('Erro no servidor: ${response.data['message'] ?? 'Detalhes desconhecidos'}');

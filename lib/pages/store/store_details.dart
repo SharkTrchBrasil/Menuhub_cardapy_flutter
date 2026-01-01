@@ -233,7 +233,7 @@ class _StoreDetailsState extends State<StoreDetails>
                     Text(store.description!,
                         style: const TextStyle(fontSize: 14)),
                   const SizedBox(height: 16),
-                  StoreOpeningHours(hours: store.hours ?? []),
+                  StoreOpeningHours(hours: store.hours ?? [], store: store),
                   PaymentMethodsWidget(paymentGroups: store.paymentMethodGroups),
                   const SizedBox(height: 30),
                   const Text("Endereço",

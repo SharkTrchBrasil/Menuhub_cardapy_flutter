@@ -26,6 +26,7 @@ import '../../../cart/cart_state.dart';
 import '../../../../services/pending_cart_service.dart';
 import '../../../../core/helpers/side_panel.dart';
 import '../../../../pages/signin/signin_page.dart';
+import '../../../../widgets/clear_cart_confirmation.dart';
 import 'dart:math';
 
 // ✅ NOVOS IMPORTS
@@ -551,6 +552,17 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     );
 
     Future<void> updateAndPop() async {
+      // ✅ SEGURANÇA: Verifica se o carrinho tem itens de outra loja
+      final productStoreId = product.product.storeId;
+      final canProceed = await canAddToCart(
+        context: context,
+        productStoreId: productStoreId,
+      );
+      
+      if (!canProceed) {
+        return; // Usuário cancelou, não adiciona
+      }
+      
       await cartCubit.updateItem(payload);
       if (context.mounted) {
         if (context.canPop()) {

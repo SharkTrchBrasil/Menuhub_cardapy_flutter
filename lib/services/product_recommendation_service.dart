@@ -9,8 +9,17 @@ import 'package:totem/models/cart_item.dart';
 /// 
 /// Implementa múltiplos algoritmos de recomendação com fallbacks inteligentes
 /// Funciona mesmo com poucos produtos na loja
+/// 
+/// ✅ ALINHADO COM iFOOD: Recomenda produtos variados, não apenas da mesma categoria
 class ProductRecommendationService {
   /// ✅ ALGORITMO PRINCIPAL: Recomenda produtos usando múltiplos critérios
+  /// 
+  /// Prioridade das recomendações (igual iFood):
+  /// 1. Produtos em PROMOÇÃO (com desconto) - mais visíveis
+  /// 2. Produtos de categorias COMPLEMENTARES (sobremesas, bebidas)
+  /// 3. Produtos POPULARES/em destaque
+  /// 4. Produtos com PREÇO SIMILAR
+  /// 5. Produtos ALEATÓRIOS (variedade)
   static List<Product> getRecommendedProducts({
     required List<Product> allProducts,
     required List<Category> allCategories,
@@ -22,58 +31,50 @@ class ProductRecommendationService {
     final productIdsInCart = itemsInCart.map((item) => item.product.id).toSet();
     
     // ✅ Filtra produtos elegíveis (não estão no carrinho, têm imagem, estão ativos)
-    // ✅ CORREÇÃO: Filtra produtos arquivados e produtos que são apenas linked_products (sabores de pizza)
     final eligibleProducts = allProducts.where((p) {
-      // Verifica se é um produto válido
       if (p.id == null) return false;
-      
-      // Não está no carrinho
       if (productIdsInCart.contains(p.id)) return false;
-      
-      // Tem imagem
       if (p.imageUrl?.isEmpty ?? true) return false;
-      
-      // Está ativo (não arquivado, não pausado)
       if (p.status.name != 'ACTIVE') return false;
-      
-      // ✅ CORREÇÃO: Filtra produtos que são apenas linked_products (sabores de pizza)
-      // Um produto deve ter categoryLinks para aparecer como recomendação
-      // Se não tem categoryLinks, é provavelmente apenas um sabor de pizza
       if (p.categoryLinks.isEmpty) return false;
-      
       return true;
     }).toList();
 
     if (eligibleProducts.isEmpty) return [];
 
-    // ✅ ESTRATÉGIA 1: Produtos da mesma categoria do carrinho (mais relevante)
-    final recommendations = _recommendByCategory(
+    final recommendations = <Product>[];
+
+    // ✅ ESTRATÉGIA 1: Produtos em PROMOÇÃO (mais atrativo - igual iFood)
+    final promoProducts = _recommendByPromotion(
       eligibleProducts: eligibleProducts,
-      itemsInCart: itemsInCart,
-      allCategories: allCategories,
+      currentRecommendations: recommendations,
+      needed: (maxItems * 0.4).ceil(), // 40% das recomendações podem ser promoções
     );
+    recommendations.addAll(promoProducts);
 
-    // ✅ ESTRATÉGIA 2: Se não tem produtos suficientes, adiciona produtos em destaque
+    // ✅ ESTRATÉGIA 2: Produtos de CATEGORIAS COMPLEMENTARES (sobremesas, bebidas, etc)
     if (recommendations.length < maxItems) {
-      final featured = _recommendByFeatured(
+      final complementary = _recommendByComplementaryCategories(
+        eligibleProducts: eligibleProducts,
+        itemsInCart: itemsInCart,
+        allCategories: allCategories,
+        currentRecommendations: recommendations,
+        needed: (maxItems * 0.3).ceil(), // 30% de categorias complementares
+      );
+      recommendations.addAll(complementary);
+    }
+
+    // ✅ ESTRATÉGIA 3: Produtos POPULARES e em destaque
+    if (recommendations.length < maxItems) {
+      final popular = _recommendByPopularAndFeatured(
         eligibleProducts: eligibleProducts,
         currentRecommendations: recommendations,
         needed: maxItems - recommendations.length,
       );
-      recommendations.addAll(featured);
+      recommendations.addAll(popular);
     }
 
-    // ✅ ESTRATÉGIA 3: Se ainda não tem produtos suficientes, adiciona produtos mais vendidos
-    if (recommendations.length < maxItems) {
-      final bestSellers = _recommendByBestSellers(
-        eligibleProducts: eligibleProducts,
-        currentRecommendations: recommendations,
-        needed: maxItems - recommendations.length,
-      );
-      recommendations.addAll(bestSellers);
-    }
-
-    // ✅ ESTRATÉGIA 4: Se ainda não tem produtos suficientes, adiciona produtos por preço similar
+    // ✅ ESTRATÉGIA 4: Produtos com PREÇO SIMILAR aos do carrinho
     if (recommendations.length < maxItems && itemsInCart.isNotEmpty) {
       final similarPrice = _recommendBySimilarPrice(
         eligibleProducts: eligibleProducts,
@@ -84,7 +85,7 @@ class ProductRecommendationService {
       recommendations.addAll(similarPrice);
     }
 
-    // ✅ ESTRATÉGIA 5: Se ainda não tem produtos suficientes, completa com produtos aleatórios
+    // ✅ ESTRATÉGIA 5: Produtos ALEATÓRIOS (última opção - garante variedade)
     if (recommendations.length < maxItems) {
       final random = _recommendByRandom(
         eligibleProducts: eligibleProducts,
@@ -99,38 +100,90 @@ class ProductRecommendationService {
     return shuffled.take(maxItems).toList();
   }
 
-  /// ✅ ESTRATÉGIA 1: Recomenda produtos da mesma categoria dos itens no carrinho
-  static List<Product> _recommendByCategory({
+  /// ✅ ESTRATÉGIA 1: Recomenda produtos em PROMOÇÃO (igual iFood destaca descontos)
+  static List<Product> _recommendByPromotion({
+    required List<Product> eligibleProducts,
+    required List<Product> currentRecommendations,
+    required int needed,
+  }) {
+    if (needed <= 0) return [];
+
+    final currentIds = currentRecommendations.map((p) => p.id).toSet();
+    
+    // Encontra produtos com promoção ativa
+    final promoProducts = eligibleProducts.where((p) {
+      if (currentIds.contains(p.id)) return false;
+      
+      // Verifica se tem promoção em algum categoryLink
+      return p.categoryLinks.any((link) => 
+        link.isOnPromotion && 
+        link.promotionalPrice != null && 
+        link.promotionalPrice! < link.price
+      );
+    }).toList();
+
+    // Ordena por maior desconto percentual
+    promoProducts.sort((a, b) {
+      final aDiscount = _getMaxDiscountPercent(a);
+      final bDiscount = _getMaxDiscountPercent(b);
+      return bDiscount.compareTo(aDiscount); // Maior desconto primeiro
+    });
+
+    return promoProducts.take(needed).toList();
+  }
+
+  /// Calcula o maior desconto percentual de um produto
+  static int _getMaxDiscountPercent(Product product) {
+    int maxDiscount = 0;
+    for (final link in product.categoryLinks) {
+      if (link.isOnPromotion && link.promotionalPrice != null && link.price > 0) {
+        final discount = ((link.price - link.promotionalPrice!) * 100) ~/ link.price;
+        if (discount > maxDiscount) maxDiscount = discount;
+      }
+    }
+    return maxDiscount;
+  }
+
+  /// ✅ ESTRATÉGIA 2: Recomenda produtos de CATEGORIAS COMPLEMENTARES
+  /// Ex: Se tem prato principal no carrinho, recomenda sobremesas, bebidas, acompanhamentos
+  static List<Product> _recommendByComplementaryCategories({
     required List<Product> eligibleProducts,
     required List<CartItem> itemsInCart,
     required List<Category> allCategories,
+    required List<Product> currentRecommendations,
+    required int needed,
   }) {
-    if (itemsInCart.isEmpty) return [];
+    if (needed <= 0) return [];
 
-    // Pega todas as categorias dos produtos no carrinho
+    final currentIds = currentRecommendations.map((p) => p.id).toSet();
+    
+    // Pega categorias dos itens no carrinho
     final categoriesInCart = itemsInCart
         .expand((item) => item.product.categoryLinks.map((link) => link.categoryId))
         .toSet();
 
-    if (categoriesInCart.isEmpty) return [];
-
-    // Encontra produtos das mesmas categorias
-    final sameCategoryProducts = eligibleProducts.where((p) {
-      return p.categoryLinks.any((link) => categoriesInCart.contains(link.categoryId));
+    // Encontra produtos de OUTRAS categorias (complementares)
+    final complementaryProducts = eligibleProducts.where((p) {
+      if (currentIds.contains(p.id)) return false;
+      
+      // Deve ser de uma categoria DIFERENTE das que estão no carrinho
+      final productCategories = p.categoryLinks.map((link) => link.categoryId).toSet();
+      final isFromDifferentCategory = productCategories.intersection(categoriesInCart).isEmpty;
+      
+      return isFromDifferentCategory;
     }).toList();
 
-    // Ordena por relevância (produtos em destaque primeiro, depois por ordem de criação)
-    sameCategoryProducts.sort((a, b) {
-      // Produtos em destaque primeiro
+    // Ordena: produtos em destaque primeiro, depois por vendas
+    complementaryProducts.sort((a, b) {
       if (a.featured != b.featured) return a.featured ? -1 : 1;
-      return 0;
+      return b.soldCount.compareTo(a.soldCount);
     });
 
-    return sameCategoryProducts;
+    return complementaryProducts.take(needed).toList();
   }
 
-  /// ✅ ESTRATÉGIA 2: Recomenda produtos em destaque (featured)
-  static List<Product> _recommendByFeatured({
+  /// ✅ ESTRATÉGIA 3: Recomenda produtos POPULARES e em destaque
+  static List<Product> _recommendByPopularAndFeatured({
     required List<Product> eligibleProducts,
     required List<Product> currentRecommendations,
     required int needed,
@@ -138,35 +191,15 @@ class ProductRecommendationService {
     if (needed <= 0) return [];
 
     final currentIds = currentRecommendations.map((p) => p.id).toSet();
-    final featured = eligibleProducts.where((p) {
-      return p.featured && !currentIds.contains(p.id);
-    }).toList();
+    final popular = eligibleProducts.where((p) => !currentIds.contains(p.id)).toList();
 
-    return featured.take(needed).toList();
-  }
-
-  /// ✅ ESTRATÉGIA 3: Recomenda produtos mais populares (baseado em rating e featured)
-  static List<Product> _recommendByBestSellers({
-    required List<Product> eligibleProducts,
-    required List<Product> currentRecommendations,
-    required int needed,
-  }) {
-    if (needed <= 0) return [];
-
-    final currentIds = currentRecommendations.map((p) => p.id).toSet();
-    final popular = eligibleProducts.where((p) {
-      return !currentIds.contains(p.id);
-    }).toList();
-
-    // ✅ Ordena por popularidade: produtos em destaque primeiro
+    // Ordena por popularidade
     popular.sort((a, b) {
       // 1. Produtos em destaque primeiro
       if (a.featured != b.featured) return a.featured ? -1 : 1;
-      
-      // 2. Ordena por vendas (soldCount) como fallback
+      // 2. Produtos com mais vendas
       if (a.soldCount != b.soldCount) return b.soldCount.compareTo(a.soldCount);
-      
-      return 0; // Mantém ordem original se tudo for igual
+      return 0;
     });
 
     return popular.take(needed).toList();

@@ -88,6 +88,13 @@ class CartProduct extends Equatable {
                     imageUrl: item.image?.url,
                     // ✅ NOVO: Preserva parentCustomizationOptionId para combinações massa + borda
                     parentCustomizationOptionId: item.parentCustomizationOptionId,
+                    // ✅ NOVO: IDs reais de combo Pizza
+                    crustId: item.crustId,
+                    edgeId: item.edgeId,
+                    crustName: item.crustName,
+                    edgeName: item.edgeName,
+                    crustPrice: item.crustPrice,
+                    edgePrice: item.edgePrice,
                     quantity: shouldAutoSelect ? 1 : 0, // ✅ Auto-seleciona
                   );
                 })

@@ -54,6 +54,24 @@ class AddressCubit extends Cubit<AddressState> {
     }
   }
 
+  /// ✅ OTIMIZAÇÃO: Popula endereços diretamente a partir da resposta do login
+  /// Evita chamada HTTP separada para /customer/{id}/addresses
+  void setAddressesFromLogin(List<CustomerAddress> addresses) {
+    CustomerAddress? selected;
+    if (addresses.isNotEmpty) {
+      // Procura primeiro por um endereço marcado como favorito
+      selected = addresses.firstWhereOrNull((addr) => addr.isFavorite);
+      // Se NÃO encontrar nenhum favorito, pega o primeiro da lista
+      selected ??= addresses.first;
+    }
+    
+    emit(state.copyWith(
+      status: AddressStatus.success,
+      addresses: addresses,
+      selectedAddress: selected,
+    ));
+    print('✅ [AddressCubit] ${addresses.length} endereços carregados do login (sem HTTP)');
+  }
 
 
   void selectAddress(CustomerAddress address) {

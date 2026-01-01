@@ -10,6 +10,14 @@ class GarnishItem extends Equatable {
   final String? details; // Descrição detalhada
   final String? logoUrl; // Caminho da imagem (file_key)
   final double unitPrice; // Preço adicional (em reais)
+  
+  // ✅ Metadados ocultos para reconstruir IDs de combos (Pizza)
+  final int? crustId;
+  final int? edgeId;
+  final String? crustName;
+  final String? edgeName;
+  final double? crustPrice; // Em reais
+  final double? edgePrice; // Em reais
 
   const GarnishItem({
     required this.id,
@@ -18,6 +26,12 @@ class GarnishItem extends Equatable {
     this.details,
     this.logoUrl,
     required this.unitPrice,
+    this.crustId,
+    this.edgeId,
+    this.crustName,
+    this.edgeName,
+    this.crustPrice,
+    this.edgePrice,
   });
 
   factory GarnishItem.fromJson(Map<String, dynamic> json) {
@@ -31,6 +45,13 @@ class GarnishItem extends Equatable {
       details: json['details'] as String?,
       logoUrl: json['logoUrl'] as String?,
       unitPrice: unitPrice,
+      // ✅ Lê IDs ocultos enviados pelo backend
+      crustId: json['_crust_id'] as int?,
+      edgeId: json['_edge_id'] as int?,
+      crustName: json['_crust_name'] as String?,
+      edgeName: json['_edge_name'] as String?,
+      crustPrice: (json['_crust_price'] as num?)?.toDouble(),
+      edgePrice: (json['_edge_price'] as num?)?.toDouble(),
     );
   }
 
@@ -42,6 +63,12 @@ class GarnishItem extends Equatable {
       if (details != null) 'details': details,
       if (logoUrl != null) 'logoUrl': logoUrl,
       'unitPrice': unitPrice,
+      if (crustId != null) '_crust_id': crustId,
+      if (edgeId != null) '_edge_id': edgeId,
+      if (crustName != null) '_crust_name': crustName,
+      if (edgeName != null) '_edge_name': edgeName,
+      if (crustPrice != null) '_crust_price': crustPrice,
+      if (edgePrice != null) '_edge_price': edgePrice,
     };
   }
 

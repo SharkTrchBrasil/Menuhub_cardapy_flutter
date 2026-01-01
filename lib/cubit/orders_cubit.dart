@@ -56,6 +56,16 @@ class OrdersCubit extends Cubit<OrdersState> {
     await loadOrders(customerId);
   }
 
+  /// ✅ OTIMIZAÇÃO: Popula pedidos diretamente a partir da resposta do login
+  /// Evita chamada HTTP separada para /customer/{id}/orders
+  void setOrdersFromLogin(List<Order> orders) {
+    emit(state.copyWith(
+      status: OrdersStatus.success,
+      orders: orders,
+    ));
+    print('✅ [OrdersCubit] ${orders.length} pedidos carregados do login (sem HTTP)');
+  }
+
   /// Adiciona um novo pedido à lista (após criar um pedido)
   void addOrder(Order order) {
     final updatedOrders = [order, ...state.orders];

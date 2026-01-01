@@ -4,142 +4,122 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/core/extensions.dart';
 import 'package:totem/themes/ds_theme.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
-import 'package:totem/widgets/ds_primary_button.dart';
-
-import '../../../cubit/auth_cubit.dart';
 
 class AddressBottomBar extends StatelessWidget {
   final double totalPrice;
   final int totalItems;
-  final VoidCallback onContinuePressed;
+  final VoidCallback? onContinuePressed; // ✅ Nullable para desabilitar quando necessário
+  final String? errorMessage; // ✅ Mensagem de erro opcional
 
   const AddressBottomBar({
     super.key,
     required this.totalPrice,
     required this.totalItems,
-    required this.onContinuePressed,
+    this.onContinuePressed,
+    this.errorMessage,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-
+    final bool isDisabled = onContinuePressed == null;
 
     return Wrap(
       children: [
         Container(
-            decoration: BoxDecoration(
-              color: theme.cartBackgroundColor,
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5)),
-              ],
-            ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8),
-            child: Row(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Total com taxa de entrega', style: TextStyle(color: theme.cartTextColor)),
-
-                    const SizedBox(height: 4),
-
-                    // Se houver um desconto geral (cupom), mostra o preço antigo riscado
-                    // if (hasGeneralDiscount)
-                    //   Text(
-                    //     subtotalPrice.toCurrency(), // Mostra o subtotal riscado
-                    //     style: theme.paragraphTextStyle
-                    //         .colored(theme.onBackgroundColor)
-                    //         .copyWith(decoration: TextDecoration.lineThrough),
-                    //   ),
-
-                    // Mostra o preço final (com ou sem desconto)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-
-
-                        // Mostra o ícone se o desconto for por cupom
-                        // if (hasCoupon && hasGeneralDiscount) ...[
-                        //   Icon(Icons.local_offer, size: 18, color: Colors.green),
-                        //   const SizedBox(width: 4),
-                        // ],
-                        Text(
-                          totalPrice.toCurrency(), // Mostra o total final
-                          style: theme.headingTextStyle
-                              .colored(theme.onBackgroundColor)
-                              .weighted(FontWeight.bold),
+          decoration: BoxDecoration(
+            color: theme.cartBackgroundColor,
+            boxShadow: const [
+              BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5)),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ✅ Mostra mensagem de erro se houver
+              if (errorMessage != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Colors.red.shade50,
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Não é possível continuar: endereço fora da área de entrega',
+                          style: TextStyle(
+                            color: Colors.red.shade800,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                  SizedBox(width: 6,),
+                      ),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8),
+                child: Row(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          '${totalItems.toString()} ${totalItems > 1 ? 'itens' : 'item'}',
+                          'Total com taxa de entrega',
                           style: TextStyle(color: theme.cartTextColor),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              totalPrice.toCurrency(),
+                              style: theme.headingTextStyle
+                                  .colored(theme.onBackgroundColor)
+                                  .weighted(FontWeight.bold),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${totalItems.toString()} ${totalItems > 1 ? 'itens' : 'item'}',
+                              style: TextStyle(color: theme.cartTextColor),
+                            ),
+                          ],
                         ),
                       ],
                     ),
+                    const Spacer(),
+                    SizedBox(
+                      width: 160,
+                      child: ElevatedButton(
+                        onPressed: onContinuePressed,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDisabled 
+                              ? Colors.grey.shade400 
+                              : theme.primaryColor,
+                          foregroundColor: theme.onPrimaryColor,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Continuar',
+                          style: theme.bodyTextStyle.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                const Spacer(),
-                SizedBox(
-                  width: 160,
-                  child: DsPrimaryButton(
-                    label: 'Continuar',
-
-                    onPressed: onContinuePressed,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
     );
-
-
-
-
-
-
-
-    // return Container(
-    //   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-    //   decoration: BoxDecoration(
-    //     color: theme.cartBackgroundColor,
-    //     boxShadow: const [
-    //       BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5)),
-    //     ],
-    //   ),
-    //   child: Row(
-    //     children: [
-    //       Column(
-    //         mainAxisSize: MainAxisSize.min,
-    //         crossAxisAlignment: CrossAxisAlignment.start,
-    //         children: [
-    //           Text(
-    //             '${totalItems.toString()} ${totalItems > 1 ? 'itens' : 'item'}',
-    //             style: TextStyle(color: theme.cartTextColor),
-    //           ),
-    //           const SizedBox(height: 4),
-    //           Text(
-    //             totalPrice.toCurrency(),
-    //             style: theme.headingTextStyle.weighted(FontWeight.bold),
-    //           ),
-    //         ],
-    //       ),
-    //       const Spacer(),
-    //       SizedBox(
-    //         width: 160,
-    //         child: DsPrimaryButton(
-    //           label: 'Continuar',
-    //           onPressed: onContinuePressed,
-    //         ),
-    //       ),
-    //     ],
-    //   ),
-    // );
-    //
-    //
-
   }
 }
