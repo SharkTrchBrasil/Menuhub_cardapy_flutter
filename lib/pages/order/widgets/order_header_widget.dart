@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_header_widget.dart
-// ✅ Widget Header do pedido - Estilo iFood
+// ✅ Widget Header do pedido - Estilo Menuhub
 // Logo da loja, nome do cliente, número do pedido, data, link ver cardápio
 
 import 'package:flutter/material.dart';
@@ -40,7 +40,7 @@ class OrderHeaderWidget extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Logo da loja circular com borda amarela (estilo iFood)
+          // Logo da loja circular com borda amarela (estilo Menuhub)
           Container(
             width: 56,
             height: 56,

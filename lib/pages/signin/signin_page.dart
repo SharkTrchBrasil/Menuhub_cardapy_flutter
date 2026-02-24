@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:bot_toast/bot_toast.dart';
 
 import '../../core/responsive_builder.dart';
 import '../../cubit/auth_cubit.dart';
@@ -23,37 +24,42 @@ class OnboardingPage extends StatelessWidget {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
         if (state.status == AuthStatus.success) {
-          print("✅ [OnboardingPage] Estado de SUCESSO detectado. Verificando endereços...");
+          print("✅ [OnboardingPage] Estado de SUCESSO detectado.");
+          BotToast.showText(text: "Login realizado! Verificando endereços...");
           
-          // ✅ NOVO: Verifica se o usuário tem endereço cadastrado
           final customer = state.customer;
           if (customer != null && customer.id != null) {
-            // Carrega os endereços do usuário
-            await context.read<AddressCubit>().loadAddresses(customer.id!);
-            
-            final addressState = context.read<AddressCubit>().state;
-            final hasAddresses = addressState.addresses.isNotEmpty;
-            
-            if (!hasAddresses) {
-              // ✅ Não tem endereço: vai para onboarding de endereço
-              print("📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding");
-              if (context.mounted) {
-                context.go('/address-onboarding');
+            try {
+              // Aguarda os endereços com timeout de 6 segundos
+              print("📍 [OnboardingPage] Aguardando carregamento de endereços...");
+              await context.read<AddressCubit>().loadAddresses(customer.id!)
+                  .timeout(const Duration(seconds: 6));
+              
+              final addressState = context.read<AddressCubit>().state;
+              final hasAddresses = addressState.addresses.isNotEmpty;
+              
+              if (!hasAddresses) {
+                print("📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding");
+                if (context.mounted) {
+                  context.go('/address-onboarding');
+                }
+                return;
               }
-              return;
+            } catch (e) {
+              print("⚠️ [OnboardingPage] Timeout ou erro ao carregar endereços. Seguindo para a Home como fallback.");
+              BotToast.showText(text: "Aviso: Seguindo sem endereços (timeout)");
             }
           }
           
-          // ✅ Tem endereço: continua normalmente
-          print("✅ [OnboardingPage] Usuário tem endereço. Fechando página.");
-          if (context.canPop()) {
-            context.pop(true);
-          } else {
-            print("⚠️ [OnboardingPage] Não foi possível dar pop. Redirecionando para / como fallback.");
+          // ✅ Fluxo normal ou fallback (se tiver endereço ou se deu timeout)
+          if (context.mounted) {
+            print("✅ [OnboardingPage] Finalizando fluxo de login e indo para '/'");
+            // Usamos Go direto para garantir a saída da tela independente da pilha
             context.go('/');
           }
         } else if (state.status == AuthStatus.error) {
-          print("❌ [OnboardingPage] Estado de ERRO detectado. Mostrando SnackBar.");
+          print("❌ [OnboardingPage] Estado de ERRO detectado: ${state.errorMessage}");
+          BotToast.showText(text: "Erro: ${state.errorMessage}", backgroundColor: Colors.red);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.errorMessage ?? 'Ocorreu um erro desconhecido.'),
@@ -71,13 +77,26 @@ class OnboardingPage extends StatelessWidget {
                 : _buildMobileLayout(context),
 
             // Overlay de loading
-            BlocBuilder<AuthCubit, AuthState>(
-              builder: (context, state) {
-                if (state.status == AuthStatus.loading) {
+            Builder(
+              builder: (context) {
+                final authLoading = context.watch<AuthCubit>().state.status == AuthStatus.loading;
+                final addressLoading = context.watch<AddressCubit>().state.status == AddressStatus.loading;
+                
+                if (authLoading || addressLoading) {
                   return Container(
                     color: Colors.black.withOpacity(0.5),
-                    child: const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: Colors.white),
+                          const SizedBox(height: 16),
+                          Text(
+                            addressLoading ? 'Buscando seus endereços...' : 'Autenticando...',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -121,7 +140,7 @@ class OnboardingPage extends StatelessWidget {
     );
   }
 
-  // ✅ NOVO: Layout mobile inspirado no iFood
+  // ✅ NOVO: Layout mobile inspirado no Menuhub
   Widget _buildMobileLayout(BuildContext context) {
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, storeState) {
@@ -235,7 +254,7 @@ class OnboardingPage extends StatelessWidget {
 
                         const SizedBox(height: 28),
 
-                        // ✅ Botão de Google (estilo iFood)
+                        // ✅ Botão de Google (estilo Menuhub)
                         _buildGoogleButton(context),
 
                         const SizedBox(height: 16),
@@ -329,7 +348,7 @@ class OnboardingPage extends StatelessWidget {
     );
   }
 
-  // ✅ Botão de Google estilizado (estilo iFood)
+  // ✅ Botão de Google estilizado (estilo Menuhub)
   Widget _buildGoogleButton(BuildContext context) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
@@ -343,21 +362,26 @@ class OnboardingPage extends StatelessWidget {
         ),
       ),
       onPressed: () {
+        print("🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Mobile)");
         context.read<AuthCubit>().signInWithGoogle();
       },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min, // ✅ Evita ocupar espaço extra
         children: [
           SvgPicture.asset(
             'assets/images/google.svg',
             height: 22,
           ),
           const SizedBox(width: 12),
-          const Text(
-            'Continuar com Google',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+          Flexible( // ✅ Permite que o texto quebre ou diminua se necessário
+            child: Text(
+              'Continuar com Google',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -403,6 +427,7 @@ class OnboardingPage extends StatelessWidget {
                 ),
               ),
               onPressed: () {
+                print("🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Card)");
                 context.read<AuthCubit>().signInWithGoogle();
               },
               child: Row(

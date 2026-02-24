@@ -34,7 +34,7 @@ class MenuAdapter {
     if (parsed != null) {
       return parsed;
     }
-    
+
     // Se não for número, trata como UUID
     final cleanUuid = code.replaceAll('-', '');
     // Usa os primeiros 8 caracteres hexadecimais, mas garante que seja válido
@@ -59,32 +59,16 @@ class MenuAdapter {
 
       // Converte MenuItem para Product
       for (final menuItem in menuCategory.itens) {
-        // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-        // Considera tanto unitPrice quanto unitMinPrice
-        if (menuItem.unitPrice <= 0 && menuItem.unitMinPrice <= 0) {
-          continue; // Pula produtos sem preço
-        }
-        
+        // ✅ EXIBIÇÃO FIEL: O Totem não filtra produtos por preço.
+        // Confiamos na lógica do Back-end que já decide o que deve ou não ser enviado.
+
         final product = _convertMenuItem(menuItem, category);
         products.add(product);
       }
     }
-    
-    // ✅ FILTRO ADICIONAL: Remove categorias que ficaram vazias após filtrar produtos
-    final List<Category> filteredCategories = [];
-    for (final category in categories) {
-      // Verifica se a categoria tem produtos com preço válido
-      final productsInCategory = products.where(
-        (p) => p.categoryLinks.any((link) => link.categoryId == category.id)
-      ).toList();
-      
-      if (productsInCategory.isNotEmpty) {
-        filteredCategories.add(category);
-      }
-    }
 
     return MenuAdapterResult(
-      categories: filteredCategories,
+      categories: categories, // Retorna todas as categorias processadas
       products: products,
     );
   }
@@ -125,12 +109,13 @@ class MenuAdapter {
     // productId -> List<OptionGroup> (choices específicos de cada tamanho)
     final Map<int, List<OptionGroup>> productOptionGroupsMap = {};
     final categoryId = _codeToInt(menuCategory.code);
-    
+
     for (final item in menuCategory.itens) {
       if (item.choices != null && item.choices!.isNotEmpty) {
         final baseItemId = _codeToInt(item.id);
-        final itemProductId = item.linkedProductId ?? baseItemId; // ✅ SIMPLIFICADO
-        
+        final itemProductId =
+            item.linkedProductId ?? baseItemId; // ✅ SIMPLIFICADO
+
         // Processa os choices deste item específico
         final List<OptionGroup> itemOptionGroups = [];
         for (final choice in item.choices!) {
@@ -138,7 +123,7 @@ class MenuAdapter {
           final optionGroup = _convertMenuChoice(choice, null);
           itemOptionGroups.add(optionGroup);
         }
-        
+
         if (itemOptionGroups.isNotEmpty) {
           productOptionGroupsMap[itemProductId] = itemOptionGroups;
         }
@@ -148,17 +133,21 @@ class MenuAdapter {
     // ✅ Para categorias CUSTOMIZABLE, cria grupo de tamanhos a partir dos MenuItems
     // Para outras categorias, mantém a lógica antiga
     final List<OptionGroup> optionGroups = [];
-    if (categoryType == CategoryType.CUSTOMIZABLE && menuCategory.itens.isNotEmpty) {
+    if (categoryType == CategoryType.CUSTOMIZABLE &&
+        menuCategory.itens.isNotEmpty) {
       // ✅ NOVO: Cria grupo de tamanhos a partir dos MenuItems (cada MenuItem é um tamanho)
       final List<OptionItem> sizeItems = [];
       for (final item in menuCategory.itens) {
         final baseItemId = _codeToInt(item.id);
-        final itemProductId = item.linkedProductId ?? baseItemId; // ✅ SIMPLIFICADO
-        
+        final itemProductId =
+            item.linkedProductId ?? baseItemId; // ✅ SIMPLIFICADO
+
         // Extrai informações do tamanho
-        final sizeNameMatch = RegExp(r'^([A-ZÁÉÍÓÚÇ]+)').firstMatch(item.description);
+        final sizeNameMatch = RegExp(
+          r'^([A-ZÁÉÍÓÚÇ]+)',
+        ).firstMatch(item.description);
         final sizeName = sizeNameMatch?.group(1) ?? item.description;
-        
+
         // Extrai maxFlavors
         int? maxFlavors;
         if (item.productInfo != null) {
@@ -171,47 +160,56 @@ class MenuAdapter {
             maxFlavors = int.tryParse(match.group(1)!);
           }
         }
-        
+
         // Extrai slices
         int? slices;
-        final slicesMatch = RegExp(r'(\d+)\s*PEDAÇOS?', caseSensitive: false).firstMatch(item.description);
+        final slicesMatch = RegExp(
+          r'(\d+)\s*PEDAÇOS?',
+          caseSensitive: false,
+        ).firstMatch(item.description);
         if (slicesMatch != null) {
           slices = int.tryParse(slicesMatch.group(1)!);
         }
-        
+
         // Converte logoUrl para ImageModel
         ImageModel? image;
         if (item.logoUrl != null && item.logoUrl!.isNotEmpty) {
           image = ImageModel(url: item.logoUrl!);
         }
-        
-        sizeItems.add(OptionItem(
-          id: item.linkedProductId ?? baseItemId, // ✅ Usa linkedProductId se disponível, senão baseItemId
-          name: item.description, // Nome completo do tamanho
-          description: item.details,
-          price: (item.unitMinPrice * 100).round(), // Preço em centavos
-          isActive: true,
-          image: image,
-          maxFlavors: maxFlavors,
-          slices: slices,
-          linkedProductId: item.linkedProductId, // ✅ VITAL: ID do produto real no banco
-        ));
-        
+
+        sizeItems.add(
+          OptionItem(
+            id:
+                item.linkedProductId ??
+                baseItemId, // ✅ Usa linkedProductId se disponível, senão baseItemId
+            name: item.description, // Nome completo do tamanho
+            description: item.details,
+            price: (item.unitMinPrice * 100).round(), // Preço em centavos
+            isActive: true,
+            image: image,
+            maxFlavors: maxFlavors,
+            slices: slices,
+            linkedProductId:
+                item.linkedProductId, // ✅ VITAL: ID do produto real no banco
+          ),
+        );
       }
-      
+
       if (sizeItems.isNotEmpty) {
-        optionGroups.add(OptionGroup(
-          id: 1, // ID fixo para grupo de tamanhos
-          name: 'Tamanho',
-          groupType: OptionGroupType.size,
-          minSelection: 1,
-          maxSelection: 1,
-          items: sizeItems,
-          displayOrder: 0,
-          isActive: true,
-        ));
+        optionGroups.add(
+          OptionGroup(
+            id: 1, // ID fixo para grupo de tamanhos
+            name: 'Tamanho',
+            groupType: OptionGroupType.size,
+            minSelection: 1,
+            maxSelection: 1,
+            items: sizeItems,
+            displayOrder: 0,
+            isActive: true,
+          ),
+        );
       }
-      
+
       // Adiciona outros grupos de opções do primeiro item (sabores, massa, borda, etc.)
       final firstItem = menuCategory.itens.first;
       if (firstItem.choices != null && firstItem.choices!.isNotEmpty) {
@@ -224,7 +222,8 @@ class MenuAdapter {
           }
         }
       }
-    } else if (menuCategory.itens.isNotEmpty && menuCategory.itens.first.choices != null) {
+    } else if (menuCategory.itens.isNotEmpty &&
+        menuCategory.itens.first.choices != null) {
       // Para categorias normais, mantém a lógica antiga
       for (final choice in menuCategory.itens.first.choices!) {
         final optionGroup = _convertMenuChoice(choice, null);
@@ -233,10 +232,8 @@ class MenuAdapter {
     }
 
     // Converte itens para productLinks (simplificado)
-    final List<ProductCategoryLink> productLinks = menuCategory.itens
-        .asMap()
-        .entries
-        .map<ProductCategoryLink>((entry) {
+    final List<ProductCategoryLink> productLinks =
+        menuCategory.itens.asMap().entries.map<ProductCategoryLink>((entry) {
           final index = entry.key;
           final item = entry.value;
           // ✅ SIMPLIFICADO: Usa linkedProductId se disponível
@@ -253,8 +250,7 @@ class MenuAdapter {
             availabilityType: AvailabilityType.always,
             schedules: const [],
           );
-        })
-        .toList();
+        }).toList();
 
     return Category(
       id: categoryId,
@@ -264,11 +260,15 @@ class MenuAdapter {
       isActive: true,
       type: categoryType,
       image: null,
-      optionGroups: optionGroups, // ✅ Preenchido com os choices dos itens (referência)
+      optionGroups:
+          optionGroups, // ✅ Preenchido com os choices dos itens (referência)
       productLinks: productLinks,
       availabilityType: AvailabilityType.always,
       schedules: [],
-      productOptionGroups: productOptionGroupsMap.isNotEmpty ? productOptionGroupsMap : null, // ✅ Choices específicos de cada tamanho
+      productOptionGroups:
+          productOptionGroupsMap.isNotEmpty
+              ? productOptionGroupsMap
+              : null, // ✅ Choices específicos de cada tamanho
     );
   }
 
@@ -280,9 +280,14 @@ class MenuAdapter {
     final ProductType productType = ProductType.INDIVIDUAL;
 
     // Converte preço de reais para centavos
-    final int? priceInCents = menuItem.unitPrice > 0
-        ? (menuItem.unitPrice * 100).round()
-        : null;
+    // ✅ CORREÇÃO: Usa unitMinPrice se unitPrice for 0 (caso das pizzas)
+    double effectivePrice = menuItem.unitPrice;
+    if (effectivePrice <= 0 && menuItem.unitMinPrice > 0) {
+      effectivePrice = menuItem.unitMinPrice;
+    }
+
+    final int? priceInCents =
+        effectivePrice > 0 ? (effectivePrice * 100).round() : null;
 
     // Converte logoUrl para ImageModel
     final List<ImageModel> images = [];
@@ -314,7 +319,8 @@ class MenuAdapter {
     // Para pizzas, o backend JÁ cria o Product e envia linkedProductId
     // Não há necessidade de criar IDs virtuais no frontend
     final baseId = _codeToInt(menuItem.id);
-    final categoryId = category.id ?? 0;  // ✅ Necessário para primaryCategoryId e categoryLinks
+    final categoryId =
+        category.id ?? 0; // ✅ Necessário para primaryCategoryId e categoryLinks
     final productId = menuItem.linkedProductId ?? baseId;
 
     return Product(
@@ -341,8 +347,9 @@ class MenuAdapter {
       isOnPromotion: false,
       promotionalPrice: null,
       primaryCategoryId: categoryId,
-      hasMultiplePrices: menuItem.unitPrice != menuItem.unitMinPrice || 
-                         (menuItem.choices != null && menuItem.choices!.isNotEmpty),
+      hasMultiplePrices:
+          menuItem.unitPrice != menuItem.unitMinPrice ||
+          (menuItem.choices != null && menuItem.choices!.isNotEmpty),
       // ✅ CORREÇÃO BUG #1: Converte choices para variantLinks (complementos)
       variantLinks: _convertChoicesToVariantLinks(menuItem.choices),
       categoryLinks: [
@@ -358,7 +365,8 @@ class MenuAdapter {
           schedules: const [],
         ),
       ],
-      prices: [], // Preços por tamanho serão calculados dos choices se necessário
+      prices:
+          [], // Preços por tamanho serão calculados dos choices se necessário
       images: images,
       videoUrl: null,
       availabilityType: AvailabilityType.always,
@@ -377,7 +385,11 @@ class MenuAdapter {
       canEdit: true,
       violationCheckState: null,
       sellingRank: 0,
-      promotionTags: menuItem.productTags?.map((tag) => '${tag.group}:${tag.tags.join(",")}').toList() ?? [],
+      promotionTags:
+          menuItem.productTags
+              ?.map((tag) => '${tag.group}:${tag.tags.join(",")}')
+              .toList() ??
+          [],
       classification: [],
       cashbackType: null,
       cashbackValue: 0,
@@ -391,20 +403,22 @@ class MenuAdapter {
   static OptionGroup _convertMenuChoice(MenuChoice choice, int? maxFlavors) {
     // Determina o tipo do grupo baseado no código e nome
     OptionGroupType groupType = OptionGroupType.generic;
-    
+
     // Detecta sabores (SABOR, SABOR2, SABOR3, SABOR4, SBR)
     if (choice.code.startsWith('SABOR') || choice.code == 'SBR') {
       groupType = OptionGroupType.topping;
-    } 
+    }
     // Detecta preferências (massa + borda)
-    else if (choice.name.toLowerCase().contains('preferência') || 
-             choice.name.toLowerCase().contains('preferencia')) {
+    else if (choice.name.toLowerCase().contains('preferência') ||
+        choice.name.toLowerCase().contains('preferencia')) {
       // Verifica se contém massa e borda juntos
-      final hasMassa = choice.garnishItens.any((g) => 
-        g.description.toLowerCase().contains('massa'));
-      final hasBorda = choice.garnishItens.any((g) => 
-        g.description.toLowerCase().contains('borda'));
-      
+      final hasMassa = choice.garnishItens.any(
+        (g) => g.description.toLowerCase().contains('massa'),
+      );
+      final hasBorda = choice.garnishItens.any(
+        (g) => g.description.toLowerCase().contains('borda'),
+      );
+
       if (hasMassa && hasBorda) {
         // É um grupo combinado de massa+borda
         // Por enquanto mantém como generic, mas pode ser separado depois
@@ -422,11 +436,16 @@ class MenuAdapter {
 
     // Converte garnishItens para OptionItem
     // ✅ CORREÇÃO: Para sabores (TOPPING), divide preço pelo maxFlavors se > 1
-    final List<OptionItem> items = choice.garnishItens
-        .map((garnish) => _convertGarnishItem(garnish, 
-            isTopping: groupType == OptionGroupType.topping,
-            maxFlavors: maxFlavors))
-        .toList();
+    final List<OptionItem> items =
+        choice.garnishItens
+            .map(
+              (garnish) => _convertGarnishItem(
+                garnish,
+                isTopping: groupType == OptionGroupType.topping,
+                maxFlavors: maxFlavors,
+              ),
+            )
+            .toList();
 
     return OptionGroup(
       id: _codeToInt(choice.code),
@@ -479,19 +498,25 @@ class MenuAdapter {
       edgeId: garnish.edgeId,
       crustName: garnish.crustName,
       edgeName: garnish.edgeName,
-      crustPrice: garnish.crustPrice != null ? (garnish.crustPrice! * 100).round() : null,
-      edgePrice: garnish.edgePrice != null ? (garnish.edgePrice! * 100).round() : null,
+      crustPrice:
+          garnish.crustPrice != null
+              ? (garnish.crustPrice! * 100).round()
+              : null,
+      edgePrice:
+          garnish.edgePrice != null ? (garnish.edgePrice! * 100).round() : null,
     );
   }
-  
+
   /// ✅ CORREÇÃO BUG #1: Converte lista de MenuChoice para ProductVariantLink
   /// Isso garante que produtos normais tenham seus complementos disponíveis
-  static List<ProductVariantLink> _convertChoicesToVariantLinks(List<MenuChoice>? choices) {
+  static List<ProductVariantLink> _convertChoicesToVariantLinks(
+    List<MenuChoice>? choices,
+  ) {
     if (choices == null || choices.isEmpty) return [];
-    
+
     final List<ProductVariantLink> variantLinks = [];
     int displayOrder = 0;
-    
+
     for (final choice in choices) {
       // Determina o modo de exibição baseado em min/max
       UIDisplayMode displayMode;
@@ -502,28 +527,30 @@ class MenuAdapter {
       } else {
         displayMode = UIDisplayMode.QUANTITY;
       }
-      
+
       // Converte garnishItens para VariantOptions
       final List<VariantOption> options = [];
       for (final garnish in choice.garnishItens) {
         final priceInCents = (garnish.unitPrice * 100).round();
-        
-        options.add(VariantOption(
-          id: _codeToInt(garnish.id),
-          variantId: _codeToInt(choice.code),
-          resolvedName: garnish.description,
-          resolvedPrice: priceInCents,
-          available: true,
-          trackInventory: false,
-          stockQuantity: 0,
-          isActuallyAvailable: true,
-          description: garnish.details,
-          imagePath: garnish.logoUrl,
-        ));
+
+        options.add(
+          VariantOption(
+            id: _codeToInt(garnish.id),
+            variantId: _codeToInt(choice.code),
+            resolvedName: garnish.description,
+            resolvedPrice: priceInCents,
+            available: true,
+            trackInventory: false,
+            stockQuantity: 0,
+            isActuallyAvailable: true,
+            description: garnish.details,
+            imagePath: garnish.logoUrl,
+          ),
+        );
       }
-      
+
       if (options.isEmpty) continue;
-      
+
       // Cria Variant
       final variant = Variant(
         id: _codeToInt(choice.code),
@@ -531,19 +558,21 @@ class MenuAdapter {
         type: VariantType.SPECIFICATIONS,
         options: options,
       );
-      
+
       // Cria ProductVariantLink
-      variantLinks.add(ProductVariantLink(
-        uiDisplayMode: displayMode,
-        minSelectedOptions: choice.min,
-        maxSelectedOptions: choice.max,
-        maxTotalQuantity: null,
-        variant: variant,
-        available: true,
-        displayOrder: displayOrder++,
-      ));
+      variantLinks.add(
+        ProductVariantLink(
+          uiDisplayMode: displayMode,
+          minSelectedOptions: choice.min,
+          maxSelectedOptions: choice.max,
+          maxTotalQuantity: null,
+          variant: variant,
+          available: true,
+          displayOrder: displayOrder++,
+        ),
+      );
     }
-    
+
     return variantLinks;
   }
 }
@@ -553,9 +582,5 @@ class MenuAdapterResult {
   final List<Category> categories;
   final List<Product> products;
 
-  const MenuAdapterResult({
-    required this.categories,
-    required this.products,
-  });
+  const MenuAdapterResult({required this.categories, required this.products});
 }
-

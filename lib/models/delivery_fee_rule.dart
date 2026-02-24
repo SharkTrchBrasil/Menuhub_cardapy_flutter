@@ -6,7 +6,8 @@ class DeliveryFeeRule {
   final String ruleType; // 'per_km', 'radius'
   final int priority;
   final bool isActive;
-  final double? freeDeliveryThreshold; // ✅ NOVO: Valor mínimo para frete grátis (em reais)
+  final double?
+  freeDeliveryThreshold; // ✅ NOVO: Valor mínimo para frete grátis (em reais)
   final int? estimatedMinMinutes; // ✅ NOVO: Tempo mínimo de entrega
   final int? estimatedMaxMinutes; // ✅ NOVO: Tempo máximo de entrega
   final double? minOrder; // ✅ NOVO: Valor mínimo do pedido (em reais)
@@ -31,21 +32,27 @@ class DeliveryFeeRule {
   });
 
   factory DeliveryFeeRule.fromJson(Map<String, dynamic> json) {
+    // Helper para converter MoneyAmount (mapa) ou num direto para double (valor em reais)
+    double? parseMoney(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble() / 100.0;
+      if (value is Map && value.containsKey('value')) {
+        return (value['value'] as num).toDouble() / 100.0;
+      }
+      return null;
+    }
+
     return DeliveryFeeRule(
       id: json['id'] as int?,
       storeId: json['store_id'] as int,
-      deliveryMethod: json['delivery_method'] as String? ?? 'delivery', // ✅ NOVO
+      deliveryMethod: json['delivery_method'] as String? ?? 'delivery',
       ruleType: json['rule_type'] as String,
       priority: json['priority'] as int,
       isActive: json['is_active'] as bool,
-      freeDeliveryThreshold: json['free_delivery_threshold'] != null 
-          ? (json['free_delivery_threshold'] as num).toDouble() / 100.0 // ✅ NOVO: Converte centavos para reais
-          : null,
-      estimatedMinMinutes: json['estimated_min_minutes'] as int?, // ✅ NOVO
-      estimatedMaxMinutes: json['estimated_max_minutes'] as int?, // ✅ NOVO
-      minOrder: json['min_order'] != null 
-          ? (json['min_order'] as num).toDouble() / 100.0 // ✅ NOVO: Converte centavos para reais
-          : null,
+      freeDeliveryThreshold: parseMoney(json['free_delivery_threshold']),
+      estimatedMinMinutes: json['estimated_min_minutes'] as int?,
+      estimatedMaxMinutes: json['estimated_max_minutes'] as int?,
+      minOrder: parseMoney(json['min_order']),
       config: Map<String, dynamic>.from(json['config'] as Map? ?? {}),
       createdAt: json['created_at'] as String?,
       updatedAt: json['updated_at'] as String?,
@@ -60,12 +67,17 @@ class DeliveryFeeRule {
       'rule_type': ruleType,
       'priority': priority,
       'is_active': isActive,
-      if (freeDeliveryThreshold != null) 
-        'free_delivery_threshold': (freeDeliveryThreshold! * 100).toInt(), // ✅ NOVO: Converte reais para centavos
-      if (estimatedMinMinutes != null) 'estimated_min_minutes': estimatedMinMinutes, // ✅ NOVO
-      if (estimatedMaxMinutes != null) 'estimated_max_minutes': estimatedMaxMinutes, // ✅ NOVO
-      if (minOrder != null) 
-        'min_order': (minOrder! * 100).toInt(), // ✅ NOVO: Converte reais para centavos
+      if (freeDeliveryThreshold != null)
+        'free_delivery_threshold':
+            (freeDeliveryThreshold! * 100)
+                .toInt(), // ✅ NOVO: Converte reais para centavos
+      if (estimatedMinMinutes != null)
+        'estimated_min_minutes': estimatedMinMinutes, // ✅ NOVO
+      if (estimatedMaxMinutes != null)
+        'estimated_max_minutes': estimatedMaxMinutes, // ✅ NOVO
+      if (minOrder != null)
+        'min_order':
+            (minOrder! * 100).toInt(), // ✅ NOVO: Converte reais para centavos
       'config': config,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -94,9 +106,12 @@ class DeliveryFeeRule {
       ruleType: ruleType ?? this.ruleType,
       priority: priority ?? this.priority,
       isActive: isActive ?? this.isActive,
-      freeDeliveryThreshold: freeDeliveryThreshold ?? this.freeDeliveryThreshold, // ✅ NOVO
-      estimatedMinMinutes: estimatedMinMinutes ?? this.estimatedMinMinutes, // ✅ NOVO
-      estimatedMaxMinutes: estimatedMaxMinutes ?? this.estimatedMaxMinutes, // ✅ NOVO
+      freeDeliveryThreshold:
+          freeDeliveryThreshold ?? this.freeDeliveryThreshold, // ✅ NOVO
+      estimatedMinMinutes:
+          estimatedMinMinutes ?? this.estimatedMinMinutes, // ✅ NOVO
+      estimatedMaxMinutes:
+          estimatedMaxMinutes ?? this.estimatedMaxMinutes, // ✅ NOVO
       minOrder: minOrder ?? this.minOrder, // ✅ NOVO
       config: config ?? this.config,
       createdAt: createdAt ?? this.createdAt,
@@ -104,4 +119,3 @@ class DeliveryFeeRule {
     );
   }
 }
-

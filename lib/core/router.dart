@@ -27,6 +27,7 @@ import '../pages/checkout/desktop_checkout_page.dart';
 import '../pages/coupon/coupon_page.dart';
 import '../pages/not_found/error_505_Page.dart';
 import '../pages/order/order_confirmation_page.dart';
+import '../pages/order/order_tracking_page.dart';
 import '../pages/product/product_page_adaptive.dart';
 import '../pages/product/product_page_cubit.dart';
 import '../pages/signin/signin_page.dart';
@@ -34,7 +35,8 @@ import '../pages/store/store_details.dart';
 import '../pages/profile/profile_screem.dart';
 import '../pages/profile/edit_profile_page.dart';
 import '../pages/orders/order_history_page.dart';
-import '../pages/orders/order_detail_page.dart';
+import '../pages/order/order_details_page.dart';
+import '../pages/order/order_evaluation_page.dart';
 import '../pages/orders/order_review_page.dart';
 import '../pages/auth/email_auth_page.dart';
 import '../pages/auth/reset_password_page.dart';
@@ -105,10 +107,191 @@ GoRouter createGoRouter() {
           );
         },
         routes: [
+          // ✅ ROTAS PRINCIPAIS (nível superior para URLs funcionarem no navegador)
+          // Essas rotas são navegáveis diretamente e aparecem na barra de endereço
+          
+          // 🛒 CARRINHO - /cart
+          GoRoute(
+            path: '/cart',
+            pageBuilder: (context, state) {
+              final isMobile = MediaQuery.of(context).size.width < 768;
+              final page = const CartPage();
+              
+              if (isMobile) {
+                // ✅ Mobile: Slide-up animation (vindo de baixo)
+                return CustomTransitionPage(
+                  key: state.pageKey,
+                  child: page,
+                  opaque: true, // Página completa, não overlay
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    final offsetAnimation = Tween<Offset>(
+                      begin: const Offset(0, 1), // Começa de baixo
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ));
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                  transitionDuration: const Duration(milliseconds: 300),
+                );
+              } else {
+                // Desktop: usa wrapper com navegação
+                return MaterialPage(
+                  child: DesktopPageWrapper(child: page),
+                );
+              }
+            },
+          ),
+          
+          // 🛒 CARRINHO ABANDONADO (deep link) - /cart/:cartId
+          GoRoute(
+            path: '/cart/:cartId',
+            redirect: (context, state) async {
+              final token = state.uri.queryParameters['token'];
+              final cartIdStr = state.pathParameters['cartId'];
+              
+              if (token != null && cartIdStr != null) {
+                final cartId = int.tryParse(cartIdStr);
+                if (cartId != null) {
+                  await _validateAndOpenCart(context, cartId, token);
+                  return '/cart';
+                }
+              }
+              return '/';
+            },
+          ),
+          
+          // 📍 SELEÇÃO DE ENDEREÇO - /address  
+          GoRoute(
+            path: '/address',
+            pageBuilder: (context, state) {
+              final isMobile = MediaQuery.of(context).size.width < 768;
+              final page = const AddressPage();
+              
+              if (isMobile) {
+                // ✅ Mobile: Slide-up animation
+                return CustomTransitionPage(
+                  key: state.pageKey,
+                  child: page,
+                  opaque: true,
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    final offsetAnimation = Tween<Offset>(
+                      begin: const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ));
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                  transitionDuration: const Duration(milliseconds: 300),
+                );
+              } else {
+                return MaterialPage(child: DesktopPageWrapper(child: page));
+              }
+            },
+          ),
+          
+          // 📍 SELEÇÃO DE ENDEREÇO (gerenciamento) - /select-address
+          GoRoute(
+            path: '/select-address',
+            pageBuilder: (context, state) {
+              final isManagement = state.extra as bool? ?? false;
+              final isMobile = MediaQuery.of(context).size.width < 768;
+              final page = AddressSelectionPage(isManagement: isManagement);
+              
+              if (isMobile) {
+                return CustomTransitionPage(
+                  key: state.pageKey,
+                  child: page,
+                  opaque: true,
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    final offsetAnimation = Tween<Offset>(
+                      begin: const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ));
+                    return SlideTransition(position: offsetAnimation, child: child);
+                  },
+                  transitionDuration: const Duration(milliseconds: 300),
+                );
+              } else {
+                return MaterialPage(child: DesktopPageWrapper(child: page));
+              }
+            },
+          ),
+          
+          // 💳 CHECKOUT - /checkout
+          GoRoute(
+            path: '/checkout',
+            pageBuilder: (context, state) {
+              final isDesktop = MediaQuery.of(context).size.width >= 768;
+              
+              if (isDesktop) {
+                return MaterialPage(
+                  child: DesktopPageWrapper(child: const DesktopCheckoutPage()),
+                );
+              }
+              
+              // ✅ Mobile: Slide-up animation
+              return CustomTransitionPage(
+                key: state.pageKey,
+                child: const CheckoutPage(),
+                opaque: true,
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  final offsetAnimation = Tween<Offset>(
+                    begin: const Offset(0, 1),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ));
+                  return SlideTransition(position: offsetAnimation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              );
+            },
+          ),
+          
+          // ⏳ SUBMISSÃO DE PEDIDO (animação) - /order/submitting
+          GoRoute(
+            path: '/order/submitting',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              final checkoutCubit = extra?['checkoutCubit'] as CheckoutCubit?;
+              
+              if (checkoutCubit != null) {
+                return BlocProvider.value(
+                  value: checkoutCubit,
+                  child: const OrderSubmissionPage(),
+                );
+              }
+              
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (context.mounted) context.go('/checkout');
+              });
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            },
+          ),
+          
+          // ✅ SUCESSO - /success (simplificado de /order/success)
+          GoRoute(
+            path: '/success',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              final order = extra?['order'] as Order?;
+              final paymentMethod = extra?['paymentMethod'] as PlatformPaymentMethod?;
+              return OrderConfirmationPage(order: order, paymentMethod: paymentMethod);
+            },
+          ),
+          
+          // 🏠 HOME - /
           GoRoute(
             path: '/',
             builder: (context, state) {
-              // Mobile usa tabs, Desktop usa rotas
               final isMobile = MediaQuery.of(context).size.width < 768;
               if (isMobile) {
                 return const MainTabPage();
@@ -117,113 +300,7 @@ GoRouter createGoRouter() {
               }
             },
             routes: [
-              GoRoute(
-                path: 'cart',
-                pageBuilder: (context, state) {
-                  final isMobile = MediaQuery.of(context).size.width < 768;
-                  final page = const CartPage();
-                  
-                  if (isMobile) {
-                    return CustomTransitionPage(
-                      child: page,
-                      opaque: false,
-                      barrierDismissible: true,
-                      barrierColor: Colors.black45,
-                      transitionsBuilder: (_, animation, __, child) =>
-                          FadeTransition(opacity: animation, child: child),
-                    );
-                  } else {
-                    // Desktop: usa wrapper com navegação
-                    return MaterialPage(
-                      child: DesktopPageWrapper(child: page),
-                    );
-                  }
-                },
-              ),
-              // ✅ NOVO: Rota para deep link de carrinho abandonado (menuhub://cart/{cartId}?token={token})
-              GoRoute(
-                path: 'cart/:cartId',
-                redirect: (context, state) async {
-                  final token = state.uri.queryParameters['token'];
-                  final cartIdStr = state.pathParameters['cartId'];
-                  
-                  if (token != null && cartIdStr != null) {
-                    // Valida token e redireciona para o carrinho
-                    final cartId = int.tryParse(cartIdStr);
-                    if (cartId != null) {
-                      await _validateAndOpenCart(context, cartId, token);
-                      return '/cart'; // Redireciona para o carrinho normal
-                    }
-                  }
-                  
-                  // Sem token, redireciona para home
-                  return '/';
-                },
-              ),
-              GoRoute(
-                path: 'checkout',
-                pageBuilder: (context, state) {
-                  final isDesktop = MediaQuery.of(context).size.width >= 768;
-                  
-                  // ✅ Desktop: usa checkout unificado com duas colunas
-                  if (isDesktop) {
-                    return MaterialPage(
-                      child: DesktopPageWrapper(child: const DesktopCheckoutPage()),
-                    );
-                  }
-                  
-                  // Mobile: mantém fluxo original
-                  return CustomTransitionPage(
-                    child: const CheckoutPage(),
-                    opaque: false,
-                    barrierDismissible: true,
-                    barrierColor: Colors.black45,
-                    transitionsBuilder: (_, animation, __, child) =>
-                        FadeTransition(opacity: animation, child: child),
-                  );
-                },
-              ),
-              // ✅ NOVO: Página de animação ao enviar pedido
-              GoRoute(
-                path: 'order/submitting',
-                builder: (context, state) {
-                  // ✅ CORREÇÃO: Recebe o CheckoutCubit via extra para manter o escopo
-                  final extra = state.extra as Map<String, dynamic>?;
-                  final checkoutCubit = extra?['checkoutCubit'] as CheckoutCubit?;
-                  
-                  if (checkoutCubit != null) {
-                    return BlocProvider.value(
-                      value: checkoutCubit,
-                      child: const OrderSubmissionPage(),
-                    );
-                  }
-                  
-                  // Fallback: Se não recebeu o cubit, volta para checkout
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
-                      context.go('/checkout');
-                    }
-                  });
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                },
-              ),
-              GoRoute(
-                path: 'address',
-                pageBuilder: (context, state) => CustomTransitionPage(
-                  child: const AddressPage(),
-                  opaque: false,
-                  barrierDismissible: true,
-                  barrierColor: Colors.black45,
-                  transitionsBuilder: (_, animation, __, child) =>
-                      FadeTransition(opacity: animation, child: child),
-                ),
-              ),
-              GoRoute(
-                path: 'select-address',
-                builder: (context, state) => const AddressSelectionPage(),
-              ),
+              // Subrotas que ainda fazem sentido estar aninhadas na home
               GoRoute(
                 path: 'add-coupon',
                 pageBuilder: (context, __) => CustomTransitionPage(
@@ -499,8 +576,30 @@ GoRouter createGoRouter() {
                     );
                   }
                   
-                  return OrderDetailPage(order: order);
+                  return OrderTrackingPage(order: order);
                 },
+                routes: [
+                  GoRoute(
+                    path: 'summary',
+                    builder: (context, state) {
+                      final order = state.extra as Order?;
+                      if (order == null) return const SizedBox();
+                      return OrderDetailsPage(
+                        order: order,
+                        showActions: false,
+                        showRating: false,
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'evaluate',
+                    builder: (context, state) {
+                      final order = state.extra as Order?;
+                      if (order == null) return const SizedBox();
+                      return OrderEvaluationPage(order: order);
+                    },
+                  ),
+                ],
               ),
               GoRoute(
                 path: 'orders/:publicId/review',

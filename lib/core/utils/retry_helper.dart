@@ -54,7 +54,7 @@ class RetryConfig {
     maxAttempts: 3,
     initialDelayMs: 1000,
     backoffMultiplier: 2.0,
-    maxDelayMs = 10000,
+    maxDelayMs: 10000,
     addJitter: true,
   );
 
@@ -63,7 +63,7 @@ class RetryConfig {
     maxAttempts: 5,
     initialDelayMs: 500,
     backoffMultiplier: 1.5,
-    maxDelayMs = 15000,
+    maxDelayMs: 15000,
     addJitter: true,
   );
 }
@@ -85,14 +85,14 @@ class RetryResult<T> {
   });
 
   factory RetryResult.success(T value, int attempts) {
-    return RetryResult._(
-      value: value,
-      attempts: attempts,
-      success: true,
-    );
+    return RetryResult._(value: value, attempts: attempts, success: true);
   }
 
-  factory RetryResult.failure(Object error, StackTrace stackTrace, int attempts) {
+  factory RetryResult.failure(
+    Object error,
+    StackTrace stackTrace,
+    int attempts,
+  ) {
     return RetryResult._(
       error: error,
       stackTrace: stackTrace,
@@ -144,7 +144,8 @@ class RetryHelper {
         }
 
         // Calcula delay com backoff exponencial
-        final baseDelay = config.initialDelayMs *
+        final baseDelay =
+            config.initialDelayMs *
             pow(config.backoffMultiplier, attempt - 1).toInt();
         var delay = min(baseDelay, config.maxDelayMs);
 
@@ -205,7 +206,8 @@ class RetryHelper {
         }
 
         // Calcula delay
-        final baseDelay = config.initialDelayMs *
+        final baseDelay =
+            config.initialDelayMs *
             pow(config.backoffMultiplier, attempt - 1).toInt();
         var delay = min(baseDelay, config.maxDelayMs);
 
@@ -257,4 +259,3 @@ extension RetryFutureExtension<T> on Future<T> {
     );
   }
 }
-

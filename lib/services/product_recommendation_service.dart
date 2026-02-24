@@ -14,7 +14,7 @@ import 'package:totem/models/cart_item.dart';
 class ProductRecommendationService {
   /// ✅ ALGORITMO PRINCIPAL: Recomenda produtos usando múltiplos critérios
   /// 
-  /// Prioridade das recomendações (igual iFood):
+  /// Prioridade das recomendações (igual Menuhub):
   /// 1. Produtos em PROMOÇÃO (com desconto) - mais visíveis
   /// 2. Produtos de categorias COMPLEMENTARES (sobremesas, bebidas)
   /// 3. Produtos POPULARES/em destaque
@@ -44,7 +44,7 @@ class ProductRecommendationService {
 
     final recommendations = <Product>[];
 
-    // ✅ ESTRATÉGIA 1: Produtos em PROMOÇÃO (mais atrativo - igual iFood)
+    // ✅ ESTRATÉGIA 1: Produtos em PROMOÇÃO (mais atrativo - igual Menuhub)
     final promoProducts = _recommendByPromotion(
       eligibleProducts: eligibleProducts,
       currentRecommendations: recommendations,
@@ -100,7 +100,7 @@ class ProductRecommendationService {
     return shuffled.take(maxItems).toList();
   }
 
-  /// ✅ ESTRATÉGIA 1: Recomenda produtos em PROMOÇÃO (igual iFood destaca descontos)
+  /// ✅ ESTRATÉGIA 1: Recomenda produtos em PROMOÇÃO (igual Menuhub destaca descontos)
   static List<Product> _recommendByPromotion({
     required List<Product> eligibleProducts,
     required List<Product> currentRecommendations,

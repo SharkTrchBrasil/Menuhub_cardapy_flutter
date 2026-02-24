@@ -27,8 +27,17 @@ class CartItemVariantOption extends Equatable {
       optionItemId: json['option_item_id'],
       quantity: json['quantity'] ?? 1,
       name: json['name'] ?? '',
-      price: json['price'] ?? 0,
+      price: _parseMoney(json['price']),
     );
+  }
+
+  static int _parseMoney(dynamic value) {
+    if (value is int) return value;
+    if (value is Map) {
+      if (value.containsKey('value')) return (value['value'] as num).toInt();
+      if (value.containsKey('amount')) return (value['amount'] as num).toInt();
+    }
+    return 0;
   }
 
   Map<String, dynamic> toJson() => {
@@ -122,11 +131,20 @@ class CartItem extends Equatable {
       variants: (json['variants'] as List)
           .map((variantJson) => CartItemVariant.fromJson(variantJson))
           .toList(),
-      unitPrice: json['unit_price'],
-      totalPrice: json['total_price'],
+      unitPrice: _parseMoney(json['unit_price']),
+      totalPrice: _parseMoney(json['total_price']),
       sizeName: json['size_name'],
-      sizeImageUrl: json['size_image_url'], // ✅ NOVO
+      sizeImageUrl: json['size_image_url'],
     );
+  }
+
+  static int _parseMoney(dynamic value) {
+    if (value is int) return value;
+    if (value is Map) {
+      if (value.containsKey('value')) return (value['value'] as num).toInt();
+      if (value.containsKey('amount')) return (value['amount'] as num).toInt();
+    }
+    return 0;
   }
 
   // ✅ CORRIGIDO: Não tenta mais serializar o objeto 'product' inteiro.

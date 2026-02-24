@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Card flutuante de login - estilo iFood
+/// Card flutuante de login - estilo Menuhub
 /// Reutilizável em qualquer página que precise mostrar prompt de login
 class LoginPromoCard extends StatelessWidget {
   final String? customTitle;

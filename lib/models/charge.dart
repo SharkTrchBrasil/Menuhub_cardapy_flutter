@@ -1,7 +1,8 @@
-class Charge {
+import 'package:totem/core/helpers/money_amount_helper.dart';
 
+class Charge {
   Charge({
-    this.copyKey, 
+    this.copyKey,
     this.expiresAt,
     this.amount,
     this.subtotal = 0,
@@ -14,46 +15,37 @@ class Charge {
   final String? copyKey;
   final DateTime? expiresAt;
   final int? amount; // Valor em centavos (deprecated - usar grandTotal)
-  
+
   // ✅ NOVOS CAMPOS para resumo de valores
-  final int subtotal;     // Subtotal dos itens em centavos
-  final int deliveryFee;  // Taxa de entrega em centavos
-  final int serviceFee;   // Taxa de serviço em centavos
-  final int discount;     // Desconto em centavos
-  final int grandTotal;   // Total final em centavos
+  final int subtotal; // Subtotal dos itens em centavos
+  final int deliveryFee; // Taxa de entrega em centavos
+  final int serviceFee; // Taxa de serviço em centavos
+  final int discount; // Desconto em centavos
+  final int grandTotal; // Total final em centavos
 
   factory Charge.fromJson(Map<String, dynamic> json) {
-    // Calcula valores
-    final subtotal = json['subtotal'] != null 
-        ? (json['subtotal'] as num).toInt() 
-        : json['amount'] != null 
-            ? (json['amount'] as num).toInt() 
-            : 0;
-    
-    final deliveryFee = json['delivery_fee'] != null 
-        ? (json['delivery_fee'] as num).toInt() 
-        : 0;
-    
-    final serviceFee = json['service_fee'] != null 
-        ? (json['service_fee'] as num).toInt() 
-        : 0;
-    
-    final discount = json['discount'] != null 
-        ? (json['discount'] as num).toInt() 
-        : 0;
-    
-    final grandTotal = json['grand_total'] != null 
-        ? (json['grand_total'] as num).toInt() 
-        : json['total'] != null
-            ? (json['total'] as num).toInt()
-            : subtotal + deliveryFee + serviceFee - discount;
-    
+    // ✅ FIX: Usa parseMoneyAmount para lidar com MoneyAmount maps e nums
+    final subtotal =
+        parseMoneyAmount(json['subtotal']) ??
+        parseMoneyAmount(json['amount']) ??
+        0;
+
+    final deliveryFee = parseMoneyAmount(json['delivery_fee']) ?? 0;
+    final serviceFee = parseMoneyAmount(json['service_fee']) ?? 0;
+    final discount = parseMoneyAmount(json['discount']) ?? 0;
+
+    final grandTotal =
+        parseMoneyAmount(json['grand_total']) ??
+        parseMoneyAmount(json['total']) ??
+        (subtotal + deliveryFee + serviceFee - discount);
+
     return Charge(
       copyKey: json['copy_key'] as String?,
-      expiresAt: json['expires_at'] != null 
-          ? DateTime.tryParse(json['expires_at']) 
-          : null,
-      amount: json['amount'] != null ? (json['amount'] as num).toInt() : null,
+      expiresAt:
+          json['expires_at'] != null
+              ? DateTime.tryParse(json['expires_at'].toString())
+              : null,
+      amount: parseMoneyAmount(json['amount']),
       subtotal: subtotal,
       deliveryFee: deliveryFee,
       serviceFee: serviceFee,
@@ -61,5 +53,4 @@ class Charge {
       grandTotal: grandTotal,
     );
   }
-
 }

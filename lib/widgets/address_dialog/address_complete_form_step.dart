@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Step 3: Formulário final para completar detalhes do endereço
-/// Estilo iFood: mostra endereço completo no header, com opção de editar
+/// Estilo Menuhub: mostra endereço completo no header, com opção de editar
 class AddressCompleteFormStep extends StatefulWidget {
   final String street;
   final String neighborhood;

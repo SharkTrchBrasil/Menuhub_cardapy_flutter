@@ -5,18 +5,22 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/models/delivery_type.dart';
-import 'package:totem/models/store.dart';
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/widgets/ds_primary_button.dart';
-import '../../controllers/customer_controller.dart';
+import 'package:totem/widgets/address_dialog/address_map_and_form_step.dart';
+import 'package:totem/widgets/address_dialog/address_checkout_selection_step.dart'; 
+import 'package:totem/widgets/address_selection_bottom_sheet.dart'; 
+import 'package:totem/cubit/auth_cubit.dart';
+import 'package:dio/dio.dart';
+import 'package:totem/services/address_search_service.dart';
 import '../../core/di.dart';
 
-import 'cubits/address_cubit.dart';
-import 'cubits/delivery_fee_cubit.dart';
-import 'package:totem/widgets/address_selection_bottom_sheet.dart'; // ✅ Novo bottom sheet moderno
+import 'package:totem/pages/address/cubits/address_cubit.dart';
+import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
+import 'package:totem/pages/cart/cart_cubit.dart';
 
 class AddressSelectionPage extends StatefulWidget {
-  const AddressSelectionPage({super.key});
+  final bool isManagement;
+  const AddressSelectionPage({super.key, this.isManagement = false});
 
   @override
   State<AddressSelectionPage> createState() => _AddressSelectionPageState();
@@ -26,497 +30,430 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
   late DeliveryType _selectedType;
   bool _initialized = false;
 
+  // Controladores de busca
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final AddressSearchService _searchService = AddressSearchService(getIt<Dio>());
+  List<AddressSearchResult> _searchResults = [];
+  bool _isSearching = false;
+  bool _showSearchResults = false;
+
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _searchFocusNode.addListener(() {
+      if (!mounted) return;
+      // ✅ OTIMIZAÇÃO: Só chama setState se o valor realmente mudou
+      final shouldShow = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
+      if (_showSearchResults != shouldShow) {
+        setState(() {
+          _showSearchResults = shouldShow;
+        });
+      }
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // Executa apenas uma vez após o widget estar completamente construído
     if (!_initialized) {
       _initializeDeliveryType();
       _initialized = true;
     }
   }
 
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
   void _initializeDeliveryType() {
     final storeConfig = context.read<StoreCubit>().state.store?.store_operation_config;
     final deliveryEnabled = storeConfig?.deliveryEnabled ?? false;
     final pickupEnabled = storeConfig?.pickupEnabled ?? false;
-
-    // Pega o estado completo
     final deliveryFeeState = context.read<DeliveryFeeCubit>().state;
-
-    // Acessa o tipo de entrega diretamente e de forma segura
     DeliveryType currentType = deliveryFeeState.deliveryType;
 
-    // Se o tipo atual for 'entrega' mas a entrega estiver desabilitada,
-    // e a retirada estiver habilitada, muda para 'retirada'.
     if (currentType == DeliveryType.delivery && !deliveryEnabled && pickupEnabled) {
       currentType = DeliveryType.pickup;
-    }
-    // Se o tipo atual for 'retirada' mas a retirada estiver desabilitada,
-    // e a entrega estiver habilitada, muda para 'entrega'.
-    else if (currentType == DeliveryType.pickup && !pickupEnabled && deliveryEnabled) {
+    } else if (currentType == DeliveryType.pickup && !pickupEnabled && deliveryEnabled) {
       currentType = DeliveryType.delivery;
     }
 
     _selectedType = currentType;
-    // Atualiza o cubit caso a gente tenha feito uma mudança forçada
     context.read<DeliveryFeeCubit>().updateDeliveryType(_selectedType);
   }
 
-  // ✅ NOVO: Abre bottom sheet moderno para cadastro/edição de endereço
-  void _showEditAddressModal({CustomerAddress? addressToEdit}) {
-    AddressSelectionBottomSheet.show(
-      context,
-      addressToEdit: addressToEdit,
-      startWithSearch: true,
-    );
+  // --- Lógica de Busca ---
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      if (_showSearchResults) {
+        setState(() {
+          _searchResults = [];
+          _showSearchResults = false;
+          _isSearching = false;
+        });
+      }
+      return;
+    }
+    if (query.length < 3) return;
+    
+    // ✅ Sempre inicia a busca - o debounce no _performSearch cuida de cancelar buscas antigas
+    _performSearch(query);
   }
 
-  void _onTabSelected(DeliveryType type) {
+  (double?, double?) _getCustomerCoordinates() {
+    final addressState = context.read<AddressCubit>().state;
+    if (addressState.selectedAddress != null) {
+      final selectedAddress = addressState.selectedAddress!;
+      if (selectedAddress.latitude != null && selectedAddress.longitude != null) {
+        return (selectedAddress.latitude, selectedAddress.longitude);
+      }
+    }
+    if (addressState.addresses.isNotEmpty) {
+      final firstAddress = addressState.addresses.first;
+      if (firstAddress.latitude != null && firstAddress.longitude != null) {
+        return (firstAddress.latitude, firstAddress.longitude);
+      }
+    }
+    return (null, null);
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (!mounted) return;
+    
+    print('🔍 [AddressSearch] Iniciando busca: "$query"');
+    
     setState(() {
-      _selectedType = type;
+      _isSearching = true;
+      _showSearchResults = true;
     });
-    context.read<DeliveryFeeCubit>().updateDeliveryType(type);
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final store = context.watch<StoreCubit>().state.store;
-    // ✅ Pega as configurações de operação da loja
-    final deliveryEnabled = store?.store_operation_config?.deliveryEnabled ?? false;
-    final pickupEnabled = store?.store_operation_config?.pickupEnabled ?? false;
+    try {
+      await Future.delayed(const Duration(milliseconds: 600)); // Debounce
+      if (!mounted || _searchController.text.trim() != query) {
+        print('⚠️ [AddressSearch] Busca cancelada - query mudou');
+        // ✅ CORREÇÃO: Não reseta isSearching aqui pois outra busca já foi iniciada
+        // Se a query estiver vazia, reseta o estado
+        if (mounted && _searchController.text.trim().isEmpty) {
+          setState(() {
+            _isSearching = false;
+            _showSearchResults = false;
+          });
+        }
+        return;
+      }
 
-    return Scaffold(
-      floatingActionButton:
-      // Mostra o botão apenas se a entrega estiver habilitada e selecionada
-      _selectedType == DeliveryType.delivery && deliveryEnabled
-          ? FloatingActionButton(
-        heroTag: 'address_selection_fab',  // ✅ CORREÇÃO: Tag única para evitar conflito de Hero
-        onPressed: () => _showEditAddressModal(),
-        tooltip: 'Adicionar Novo Endereço',
-        child: const Icon(Icons.add),
-      )
-          : null,
-      appBar: AppBar(
-        title: const Text('Opção de Entrega'), // Título mais claro
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: Column(
-          children: [
-            _TabSelector(
-              selectedType: _selectedType,
-              onSelected: _onTabSelected,
-              // ✅ Passa as flags de habilitação para o seletor de abas
-              deliveryEnabled: deliveryEnabled,
-              pickupEnabled: pickupEnabled,
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              // ✅ LÓGICA DE EXIBIÇÃO DO CONTEÚDO
-              child: _buildTabContent(deliveryEnabled, pickupEnabled, store),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _ConfirmButton(
-        selectedType: _selectedType,
-        // ✅ Desabilita o botão de confirmar se a opção selecionada não estiver disponível
-        isEnabled: (_selectedType == DeliveryType.delivery && deliveryEnabled) ||
-            (_selectedType == DeliveryType.pickup && pickupEnabled),
-      ),
-    );
-  }
-
-  // ✅ NOVO MÉTODO para decidir qual conteúdo de aba mostrar
-  Widget _buildTabContent(bool deliveryEnabled, bool pickupEnabled, Store? store) {
-    if (_selectedType == DeliveryType.delivery) {
-      return deliveryEnabled
-          ? const _DeliveryTabContent()
-          : const _UnavailableOptionMessage(
-        icon: Icons.no_transfer_outlined,
-        message: 'A entrega não está disponível no momento.',
+      final (lat, lon) = _getCustomerCoordinates();
+      print('🔍 [AddressSearch] Coordenadas: lat=$lat, lon=$lon');
+      
+      final results = await _searchService.searchAddresses(
+        input: query,
+        userLatitude: lat,
+        userLongitude: lon,
       );
-    } else { // _selectedType == DeliveryType.pickup
-      return pickupEnabled
-          ? _PickupTabContent(store: store)
-          : const _UnavailableOptionMessage(
-        icon: Icons.store_mall_directory_outlined,
-        message: 'A retirada na loja não está disponível no momento.',
-      );
+      
+      print('✅ [AddressSearch] ${results.length} resultados encontrados');
+      
+      if (mounted && _searchController.text.trim() == query) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      print('❌ [AddressSearch] Erro: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+          _searchResults = [];
+        });
+      }
     }
   }
-}
 
-
-// ✅ NOVO WIDGET para mensagens de indisponibilidade
-class _UnavailableOptionMessage extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  const _UnavailableOptionMessage({required this.icon, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 60, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
-    );
+  void _onClearSearch() {
+    _searchController.clear();
+    setState(() {
+      _searchResults = [];
+      _showSearchResults = false;
+    });
   }
-}
 
-class _ConfirmButton extends StatelessWidget {
-  final DeliveryType selectedType;
-  final bool isEnabled; // ✅ NOVO
+  void _onSearchResultSelected(AddressSearchResult result) async {
+      // Quando seleciona um resultado da busca na PÁGINA, 
+      // abrimos o Bottom Sheet JÁ no step de mapa/formulário
+      // para completar o cadastro.
+      
+      _searchFocusNode.unfocus();
 
-  const _ConfirmButton({required this.selectedType, this.isEnabled = true});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: DsPrimaryButton(
-        // ✅ Usa a flag 'isEnabled' para habilitar/desabilitar
-        onPressed: isEnabled
-            ? () {
-          final addressState = context.read<AddressCubit>().state;
-          if (selectedType == DeliveryType.delivery && addressState.selectedAddress == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Por favor, selecione um endereço.')),
-            );
-            return;
-          }
-          // ✅ MUDANÇA: Use context.pop() se esta tela for sempre
-          // chamada a partir da tela de endereço. É mais seguro que go().
-          if (context.canPop()) {
-            context.pop();
-          } else {
-            context.pop();
-          }
+      // Busca detalhes se necessário
+      AddressSearchResult finalResult = result;
+      if (result.placeId != null) {
+        final details = await _searchService.getAddressDetails(result.placeId!);
+        if (details != null) {
+          finalResult = details;
         }
-            : null, // Passar null desabilita o botão
-        label: 'Confirmar',
-      ),
-    );
+      }
+
+      if (!mounted) return;
+
+      // Cria um CustomerAddress temporário para passar pro modal
+      // ou passa null e o modal inicia com os dados da busca se implementarmos isso.
+      // Atualmente o BottomSheet tem "startWithSearch".
+      // Vamos abrir o bottom sheet e preencher os controllers lá?
+      // Melhor: O BottomSheet é autônomo. Se clicou num resultado AQUI,
+      // idealmente passamos esse resultado para o BottomSheet já abrir no mapa.
+      // Como o BottomSheet atual não aceita "initialSearchResult", 
+      // vamos abrir o bottom sheet normal (startWithSearch: true) e o usuário busca lá denovo?
+      // NÃO, isso é ruim UX.
+      
+      // SOLUÇÃO: Vamos abrir o BottomSheet e fazer ele iniciar com esse endereço.
+      // Vou adaptar o AddressSelectionBottomSheet para aceitar um 'initialSearchResult'.
+      // Por enquanto, como não posso editar o BottomSheet agora (estou editando ESTE arquivo),
+      // vou abrir o BottomSheet em modo de busca mesmo, mas idealmente passaria o resultado.
+      
+      // Mas espere! O AddressSearchAndListStep JÁ É o corpo do BottomSheet.
+      // Se eu estou REUSANDO o AddressSearchAndListStep aqui, eu tenho a mesma UI.
+      
+      // Vamos abrir o BottomSheet passando o startWithSearch: true
+      // O usuário vai ter que buscar de novo, infelizmente, até eu refatorar o BottomSheet
+      // para aceitar um resultado inicial.
+      // OU: Eu passo um "fake" addressToEdit com os dados que tenho.
+      
+      final tempAddress = CustomerAddress(
+        street: finalResult.street ?? finalResult.description,
+        number: finalResult.number ?? '',
+        neighborhood: finalResult.neighborhood ?? '',
+        city: finalResult.city ?? '',
+        latitude: finalResult.latitude,
+        longitude: finalResult.longitude, 
+        label: 'Novo Endereço', 
+        isFavorite: true
+      );
+
+      AddressSelectionBottomSheet.show(
+        context, 
+        addressToEdit: tempAddress, // Truque para abrir já no formulário
+        // Precisamos garantir que o ID seja null para criar um novo
+      ).then((_) {
+        // ✅ Limpa o estado de busca quando voltar do bottom sheet
+        if (mounted) {
+          _onClearSearch();
+          _searchFocusNode.unfocus();
+        }
+      });
   }
-}
 
-// --- WIDGETS AUXILIARES PARA ESTA TELA ---
+  void _onAddressTap(CustomerAddress address) async {
+    final store = context.read<StoreCubit>().state.store;
+    final addressState = context.read<AddressCubit>().state;
+    final feeCubit = context.read<DeliveryFeeCubit>();
+    
+    // 0. Se for retirada, seleciona direto
+    if (feeCubit.state.deliveryType == DeliveryType.pickup) {
+       context.read<AddressCubit>().selectAddress(address);
+       return;
+    }
 
-class _TabSelector extends StatelessWidget {
-  final DeliveryType selectedType;
-  final Function(DeliveryType) onSelected;
-  final bool deliveryEnabled; // ✅ NOVO
-  final bool pickupEnabled;   // ✅ NOVO
+    // ✅ NOVO: Validação Instantânea via Cache (o que você sugeriu)
+    final feeCached = address.id != null ? addressState.addressFees[address.id] : null;
+    if (feeCached == -1.0) {
+      // Já sabemos que é fora da área
+      if (mounted && store != null) {
+        _showOutOfAreaDialog(context, store.name);
+      }
+      return; // Nem deixa selecionar se estiver fora
+    }
 
-  const _TabSelector({
-    required this.selectedType,
-    required this.onSelected,
-    required this.deliveryEnabled,
-    required this.pickupEnabled,
-  });
+    // 1. Marca como "tentativa de seleção"
+    await context.read<AddressCubit>().selectAddress(address);
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _TabButton(
-            label: 'Entregar', // Mais curto
-            isSelected: selectedType == DeliveryType.delivery,
-            // ✅ Desabilita o botão se a entrega não estiver ativa
-            onPressed: deliveryEnabled ? () => onSelected(DeliveryType.delivery) : null,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _TabButton(
-            label: 'Retirar', // Mais curto
-            isSelected: selectedType == DeliveryType.pickup,
-            // ✅ Desabilita o botão se a retirada não estiver ativa
-            onPressed: pickupEnabled ? () => onSelected(DeliveryType.pickup) : null,
-          ),
-        ),
-      ],
-    );
+    if (store != null) {
+      final subtotalRaw = context.read<CartCubit>().state.cart.subtotal;
+      final subtotal = subtotalRaw / 100.0;
+
+      String? errorMsg;
+      await feeCubit.calculate(
+        address: address,
+        store: store,
+        cartSubtotal: subtotal,
+        onResult: (fee, error) => errorMsg = error,
+      );
+
+      if (mounted && errorMsg != null) {
+        _showOutOfAreaDialog(context, store.name);
+      }
+    }
   }
-}
 
-class _TabButton extends StatelessWidget {
-  // ... (construtor)
-  final String label;
-  final bool isSelected;
-  final VoidCallback? onPressed; // ✅ Alterado para aceitar nulo
+  void _onSavedAddressSelected(CustomerAddress address) async {
+    final store = context.read<StoreCubit>().state.store;
+    final subtotalRaw = context.read<CartCubit>().state.cart.subtotal;
+    final subtotal = subtotalRaw / 100.0;
+    
+    final feeCubit = context.read<DeliveryFeeCubit>();
+    if (feeCubit.state.deliveryType == DeliveryType.pickup) {
+       await context.read<AddressCubit>().selectAddress(address);
+       if (mounted && context.canPop()) context.pop();
+       return;
+    }
 
-  const _TabButton({
-    required this.label,
-    required this.isSelected,
-    required this.onPressed,
-  });
+    if (store != null) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFFEA1D2C))),
+      );
 
-  @override
-  Widget build(BuildContext context) {
-    // A propriedade `onPressed: null` desabilita o botão automaticamente.
-    // Vamos adicionar um estilo visual para quando estiver desabilitado.
-    final bool isEnabled = onPressed != null;
+      String? errorMsg;
+      await feeCubit.calculate(
+        address: address,
+        store: store,
+        cartSubtotal: subtotal,
+        onResult: (fee, error) => errorMsg = error,
+      );
 
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        foregroundColor: isSelected ? Colors.white : (isEnabled ? Colors.red : Colors.grey),
-        backgroundColor: isSelected ? Colors.red : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(30),
-          side: BorderSide(color: isSelected ? Colors.red : (isEnabled ? Colors.red : Colors.grey.shade300)),
-        ),
-        elevation: isSelected ? 2 : 0,
-      ),
-      child: Text(label),
-    );
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (errorMsg != null) {
+        _showOutOfAreaDialog(context, store.name);
+        return;
+      }
+    }
+
+    await context.read<AddressCubit>().selectAddress(address);
+    if (mounted && context.canPop()) {
+      context.pop();
+    }
   }
-}
 
-// Conteúdo da aba "Entregar"
-class _DeliveryTabContent extends StatelessWidget {
-  const _DeliveryTabContent();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Lista de endereços
-        Expanded(
-          child: BlocBuilder<AddressCubit, AddressState>(
-            builder: (context, state) {
-              if (state.status == AddressStatus.loading) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (state.addresses.isEmpty) {
-                return const Center(child: Text('Nenhum endereço cadastrado.'));
-              }
-              return ListView.builder(
-                itemCount: state.addresses.length,
-                itemBuilder: (context, index) {
-                  final address = state.addresses[index];
-                  final isSelected = state.selectedAddress?.id == address.id;
-                  return _AddressListItem(
-                    address: address,
-                    isSelected: isSelected,
-                    onTap: () {
-                      context.read<AddressCubit>().selectAddress(address);
-                    },
-                  );
-                },
-              );
-            },
-          ),
+  void _showOutOfAreaDialog(BuildContext context, String storeName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-      ],
-    );
-  }
-}
-
-class _AddressListItem extends StatefulWidget {
-  final CustomerAddress address;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _AddressListItem({
-    required this.address,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<_AddressListItem> createState() => _AddressListItemState();
-}
-
-class _AddressListItemState extends State<_AddressListItem> {
-  @override
-  Widget build(BuildContext context) {
-    final addressLine1 = '${widget.address.street}, ${widget.address.number}';
-    final addressLine2 = '${widget.address.neighborhood} - ${widget.address.city}';
-
-    return Card(
-      elevation: widget.isSelected ? 4 : 1,
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: widget.isSelected ? Colors.red : Colors.transparent,
-          width: 1.5,
-        ),
-      ),
-      child: ListTile(
-        onTap: widget.onTap,
-        leading: CircleAvatar(
-          backgroundColor: Colors.grey.shade200,
-          child: const Icon(Icons.home_outlined, color: Colors.black54),
-        ),
-        title: Text(
-          widget.address.label ?? 'Endereço',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text('$addressLine1\n$addressLine2'),
-        trailing: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.isSelected) const Icon(Icons.check_circle, color: Colors.red),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'edit') {
-                  // Abre o modal de edição
-                  final parentState =
-                  context
-                      .findAncestorStateOfType<
-                      _AddressSelectionPageState
-                  >();
-                  parentState?._showEditAddressModal(addressToEdit: widget.address);
-                } else if (value == 'delete') {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder:
-                        (ctx) => AlertDialog(
-                      title: const Text('Excluir Endereço'),
-                      content: const Text(
-                        'Tem certeza que deseja excluir este endereço?',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancelar'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Excluir'),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  // Verifica se o widget ainda está montado antes de continuar
-                  if (!mounted) return;
-
-                  if (confirm == true) {
-                    final customerId = getIt<CustomerController>().customer!.id;
-                    
-                    // ✅ CORREÇÃO: Usa apenas o Cubit (que já chama o repositório internamente)
-                    // Não chamar o repositório diretamente para evitar chamada duplicada
-                    await context.read<AddressCubit>().deleteAddress(
-                      customerId!,
-                      widget.address.id!,
-                    );
-                    
-                    // Verifica se deu erro no cubit
-                    if (!mounted) return;
-                    
-                    final state = context.read<AddressCubit>().state;
-                    if (state.status == AddressStatus.error) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(state.errorMessage ?? 'Erro ao excluir endereço.'),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Endereço excluído com sucesso!'),
-                        ),
-                      );
-                    }
-                  }
-                }
+            Text(
+              '$storeName não entrega neste endereço.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3F3E3E),
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Infelizmente este restaurante não realiza entregas nesta região. Por favor, selecione outro endereço para continuar.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF666666),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(bottomSheetContext);
               },
-              itemBuilder:
-                  (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, color: Colors.black54),
-                      SizedBox(width: 8),
-                      Text('Editar'),
-                    ],
-                  ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEA1D2C),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Trocar endereço',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(bottomSheetContext),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+              child: const Text(
+                'Voltar',
+                style: TextStyle(
+                  color: Color(0xFFEA1D2C),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Excluir'),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-// Conteúdo da aba "Retirar na loja"
-class _PickupTabContent extends StatelessWidget {
-  final Store? store;
-
-  const _PickupTabContent({required this.store});
 
   @override
   Widget build(BuildContext context) {
-    if (store == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    final address = store!;
-    final addressLine1 = '${address.street}, ${address.number}';
-    final addressLine2 = '${address.neighborhood} - ${address.city}';
-    final String? imageUrl = address.image!.url;
-    return Card(
-      child: ListTile(
-        leading: Container(
-          decoration: BoxDecoration(
-            // Borda sutil para dar um acabamento
-            border: Border.all(color: Colors.grey.shade300, width: 1),
-            shape: BoxShape.circle,
-          ),
-          child: CircleAvatar(
-            radius: 28, // Um pouco menor para se ajustar bem ao ListTile
-            backgroundColor: Colors.grey.shade100, // Fundo para o caso de não ter imagem
-            // Mostra a imagem da rede se a URL existir e não estiver vazia
-            backgroundImage: (imageUrl != null && imageUrl.isNotEmpty)
-                ? NetworkImage(imageUrl)
-                : null,
-            // ✅ BOA PRÁTICA: Se não houver imagem, mostra um ícone padrão
-            child: (imageUrl == null || imageUrl.isEmpty)
-                ? const Icon(
-              Icons.store_mall_directory_outlined,
-              color: Colors.black54,
-              size: 24,
-            )
-                : null,
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFFEA1D2C), size: 20),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text(
+          'ENDEREÇOS',
+          style: TextStyle(
+            color: Color(0xFF3E3E3E),
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
           ),
         ),
-        title: Text(
-          store!.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: const Color(0xFFF5F5F5), height: 1),
         ),
-        subtitle: Text('$addressLine1\n$addressLine2'),
+      ),
+      body: AddressCheckoutSelectionStep(
+        searchController: _searchController,
+        searchFocusNode: _searchFocusNode,
+        searchResults: _searchResults,
+        isSearching: _isSearching,
+        showSearchResults: _showSearchResults,
+        onClearSearch: _onClearSearch,
+        onSearchResultSelected: _onSearchResultSelected,
+        onSavedAddressSelected: _onSavedAddressSelected,
+        onAddressTap: _onAddressTap, // ✅ Conecta o callback de validação imediata
+        onEditAddress: (address) {
+          AddressSelectionBottomSheet.show(context, addressToEdit: address);
+        },
+        onDeleteAddress: (address) {
+          if (address.id != null) {
+            final customerId = context.read<AuthCubit>().state.customer?.id;
+            if (customerId != null) {
+              context.read<AddressCubit>().deleteAddress(customerId, address.id!);
+            }
+          }
+        },
+        onSearchChanged: _onSearchChanged,
       ),
     );
   }

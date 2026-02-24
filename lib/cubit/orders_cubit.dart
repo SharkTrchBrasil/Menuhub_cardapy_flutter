@@ -27,14 +27,14 @@ class OrdersCubit extends Cubit<OrdersState> {
       
       result.fold(
         (error) {
-          AppLogger.error('Erro ao carregar pedidos: $error', tag: 'ORDERS');
+          AppLogger.e('Erro ao carregar pedidos: $error', tag: 'ORDERS');
           emit(state.copyWith(
             status: OrdersStatus.error,
             errorMessage: error,
           ));
         },
         (orders) {
-          AppLogger.success('Pedidos carregados: ${orders.length}', tag: 'ORDERS');
+          AppLogger.i('Pedidos carregados: ${orders.length}', tag: 'ORDERS');
           emit(state.copyWith(
             status: OrdersStatus.success,
             orders: orders,
@@ -42,7 +42,7 @@ class OrdersCubit extends Cubit<OrdersState> {
         },
       );
     } catch (e) {
-      AppLogger.error('Erro inesperado ao carregar pedidos', error: e, tag: 'ORDERS');
+      AppLogger.e('Erro inesperado ao carregar pedidos', error: e, tag: 'ORDERS');
       emit(state.copyWith(
         status: OrdersStatus.error,
         errorMessage: 'Erro inesperado: $e',
@@ -73,12 +73,18 @@ class OrdersCubit extends Cubit<OrdersState> {
   }
 
   /// Atualiza um pedido na lista (via WebSocket update)
-  /// Recarrega do servidor para garantir consistência
-  void updateOrder(String orderId) {
-    // O modelo Order é imutável - precisa fazer refresh
-    // Por agora, apenas logamos que houve atualização
-    AppLogger.info('Pedido $orderId atualizado via WebSocket', tag: 'ORDERS');
-    // TODO: Implementar atualização incremental se necessário
+  void onRealtimeOrderUpdate(Order order) {
+    final currentOrders = List<Order>.from(state.orders);
+    final index = currentOrders.indexWhere((o) => o.id == order.id);
+    
+    if (index != -1) {
+      currentOrders[index] = order;
+      emit(state.copyWith(orders: currentOrders));
+      AppLogger.i('✅ [ORDERS] Pedido ${order.shortId} atualizado via Real-time (status: ${order.lastStatus})', tag: 'ORDERS');
+    } else {
+      // Se não encontrou (ex: pedido novo de outro totem ou se a lista estava vazia)
+      addOrder(order);
+    }
   }
 
   /// Remove um pedido da lista (cancelado)

@@ -173,7 +173,7 @@ class VariantOptionItem extends StatelessWidget {
                               fontSize: 13,
                               color: Colors.grey.shade600,
                             ),
-                            maxLines: 3, // ✅ IFOOD STYLE: Máximo 3 linhas para descrição
+                            maxLines: 3, // ✅ MENUHUB STYLE: Máximo 3 linhas para descrição
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -255,7 +255,7 @@ class VariantOptionItem extends StatelessWidget {
         );
 
       case UIDisplayMode.MULTIPLE:
-        // ✅ IFOOD STYLE: Usa +/- para permitir múltiplas unidades da mesma opção
+        // ✅ MENUHUB STYLE: Usa +/- para permitir múltiplas unidades da mesma opção
         // Usa maxSelectedOptions como limite quando maxTotalQuantity é null
         final effectiveMaxTotal = variant.maxTotalQuantity ?? variant.maxSelectedOptions;
         final bool canIncrementMultiple = variant.totalQuantitySelected < effectiveMaxTotal;

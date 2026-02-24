@@ -104,29 +104,44 @@ class CustomerRepository {
     String name,
     String phone, {
     String? email,
+    String? cpf, // ✅ ADICIONADO
   }) async {
     try {
+      print('💾 [CUSTOMER_REPO] Atualizando cliente ID: $customerId');
+      print('   ├─ Nome: $name');
+      print('   ├─ Telefone: $phone');
+      if (email != null) print('   ├─ Email: $email');
+      if (cpf != null) print('   ├─ CPF: $cpf');
+      
       final data = <String, dynamic>{
         'name': name,
         'phone': phone,
       };
-      if (email != null && email.isNotEmpty) {
-        data['email'] = email;
-      }
+      if (email != null && email.isNotEmpty) data['email'] = email;
+      if (cpf != null) data['cpf'] = cpf; // ✅ Envia o CPF
 
+      print('📤 [CUSTOMER_REPO] Enviando PATCH /customer/$customerId');
       final response = await _dio.patch('/customer/$customerId', data: data);
+      print('✅ [CUSTOMER_REPO] Resposta recebida: ${response.statusCode}');
 
       final updatedCustomer = Customer.fromJson(response.data);
-      print('Cliente atualizado no backend: ${updatedCustomer.name}, ${updatedCustomer.phone}');
+      print('✅ [CUSTOMER_REPO] Cliente atualizado com sucesso:');
+      print('   ├─ ID: ${updatedCustomer.id}');
+      print('   ├─ Nome: ${updatedCustomer.name}');
+      print('   └─ Telefone: ${updatedCustomer.phone}');
       return Right(updatedCustomer);
     } on DioException catch (e) {
       final errorMessage = e.response?.data['detail'] ?? 
                           e.response?.data['message'] ?? 
                           'Erro desconhecido ao atualizar cliente.';
-      print('Erro ao atualizar cliente: $errorMessage');
+      print('❌ [CUSTOMER_REPO] Erro ao atualizar cliente:');
+      print('   ├─ Status: ${e.response?.statusCode}');
+      print('   ├─ Mensagem: $errorMessage');
+      print('   └─ URL: ${e.requestOptions.uri}');
       return Left(errorMessage);
-    } catch (e) {
-      print('Erro inesperado ao atualizar cliente: $e');
+    } catch (e, stackTrace) {
+      print('❌ [CUSTOMER_REPO] Erro inesperado ao atualizar cliente: $e');
+      print('   └─ Stack: $stackTrace');
       return Left('Erro inesperado: $e');
     }
   }

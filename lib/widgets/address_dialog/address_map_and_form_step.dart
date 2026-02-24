@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -63,12 +63,8 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
   late String _city;
   late String _state;
 
-  // ✅ Estados para controle de edição estilo iFood
-  bool _isEditing = false;          // Modo edição: mostra todos os campos
-  bool _noNumber = false;           // Checkbox "Endereço sem número"
-  bool _noComplement = false;       // Checkbox "Endereço sem complemento"
-  bool _showNeighborhoodField = false; // Mostra campo bairro quando vazio
-  bool _showStreetField = false;    // Mostra campo rua quando vazio
+  // Flag to show neighborhood field when missing
+  bool get _showNeighborhoodField => widget.neighborhoodController.text.trim().isEmpty;
 
   // UI state – whether the form is visible
   bool _showForm = false;
@@ -101,13 +97,9 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
     widget.streetController.text = _street;
     widget.neighborhoodController.text = _neighborhood;
     
-    // ✅ Determina se campos estão vazios (define uma vez no initState)
-    _showNeighborhoodField = _neighborhood.trim().isEmpty;
-    _showStreetField = _street.trim().isEmpty;
-    
-    // ✅ Se bairro ou rua estiverem vazios, inicia em modo edição
-    _isEditing = _showNeighborhoodField || _showStreetField;
-    
+    print('🗺️ [MAPBOX] Inicializando mapa em: $_latitude, $_longitude');
+    print('🗺️ [MAPBOX] Token presente: ${dotenv.env['MAPBOX_ACCESS_TOKEN']?.isNotEmpty ?? false}');
+
     // ✅ Se startWithForm = true, abre direto no formulário
     if (widget.startWithForm) {
       _showForm = true;
@@ -240,6 +232,7 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
         // ===== MAPA (FUNDO) =====
         if (mapboxToken.isNotEmpty)
           FlutterMap(
+            key: ValueKey('map_${_latitude}_$_longitude'), // ✅ Força rebuild ao mudar
             options: MapOptions(
               initialCenter: LatLng(_latitude, _longitude),
               initialZoom: 16.0,
@@ -476,46 +469,13 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ✅ Row com título e ícone de edição
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                _street.isNotEmpty ? _street : 'Endereço não encontrado',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3F3E3E),
-                ),
-              ),
-            ),
-            // ✅ Ícone de lápis/check para edição
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isEditing = !_isEditing;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _isEditing 
-                      ? Theme.of(context).primaryColor.withValues(alpha: 0.1) 
-                      : Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _isEditing ? Icons.check : Icons.edit,
-                  size: 20,
-                  color: _isEditing 
-                      ? Theme.of(context).primaryColor 
-                      : Colors.grey.shade600,
-                ),
-              ),
-            ),
-          ],
+        Text(
+          _street.isNotEmpty ? _street : 'Endereço não encontrado',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3F3E3E),
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -534,8 +494,8 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ✅ Campos de Bairro e Rua - mostrados apenas em modo edição
-        if (_isEditing) ...[
+        // Bairro e Rua (apenas se não houver bairro) - na mesma linha
+        if (_showNeighborhoodField) ...[
           Row(
             children: [
               Expanded(
@@ -554,256 +514,53 @@ class _AddressMapAndFormStepState extends State<AddressMapAndFormStep> {
                   controller: widget.streetController,
                   label: 'Rua',
                   hintText: 'Nome da rua',
-                  isRequired: true,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // ✅ Campo de Número em modo edição
-          _buildFormField(
-            controller: widget.numberController,
-            label: 'Número',
-            hintText: _noNumber ? 'S/N' : '',
-            isNumber: !_noNumber,
-            isRequired: !_noNumber,
-            isReadOnly: _noNumber,
-          ),
-          const SizedBox(height: 8),
-          // Checkbox "Sem número" abaixo do campo
-          InkWell(
-            onTap: () {
-              setState(() {
-                _noNumber = !_noNumber;
-                if (_noNumber) {
-                  widget.numberController.text = 'S/N';
-                } else {
-                  widget.numberController.text = '';
-                }
-              });
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Checkbox(
-                    value: _noNumber,
-                    onChanged: (value) {
-                      setState(() {
-                        _noNumber = value ?? false;
-                        if (_noNumber) {
-                          widget.numberController.text = 'S/N';
-                        } else {
-                          widget.numberController.text = '';
-                        }
-                      });
-                    },
-                    activeColor: Theme.of(context).primaryColor,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  'Endereço sem número',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF3F3E3E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        
-        // ✅ Número e Complemento - modo normal (não-edição)
-        if (!_isEditing) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Coluna Número + checkbox
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFormField(
-                      controller: widget.numberController,
-                      label: 'Número',
-                      hintText: _noNumber ? 'S/N' : '',
-                      isNumber: !_noNumber,
-                      isRequired: !_noNumber,
-                      isReadOnly: _noNumber,
-                    ),
-                    const SizedBox(height: 8),
-                    // Checkbox "Sem número"
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _noNumber = !_noNumber;
-                          if (_noNumber) {
-                            widget.numberController.text = 'S/N';
-                          } else {
-                            widget.numberController.text = '';
-                          }
-                        });
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: Checkbox(
-                              value: _noNumber,
-                              onChanged: (value) {
-                                setState(() {
-                                  _noNumber = value ?? false;
-                                  if (_noNumber) {
-                                    widget.numberController.text = 'S/N';
-                                  } else {
-                                    widget.numberController.text = '';
-                                  }
-                                });
-                              },
-                              activeColor: Theme.of(context).primaryColor,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'Sem número',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF3F3E3E),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Coluna Complemento + checkbox
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFormField(
-                      controller: widget.complementController,
-                      label: 'Complemento',
-                      hintText: 'Apartamento/Bloco/Casa',
-                      isReadOnly: _noComplement,
-                    ),
-                    const SizedBox(height: 8),
-                    // Checkbox "Sem complemento"
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _noComplement = !_noComplement;
-                          if (_noComplement) {
-                            widget.complementController.text = '';
-                          }
-                        });
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: Checkbox(
-                              value: _noComplement,
-                              onChanged: (value) {
-                                setState(() {
-                                  _noComplement = value ?? false;
-                                  if (_noComplement) {
-                                    widget.complementController.text = '';
-                                  }
-                                });
-                              },
-                              activeColor: Theme.of(context).primaryColor,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'Sem complemento',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF3F3E3E),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  isRequired: true, // ✅ CORREÇÃO BUG #8: Rua também é obrigatória
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
         ],
-        
-        // ✅ Complemento em modo edição (separado)
-        if (_isEditing) ...[
-          _buildFormField(
-            controller: widget.complementController,
-            label: 'Complemento',
-            hintText: 'Apartamento/Bloco/Casa',
-            isReadOnly: _noComplement,
-          ),
-          const SizedBox(height: 8),
-          // Checkbox "Sem complemento" abaixo do campo
-          InkWell(
-            onTap: () {
-              setState(() {
-                _noComplement = !_noComplement;
-                if (_noComplement) {
-                  widget.complementController.text = '';
-                }
-              });
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Checkbox(
-                    value: _noComplement,
-                    onChanged: (value) {
-                      setState(() {
-                        _noComplement = value ?? false;
-                        if (_noComplement) {
-                          widget.complementController.text = '';
-                        }
-                      });
-                    },
-                    activeColor: Theme.of(context).primaryColor,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  'Sem complemento',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF3F3E3E),
-                  ),
-                ),
-              ],
+        // Número e Complemento
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: _buildFormField(
+                controller: widget.numberController,
+                label: 'Número',
+                hintText: '',
+                isNumber: true,
+                isRequired: true,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildFormField(
+                    controller: widget.complementController,
+                    label: 'Complemento',
+                    hintText: 'Complemento',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Apartamento/Bloco/Casa',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
 
-        // Ponto de referência (sempre visível)
+        // Ponto de referência
         _buildFormField(
           controller: widget.referenceController,
           label: 'Ponto de referência',

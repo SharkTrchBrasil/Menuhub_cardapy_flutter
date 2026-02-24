@@ -214,7 +214,7 @@ class CartProduct extends Equatable {
       final allFlavorsSelected = flavorGroups.every((g) => g.isValid);
       
       if (flavorGroups.isNotEmpty && allFlavorsSelected) {
-        // ✅ REGRA DO MAIS CARO (igual iFood):
+        // ✅ REGRA DO MAIS CARO (igual Menuhub):
         // Pizza com múltiplos sabores cobra o PREÇO CHEIO DO SABOR MAIS CARO
         // 
         // Exemplo: Pizza Grande 4 Sabores

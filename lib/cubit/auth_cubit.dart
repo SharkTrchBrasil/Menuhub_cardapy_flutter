@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,6 +14,8 @@ import 'package:totem/cubit/orders_cubit.dart';
 import '../pages/address/cubits/address_cubit.dart';
 import '../pages/cart/cart_cubit.dart';
 import '../repositories/realtime_repository.dart';
+import 'package:bot_toast/bot_toast.dart';
+import 'package:web/web.dart' as web;
 import '../services/pending_cart_service.dart';
 
 part 'auth_state.dart';
@@ -38,20 +41,27 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> _processPendingCartItem() async {
     final pendingPayload = await PendingCartService.getPendingCartItem();
     if (pendingPayload != null) {
-      AppLogger.info('Processando item pendente: ${pendingPayload.productId}', tag: 'AUTH');
+      AppLogger.i('Processando item pendente: ${pendingPayload.productId}', tag: 'AUTH');
       try {
         await cartCubit.updateItem(pendingPayload);
         await PendingCartService.clearPendingCartItem();
-        AppLogger.success('Item pendente adicionado ao carrinho', tag: 'AUTH');
+        AppLogger.i('Item pendente adicionado ao carrinho', tag: 'AUTH');
       } catch (e) {
-        AppLogger.error('Erro ao adicionar item pendente', error: e, tag: 'AUTH');
+        AppLogger.e('Erro ao adicionar item pendente', error: e, tag: 'AUTH');
         // Não falha o login se houver erro ao adicionar item
       }
     }
   }
 
   Future<void> checkInitialAuthStatus() async {
-    // ... (este método não precisa de prints por agora)
+    print('🚀 [DEBUG_AUTH] checkInitialAuthStatus started');
+    
+    // No Web, sempre verificamos se acabamos de voltar de um redirect de login
+    if (kIsWeb) {
+      print('🚀 [DEBUG_AUTH] Web detected. Checking for redirect result...');
+      await _handleRedirectResult();
+    }
+
     final initialCustomer = customerController.value;
     if (initialCustomer != null) {
       try {
@@ -59,8 +69,7 @@ class AuthCubit extends Cubit<AuthState> {
         emit(state.copyWith(status: AuthStatus.success, customer: initialCustomer));
         cartCubit.fetchCart();
         addressCubit.loadAddresses(initialCustomer.id!);
-        ordersCubit.loadOrders(initialCustomer.id!);  // ✅ NOVO: Carrega pedidos
-        // ✅ Processa payload pendente se houver
+        ordersCubit.loadOrders(initialCustomer.id!);
         await _processPendingCartItem();
       } catch (e) {
         await signOut();
@@ -71,90 +80,128 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> signInWithGoogle() async {
-    AppLogger.info('Iniciando login com Google', tag: 'AUTH');
+    print('🎯 [DEBUG_AUTH] BOTÃO GOOGLE CLICADO!');
+    AppLogger.i('Iniciando login com Google (Redirect mode)', tag: 'AUTH');
 
     try {
-      // ✅ Verifica se Firebase está inicializado
       final apps = Firebase.apps;
       if (apps.isEmpty) {
-        AppLogger.error('Firebase não está inicializado', tag: 'AUTH');
-        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Firebase não está configurado. Por favor, reinicie o aplicativo.'));
+        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Firebase não está configurado.'));
         return;
       }
-      
-      AppLogger.debug('Firebase configurado: ${apps.first.options.projectId}', tag: 'AUTH');
       
       final auth = FirebaseAuth.instanceFor(app: apps.first);
       final authProvider = GoogleAuthProvider();
 
-      AppLogger.debug('Abrindo popup de login Google', tag: 'AUTH');
-      final userCredential = await auth.signInWithPopup(authProvider);
-      AppLogger.success('Login Google concluído', tag: 'AUTH');
+      if (kIsWeb) {
+        print('🌐 [DEBUG_AUTH] Abrindo POPUP de login Google (Modo Original)');
+        final userCredential = await auth.signInWithPopup(authProvider);
+        print('✅ [DEBUG_AUTH] Popup concluído com sucesso');
+        await _processUserCredential(userCredential);
+      } else {
+        print('📱 [DEBUG_AUTH] Usando fluxo mobile de login Google');
+        final userCredential = await auth.signInWithPopup(authProvider);
+        await _processUserCredential(userCredential);
+      }
+    } on FirebaseAuthException catch (e) {
+      print('❌ [DEBUG_AUTH] ERRO Firebase Auth: ${e.code}');
+      emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Erro no login: ${e.message}'));
+    } catch (e) {
+      print('❌ [DEBUG_AUTH] ERRO Inesperado: $e');
+      emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Ocorreu um erro inesperado.'));
+    }
+  }
 
-      final firebaseUser = userCredential.user;
-
-      if (firebaseUser == null) {
-        AppLogger.error('Usuário nulo após login', tag: 'AUTH');
-        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Não foi possível obter os dados do usuário.'));
+  /// ✅ Processa o resultado de um login (seja via popup ou redirect) com persistência
+  Future<void> _handleRedirectResult() async {
+    try {
+      final auth = FirebaseAuth.instance;
+      
+      // ✅ 1. Tenta pegar o resultado do redirect (tenta 3 vezes com delay)
+      UserCredential? userCredential;
+      for (int i = 0; i < 3; i++) {
+        userCredential = await auth.getRedirectResult();
+        if (userCredential != null) break;
+        await Future.delayed(Duration(milliseconds: 500 * (i + 1)));
+      }
+      
+      if (userCredential != null && userCredential.user != null) {
+        print('✅ [DEBUG_AUTH] Redirect Result encontrado para: ${userCredential.user?.email}');
+        await _processUserCredential(userCredential);
+        return;
+      }
+      
+      // ✅ 2. Backup: Se não veio no redirect, talvez o Firebase já tenha logado em background
+      final currentUser = auth.currentUser;
+      if (currentUser != null) {
+        print('👤 [DEBUG_AUTH] Usuário já persistido encontrado: ${currentUser.email}');
+        // Criamos um UserCredential fake ou apenas processamos o user
+        // Como _processUserCredential usa UserCredential, vamos criar um mock
+        // Mas o mais seguro é chamar o repositório direto com o currentUser
+        await _processFirebaseUser(currentUser);
         return;
       }
 
-      AppLogger.debug('Usuário: ${firebaseUser.displayName}', tag: 'AUTH');
-      emit(state.copyWith(status: AuthStatus.loading));
+      print('ℹ️ [DEBUG_AUTH] Nenhum resultado de redirect ou usuário logado após 3 tentativas.');
+    } catch (e) {
+      print('❌ [DEBUG_AUTH] Erro ao processar resultado do redirect: $e');
+    }
+  }
 
-      final customerResult = await customerRepository.processGoogleSignInCustomer(firebaseUser: firebaseUser);
-      AppLogger.debug("🕵️‍♂️ [AuthCubit] 5. processGoogleSignInCustomer CONCLUÍDO.");
+  Future<void> _processUserCredential(UserCredential userCredential) async {
+    final firebaseUser = userCredential.user;
+    if (firebaseUser == null) return;
+    await _processFirebaseUser(firebaseUser);
+  }
+
+  Future<void> _processFirebaseUser(User firebaseUser) async {
+    emit(state.copyWith(status: AuthStatus.loading));
+    print('🚀 [DEBUG_AUTH] Calling processGoogleSignInCustomer for: ${firebaseUser.email}');
+    
+    try {
+      final customerResult = await customerRepository.processGoogleSignInCustomer(firebaseUser: firebaseUser)
+          .timeout(const Duration(seconds: 15));
+          
+      print('🚀 [DEBUG_AUTH] processGoogleSignInCustomer result: ${customerResult.isRight ? "SUCCESS" : "ERROR"}');
 
       customerResult.fold(
-            (errorMessage) {
-          AppLogger.debug("❌ [AuthCubit] ERRO no processGoogleSignInCustomer: $errorMessage");
-          emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+        (errorMessage) {
+           print('🚀 [DEBUG_AUTH] Error message from backend: $errorMessage');
+           emit(state.copyWith(status: AuthStatus.error, errorMessage: errorMessage));
+           if (kIsWeb) web.window.alert("Backend error: $errorMessage");
         },
         (loginResponse) async {
           try {
             final customer = loginResponse.customer;
+            print('🚀 [DEBUG_AUTH] Finalizing login for customer: ${customer.id}');
+            
             await realtimeRepository.linkCustomerToSession(customer.id!);
             emit(state.copyWith(status: AuthStatus.success, customer: customer));
             cartCubit.fetchCart();
             
-            // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login (sem chamadas HTTP separadas)
             if (loginResponse.addresses.isNotEmpty) {
-              AppLogger.info('✅ [AuthCubit] Usando ${loginResponse.addresses.length} endereços do login', tag: 'AUTH');
               addressCubit.setAddressesFromLogin(loginResponse.addresses);
             } else {
-              // Fallback: carrega do servidor se não veio no login
               addressCubit.loadAddresses(customer.id!);
             }
             
             if (loginResponse.orders.isNotEmpty) {
-              AppLogger.info('✅ [AuthCubit] Usando ${loginResponse.orders.length} pedidos do login', tag: 'AUTH');
               ordersCubit.setOrdersFromLogin(loginResponse.orders);
             } else {
-              // Fallback: carrega do servidor se não veio no login
               ordersCubit.loadOrders(customer.id!);
             }
             
-            // ✅ Processa payload pendente após login bem-sucedido
             await _processPendingCartItem();
+            print('🎉 [DEBUG_AUTH] AUTH SUCCESSFUL!');
           } catch (e) {
-            emit(state.copyWith(
-              status: AuthStatus.error,
-              errorMessage: 'Erro ao vincular sessão ao carrinho.',
-            ));
+            print('❌ [DEBUG_AUTH] Error linking session: $e');
+            emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Erro ao vincular sessão.'));
           }
         },
       );
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'popup-closed-by-user') {
-        AppLogger.debug("⚠️ [AuthCubit] ERRO CAPTURADO: O popup foi fechado (pelo usuário ou pelo sistema). Código: ${e.code}");
-        emit(state.copyWith(status: AuthStatus.unauthenticated));
-      } else {
-        AppLogger.debug("❌ [AuthCubit] ERRO FIREBASE não esperado: ${e.code} - ${e.message}");
-        emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Ocorreu um erro no login. Tente novamente.'));
-      }
     } catch (e) {
-      AppLogger.debug("❌ [AuthCubit] ERRO GENÉRICO não esperado: $e");
-      emit(state.copyWith(status: AuthStatus.error, errorMessage: 'Ocorreu um erro inesperado. Tente novamente.'));
+      print('❌ [DEBUG_AUTH] Timeout ou Erro na API: $e');
+      emit(state.copyWith(status: AuthStatus.error, errorMessage: 'O servidor demorou a responder.'));
     }
   }
 
@@ -377,7 +424,7 @@ class AuthCubit extends Cubit<AuthState> {
         await auth.signOut();
       }
     } catch (e) {
-      AppLogger.debug('⚠️ Erro ao fazer logout do Firebase: $e');
+      AppLogger.d('⚠️ Erro ao fazer logout do Firebase: $e');
     }
     customerController.clearCustomer();
     cartCubit.clearCart();

@@ -107,12 +107,12 @@ $durationSec = [math]::Round($duration.TotalSeconds, 1)
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  ✅ BUILD FINALIZADO ($durationSec s)  " -ForegroundColor Green
+Write-Host "  BUILD FINALIZADO ($durationSec s)  " -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "📁 Output: $buildPath" -ForegroundColor White
+Write-Host "Output: $buildPath" -ForegroundColor White
 Write-Host ""
-Write-Host "Próximos passos:" -ForegroundColor Blue
+Write-Host "Proximos passos:" -ForegroundColor Blue
 Write-Host "  1. Testar localmente:" -ForegroundColor White
 Write-Host "     flutter run -d chrome --release" -ForegroundColor Gray
 Write-Host ""

@@ -9,12 +9,14 @@ class AddressState extends Equatable {
     this.addresses = const [],
     this.selectedAddress,
     this.errorMessage,
+    this.addressFees = const {},
   });
 
   final AddressStatus status;
   final List<CustomerAddress> addresses;
   final CustomerAddress? selectedAddress;
   final String? errorMessage;
+  final Map<int, double?> addressFees;
 
   AddressState copyWith({
     AddressStatus? status,
@@ -23,15 +25,17 @@ class AddressState extends Equatable {
     CustomerAddress? selectedAddress,
     bool forceNullSelectedAddress = false,
     String? errorMessage,
+    Map<int, double?>? addressFees,
   }) {
     return AddressState(
       status: status ?? this.status,
       addresses: addresses ?? this.addresses,
       selectedAddress: forceNullSelectedAddress ? null : selectedAddress ?? this.selectedAddress,
       errorMessage: errorMessage ?? this.errorMessage,
+      addressFees: addressFees ?? this.addressFees,
     );
   }
 
   @override
-  List<Object?> get props => [status, addresses, selectedAddress, errorMessage];
+  List<Object?> get props => [status, addresses, selectedAddress, errorMessage, addressFees];
 }

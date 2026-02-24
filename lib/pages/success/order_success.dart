@@ -15,11 +15,7 @@ class OrderSuccessPageLegacy extends StatelessWidget {
   final Order? order;
   final PlatformPaymentMethod? paymentMethod;
 
-  const OrderConfirmationPage({
-    super.key,
-    this.order,
-    this.paymentMethod,
-  });
+  const OrderSuccessPageLegacy({super.key, this.order, this.paymentMethod});
 
   @override
   Widget build(BuildContext context) {
@@ -82,13 +78,13 @@ class OrderSuccessPageLegacy extends StatelessWidget {
                 ),
 
               // ✅ NOVO: Exibe QR code para Pix estático se método for MANUAL_PIX
-              if (paymentMethod != null && paymentMethod!.method_type == 'MANUAL_PIX') ...[
+              if (paymentMethod != null &&
+                  paymentMethod!.method_type == 'MANUAL_PIX') ...[
                 _buildPixQrCode(context, paymentMethod!),
                 const SizedBox(height: 24),
               ],
 
               const Spacer(), // Ocupa o espaço para empurrar os botões para baixo
-
               // Botão principal
               SizedBox(
                 width: double.infinity,
@@ -123,10 +119,7 @@ class OrderSuccessPageLegacy extends StatelessWidget {
                   onPressed: () => context.go('/'),
                   child: const Text(
                     'Voltar para o início',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -137,37 +130,40 @@ class OrderSuccessPageLegacy extends StatelessWidget {
       ),
     );
   }
-  
+
   /// ✅ NOVO: Constrói widget com QR code para Pix estático
   Widget _buildPixQrCode(BuildContext context, PlatformPaymentMethod method) {
     final pixKey = method.getStaticPixKey();
     final pixKeyType = method.getStaticPixKeyType();
-    
+
     if (pixKey == null || pixKey.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     // ✅ Formata a chave conforme o tipo
     String formattedKey = pixKey;
     String keyTypeLabel = '';
-    
+
     switch (pixKeyType?.toUpperCase()) {
       case 'CPF':
         keyTypeLabel = 'CPF';
         if (pixKey.length == 11) {
-          formattedKey = '${pixKey.substring(0, 3)}.${pixKey.substring(3, 6)}.${pixKey.substring(6, 9)}-${pixKey.substring(9)}';
+          formattedKey =
+              '${pixKey.substring(0, 3)}.${pixKey.substring(3, 6)}.${pixKey.substring(6, 9)}-${pixKey.substring(9)}';
         }
         break;
       case 'CNPJ':
         keyTypeLabel = 'CNPJ';
         if (pixKey.length == 14) {
-          formattedKey = '${pixKey.substring(0, 2)}.${pixKey.substring(2, 5)}.${pixKey.substring(5, 8)}/${pixKey.substring(8, 12)}-${pixKey.substring(12)}';
+          formattedKey =
+              '${pixKey.substring(0, 2)}.${pixKey.substring(2, 5)}.${pixKey.substring(5, 8)}/${pixKey.substring(8, 12)}-${pixKey.substring(12)}';
         }
         break;
       case 'PHONE':
         keyTypeLabel = 'Celular';
         if (pixKey.length == 11) {
-          formattedKey = '(${pixKey.substring(0, 2)}) ${pixKey.substring(2, 7)}-${pixKey.substring(7)}';
+          formattedKey =
+              '(${pixKey.substring(0, 2)}) ${pixKey.substring(2, 7)}-${pixKey.substring(7)}';
         }
         break;
       case 'EMAIL':
@@ -179,7 +175,7 @@ class OrderSuccessPageLegacy extends StatelessWidget {
       default:
         keyTypeLabel = 'Chave PIX';
     }
-    
+
     // ✅ Gera QR code usando a chave PIX (sem formatação para o QR code)
     return Container(
       padding: const EdgeInsets.all(20),
@@ -219,14 +215,19 @@ class OrderSuccessPageLegacy extends StatelessWidget {
               data: pixKey, // ✅ Usa chave sem formatação para o QR code
               width: 200,
               height: 200,
-              errorBuilder: (context, error) => Container(
-                width: 200,
-                height: 200,
-                color: Colors.grey.shade200,
-                child: const Center(
-                  child: Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                ),
-              ),
+              errorBuilder:
+                  (context, error) => Container(
+                    width: 200,
+                    height: 200,
+                    color: Colors.grey.shade200,
+                    child: const Center(
+                      child: Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
             ),
           ),
           const SizedBox(height: 16),

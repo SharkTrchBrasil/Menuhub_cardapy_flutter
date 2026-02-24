@@ -100,6 +100,19 @@ class StoreOperationConfig {
     this.pizzaPricingStrategy = PizzaPricingStrategy.highest,
   });
 
+  static double? _parseMoney(dynamic value) {
+    double? result;
+    if (value is num) result = value.toDouble();
+    else if (value is Map) {
+      if (value['amount'] is num) result = (value['amount'] as num).toDouble();
+      else if (value['value'] is num) result = (value['value'] as num).toDouble();
+    }
+    else if (value is String) result = double.tryParse(value);
+    
+    // ✅ CORREÇÃO: Converte centavos para reais se houver valor
+    return result != null ? result / 100.0 : null;
+  }
+
   factory StoreOperationConfig.fromJson(Map<String, dynamic> json) {
     return StoreOperationConfig(
       // Gerais
@@ -114,8 +127,9 @@ class StoreOperationConfig {
       deliveryEnabled: json['delivery_enabled'] ?? false,
       deliveryEstimatedMin: json['delivery_estimated_min'],
       deliveryEstimatedMax: json['delivery_estimated_max'],
-      deliveryFee: (json['delivery_fee'] as num?)?.toDouble(),
-      deliveryMinOrder: (json['delivery_min_order'] as num?)?.toDouble(),
+      deliveryFee: _parseMoney(json['delivery_fee']),
+      deliveryMinOrder: _parseMoney(json['min_order_value']) ?? 
+                        _parseMoney(json['delivery_min_order']),
       deliveryScope: json['delivery_scope'],
       deliveryPaused: json['delivery_paused'] ?? false,
       // Pickup
@@ -134,7 +148,7 @@ class StoreOperationConfig {
       mainPrinterDestination: json['main_printer_destination'],
       kitchenPrinterDestination: json['kitchen_printer_destination'],
       barPrinterDestination: json['bar_printer_destination'],
-      freeDeliveryThreshold: (json['free_delivery_threshold'] as num?)?.toDouble(),
+      freeDeliveryThreshold: _parseMoney(json['free_delivery_threshold']),
       scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
       // ✅ Pizza pricing strategy
       pizzaPricingStrategy: PizzaPricingStrategy.fromString(json['pizza_multi_flavor_pricing_strategy']),

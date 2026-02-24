@@ -1,4 +1,4 @@
-import 'package:brasil_fields/brasil_fields.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -7,9 +7,13 @@ import '../themes/ds_theme.dart';
 import '../themes/ds_theme_switcher.dart';
 
 extension IntX on int {
-  String get toCurrency => UtilBrasilFields.obterReal(this/100);
+  /// Formata valor em centavos para moeda corrente (default pt_BR/R$)
+  String get toCurrency => NumberFormat.simpleCurrency(locale: 'pt_BR').format(this / 100.0);
 }
 
+extension DoubleX on double {
+  String toCurrency() => NumberFormat.simpleCurrency(locale: 'pt_BR').format(this);
+}
 
 String? formatTime(TimeOfDay? time) {
   if (time == null) return null;

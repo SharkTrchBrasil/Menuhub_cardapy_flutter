@@ -76,15 +76,24 @@ class Cart extends Equatable {
       items: (json['items'] as List)
           .map((itemJson) => CartItem.fromJson(itemJson))
           .toList(),
-      subtotal: json['subtotal'] ?? 0,
-      discount: json['discount'] ?? 0,
-      total: json['total'] ?? 0,
-      deliveryFee: json['delivery_fee'] ?? 0,
-      deliveryDiscount: json['delivery_discount'] ?? 0,
-      finalDeliveryFee: json['final_delivery_fee'] ?? 0,
+      subtotal: _parseMoney(json['subtotal']),
+      discount: _parseMoney(json['discount']),
+      total: _parseMoney(json['total']),
+      deliveryFee: _parseMoney(json['delivery_fee']),
+      deliveryDiscount: _parseMoney(json['delivery_discount']),
+      finalDeliveryFee: _parseMoney(json['final_delivery_fee']),
       promotionMessage: json['promotion_message'],
       isFreeDelivery: json['is_free_delivery'] ?? false,
     );
+  }
+
+  static int _parseMoney(dynamic value) {
+    if (value is int) return value;
+    if (value is Map) {
+      if (value.containsKey('value')) return (value['value'] as num).toInt();
+      if (value.containsKey('amount')) return (value['amount'] as num).toInt();
+    }
+    return 0;
   }
 
   Cart copyWith({
@@ -116,6 +125,26 @@ class Cart extends Equatable {
       finalDeliveryFee: finalDeliveryFee ?? this.finalDeliveryFee,
       promotionMessage: promotionMessage ?? this.promotionMessage,
       isFreeDelivery: isFreeDelivery ?? this.isFreeDelivery,
+    );
+  }
+  
+  /// ✅ NOVO: Cria uma cópia do carrinho com cupom e desconto explicitamente removidos
+  /// Use este método quando o backend confirmar a remoção do cupom
+  Cart copyWithCouponRemoved() {
+    return Cart(
+      id: id,
+      status: status,
+      couponCode: null,  // ✅ Força null
+      observation: observation,
+      items: items,
+      subtotal: subtotal,
+      discount: 0,  // ✅ Zera desconto
+      total: subtotal,  // Recalcula total sem desconto
+      deliveryFee: deliveryFee,
+      deliveryDiscount: 0,  // ✅ Zera desconto de frete
+      finalDeliveryFee: deliveryFee,  // Frete volta ao original
+      promotionMessage: null,  // ✅ Limpa mensagem
+      isFreeDelivery: false,  // ✅ Remove flag de frete grátis
     );
   }
 
@@ -159,11 +188,20 @@ class CartGranularResponse extends Equatable {
       item: json['item'] != null ? CartItem.fromJson(json['item']) : null,
       removedItemId: json['removed_item_id'],
       cartId: json['cart_id'] ?? 0,
-      cartSubtotal: json['cart_subtotal'] ?? 0,
-      cartDiscount: json['cart_discount'] ?? 0,
-      cartTotal: json['cart_total'] ?? 0,
+      cartSubtotal: _parseMoney(json['cart_subtotal']),
+      cartDiscount: _parseMoney(json['cart_discount']),
+      cartTotal: _parseMoney(json['cart_total']),
       cartItemsCount: json['cart_items_count'] ?? 0,
     );
+  }
+
+  static int _parseMoney(dynamic value) {
+    if (value is int) return value;
+    if (value is Map) {
+      if (value.containsKey('value')) return (value['value'] as num).toInt();
+      if (value.containsKey('amount')) return (value['amount'] as num).toInt();
+    }
+    return 0;
   }
 
   @override

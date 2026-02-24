@@ -411,9 +411,9 @@ class _AddressOnboardingPageState extends State<AddressOnboardingPage> {
     );
   }
 
-  // ========== STEP 2: MAPA + FORMULÁRIO (widget integrado estilo iFood) ==========
+  // ========== STEP 2: MAPA + FORMULÁRIO (widget integrado estilo Menuhub) ==========
   Widget _buildMapAndFormStep() {
-    // ✅ Usa o widget AddressMapAndFormStep existente que já tem o layout correto do iFood
+    // ✅ Usa o widget AddressMapAndFormStep existente que já tem o layout correto do Menuhub
     return AddressMapAndFormStep(
       latitude: _latitude ?? 0,
       longitude: _longitude ?? 0,

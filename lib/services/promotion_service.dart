@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:totem/core/utils/app_logger.dart';
-import 'package:totem/config/app_config.dart';
 
 /// Modelo de desconto de promoção
 class PromotionDiscount {
@@ -55,9 +55,11 @@ class AppliedPromotions {
   });
 
   factory AppliedPromotions.fromJson(Map<String, dynamic> json) {
-    final promotionsList = (json['promotions_applied'] as List?)
-        ?.map((p) => PromotionDiscount.fromJson(p))
-        .toList() ?? [];
+    final promotionsList =
+        (json['promotions_applied'] as List?)
+            ?.map((p) => PromotionDiscount.fromJson(p))
+            .toList() ??
+        [];
 
     return AppliedPromotions(
       originalSubtotal: json['original_subtotal'] ?? 0,
@@ -74,10 +76,10 @@ class AppliedPromotions {
 
   /// Verifica se algum desconto foi aplicado
   bool get hasDiscount => totalOrderDiscount > 0 || totalDeliveryDiscount > 0;
-  
+
   /// Verifica se tem frete grátis
   bool get hasFreeDelivery => originalDeliveryFee > 0 && finalDeliveryFee == 0;
-  
+
   /// Total economizado
   int get totalSaved => totalOrderDiscount + totalDeliveryDiscount;
 }
@@ -121,7 +123,7 @@ class PromotionService {
   factory PromotionService() => _instance;
   PromotionService._internal();
 
-  final String _baseUrl = AppConfig.apiUrl;
+  final String _baseUrl = dotenv.env['API_URL'] ?? '';
 
   /// Lista promoções ativas de uma loja
   Future<List<PromotionPreview>> getActivePromotions(int storeId) async {
@@ -133,24 +135,26 @@ class PromotionService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final promotions = (data['promotions'] as List?)
-            ?.map((p) => PromotionPreview.fromJson(p))
-            .toList() ?? [];
-        
-        AppLogger.success(
+        final promotions =
+            (data['promotions'] as List?)
+                ?.map((p) => PromotionPreview.fromJson(p))
+                .toList() ??
+            [];
+
+        AppLogger.i(
           '✅ ${promotions.length} promoções ativas para loja $storeId',
           tag: 'PROMO',
         );
         return promotions;
       } else {
-        AppLogger.warning(
+        AppLogger.w(
           'Erro ao buscar promoções: ${response.statusCode}',
           tag: 'PROMO',
         );
         return [];
       }
     } catch (e) {
-      AppLogger.error('Erro ao buscar promoções', error: e, tag: 'PROMO');
+      AppLogger.e('Erro ao buscar promoções', error: e, tag: 'PROMO');
       return [];
     }
   }
@@ -170,35 +174,36 @@ class PromotionService {
           'store_id': storeId,
           'subtotal': subtotal,
           'delivery_fee': deliveryFee,
-          if (customerProfileId != null) 'customer_profile_id': customerProfileId,
+          if (customerProfileId != null)
+            'customer_profile_id': customerProfileId,
         }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final result = AppliedPromotions.fromJson(data);
-        
+
         if (result.hasDiscount) {
-          AppLogger.success(
+          AppLogger.i(
             '✅ Promoções aplicadas: '
             'pedido -R\$${(result.totalOrderDiscount / 100).toStringAsFixed(2)}, '
             'frete -R\$${(result.totalDeliveryDiscount / 100).toStringAsFixed(2)}',
             tag: 'PROMO',
           );
         } else {
-          AppLogger.debug('Nenhuma promoção aplicável', tag: 'PROMO');
+          AppLogger.d('Nenhuma promoção aplicável', tag: 'PROMO');
         }
-        
+
         return result;
       } else {
-        AppLogger.warning(
+        AppLogger.w(
           'Erro ao aplicar promoções: ${response.statusCode}',
           tag: 'PROMO',
         );
         return null;
       }
     } catch (e) {
-      AppLogger.error('Erro ao aplicar promoções', error: e, tag: 'PROMO');
+      AppLogger.e('Erro ao aplicar promoções', error: e, tag: 'PROMO');
       return null;
     }
   }

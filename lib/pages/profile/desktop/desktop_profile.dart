@@ -90,7 +90,7 @@ class DesktopProfile extends StatelessWidget {
                     ProfileMenuItem(
                       icon: Icons.location_on,
                       title: 'Meus endereços',
-                      onTap: () => context.push('/select-address'),
+                      onTap: () => context.push('/select-address', extra: true),
                     ),
                     ProfileMenuItem(
                       icon: Icons.payment,

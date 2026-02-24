@@ -48,7 +48,7 @@ class AddressBottomBar extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Não é possível continuar: endereço fora da área de entrega',
+                          'O restaurante não realiza entregas neste endereço',
                           style: TextStyle(
                             color: Colors.red.shade800,
                             fontSize: 12,

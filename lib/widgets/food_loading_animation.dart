@@ -44,7 +44,7 @@ class _FoodLoadingAnimationState extends State<FoodLoadingAnimation>
   
   // Cores para os ícones
   static const List<Color> _iconColors = [
-    Color(0xFFEA1D2C), // Vermelho iFood
+    Color(0xFFEA1D2C), // Vermelho Menuhub
     Color(0xFFFF6B35), // Laranja
     Color(0xFFFFD93D), // Amarelo
     Color(0xFF6BCB77), // Verde

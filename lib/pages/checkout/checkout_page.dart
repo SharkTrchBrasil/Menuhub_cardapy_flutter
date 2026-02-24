@@ -12,14 +12,18 @@ import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/pages/checkout/checkout_cubit.dart';
-import 'package:totem/pages/checkout/widgets/checkou_summary_card.dart';
+// Removed import checkou_summary_card.dart
 import 'package:totem/pages/checkout/widgets/payment_methods.dart';
+import 'package:totem/themes/ds_theme_switcher.dart'; // ✅ Theme
+import 'package:totem/widgets/unified_cart_bottom_bar.dart'; // ✅ Unified Bar
 import 'package:totem/pages/checkout/widgets/phone_collection_bottom_sheet.dart' show showPhoneCollectionDialog;
 import 'package:totem/widgets/dot_loading.dart';
+import 'package:totem/widgets/order_summary_card.dart'; // Added import
 import '../../core/di.dart';
 import '../../core/utils/app_logger.dart';
 import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
+import '../../cubit/store_state.dart';
 import '../../models/delivery_type.dart';
 import '../../models/store.dart';
 import '../../repositories/customer_repository.dart';
@@ -180,9 +184,14 @@ class CheckoutView extends StatelessWidget {
     final value = await showModalBottomSheet<double?>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      backgroundColor: Colors.transparent, // ✅ CORREÇÃO: Remove fundo cinza
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: _ChangeNeededBottomSheet(grandTotal: grandTotal),
       ),
     );
@@ -247,16 +256,27 @@ class CheckoutView extends StatelessWidget {
         // O usuário configura o troco clicando em "Precisa de troco?" na seção de pagamento
         // Se não configurou, será validado ao clicar em "Revisar pedido"
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Finalizar Pedido', style: TextStyle(fontSize: 14)),
-          centerTitle: true,
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      child: Builder( // ✅ Builder para acessar tema
+        builder: (context) {
+          final theme = context.watch<DsThemeSwitcher>().theme;
+          return Scaffold(
+            backgroundColor: theme.cartBackgroundColor, // Fundo consistente
+            appBar: AppBar(
+              title: Text('FINALIZAR PEDIDO', style: theme.headingTextStyle.copyWith(fontSize: 14, fontWeight: FontWeight.bold, color: theme.cartTextColor)),
+              centerTitle: true,
+              elevation: 0,
+              backgroundColor: theme.cartBackgroundColor,
+              iconTheme: IconThemeData(color: theme.cartTextColor),
+              leading: IconButton(
+                icon: const Icon(Icons.keyboard_arrow_left, color: Colors.black),
+                onPressed: () => context.go('/address'),
+              ),
+            ),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               const StoreHeaderCard(),
               const SizedBox(height: 24),
               BlocBuilder<CheckoutCubit, CheckoutState>(
@@ -313,11 +333,23 @@ class CheckoutView extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 32),
-              const OrderSummaryCard(),
+              BlocBuilder<CheckoutCubit, CheckoutState>(
+                buildWhen: (previous, current) => 
+                     previous.selectedPaymentMethod != current.selectedPaymentMethod,
+                builder: (context, state) {
+                   return OrderSummaryCard(paymentMethod: state.selectedPaymentMethod);
+                },
+              ),
               const SizedBox(height: 32),
-              // ✅ NOVO: Seção de Upsell no Checkout
-              _CheckoutUpsellSection(),
+              // ✅ Upsell removido para limpar checkout
+              // const _CheckoutUpsellSection(),
+              // const SizedBox(height: 32),
+
+              // ✅ Seção CPF na Nota
+              const _FiscalCpfSection(),
               const SizedBox(height: 32),
+              // const _CheckoutUpsellSection(),
+              // const SizedBox(height: 32),
               const _ScheduleOrderSection(),
               const SizedBox(height: 32),
               _buildSectionTitle('Observações'),
@@ -332,9 +364,13 @@ class CheckoutView extends StatelessWidget {
             ],
           ),
         ),
-        bottomNavigationBar: const CheckoutBottomBar(),
-      ),
-    ));
+        // ✅ Bottom Bar Unificado
+        bottomNavigationBar: const _UnifiedCheckoutBottomBarWrapper(), 
+      );
+      }
+    ), // Builder
+  ), // BlocListener (Checkout)
+); // BlocListener (DeliveryFee)
   }
 
   Widget _buildSectionTitle(String title) {
@@ -557,9 +593,24 @@ class _PaymentMethodSummary extends StatelessWidget {
       'credit': 'visa', // Fallback genérico para crédito
       'debit': 'visa_debit', // Fallback genérico para débito
       'hiper': 'hipercard',
-      'vr': 'cash', // Vale refeição -> dinheiro como fallback
-      'alelo': 'cash', // Alelo -> dinheiro como fallback
-      'va': 'cash', // Vale alimentação -> dinheiro como fallback
+      'hipercard': 'hipercard',
+      'master': 'mastercard',
+      'mastercard': 'mastercard',
+      'visa': 'visa',
+      'elo': 'elo',
+      'amex': 'amex',
+      'american_express': 'amex',
+      'pix': 'pix',
+      'cash': 'cash',
+      'dinheiro': 'cash',
+      'sodexo': 'sodexo',
+      'alelo': 'alelo',
+      'ticket': 'ticket',
+      'vr': 'vr',
+      'diners': 'diners',
+      'discover': 'discover',
+      'va': 'ticket', // Vale alimentação -> Ticket como fallback
+      'vr_refeicao': 'vr',
     };
     
     // Se existe mapeamento, usa ele
@@ -619,8 +670,18 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    // ✅ CORREÇÃO: Container branco explícito para evitar fundo cinza
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -640,6 +701,7 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
             ),
             style: theme.textTheme.headlineMedium,
             textAlign: TextAlign.center,
+            autofocus: true,
           ),
           const SizedBox(height: 8),
           const Text('Ao receber seu pedido, não esqueça de conferir o troco.', style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
@@ -656,7 +718,7 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
             },
             child: const Text('Confirmar valor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)),
           ),
-          const SizedBox(height: 45),
+          const SizedBox(height: 12),
           TextButton(
             style: ButtonStyle(overlayColor: MaterialStateProperty.all(Colors.transparent)),
             onPressed: () => Navigator.pop(context, 0.0),
@@ -674,14 +736,46 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
   }
 }
 
-class CheckoutBottomBar extends StatelessWidget {
-  const CheckoutBottomBar({super.key});
+class _UnifiedCheckoutBottomBarWrapper extends StatelessWidget {
+  const _UnifiedCheckoutBottomBarWrapper();
 
-  // ✅ NOVO: Flag para evitar que o sheet de confirmação abra múltiplas vezes
-  static bool _isConfirmationSheetOpen = false;
   static bool _isChangeSheetOpen = false;
+  static bool _isConfirmationSheetOpen = false;
 
-  // ✅ NOVO: Método para mostrar sheet de troco
+  @override
+  Widget build(BuildContext context) {
+    // ✅ Wrapper para o UnifiedCartBottomBar no Checkout
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: BlocBuilder<CheckoutCubit, CheckoutState>(
+        builder: (context, checkoutState) {
+          return UnifiedCartBottomBar(
+            variant: CartBottomBarVariant.checkout,
+            overrideButtonLabel: 'Revisar pedido', // Texto customizado
+            onContinuePressed: () {
+               // ✅ Lógica de validação de troco + Confirmação
+               final method = checkoutState.selectedPaymentMethod;
+               final isCash = method?.method_type == 'CASH';
+               final needsChangeConfig = isCash && checkoutState.changeFor == null;
+               
+               if (needsChangeConfig) {
+                 _showChangeNeededSheet(context).then((_) {
+                   final updatedState = context.read<CheckoutCubit>().state;
+                   if (updatedState.changeFor != null || !isCash) {
+                     _showOrderConfirmationSheet(context);
+                   }
+                 });
+               } else {
+                 _showOrderConfirmationSheet(context);
+               }
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  // ✅ NOVO: Método para mostrar sheet de troco (copiado da lógica anterior)
   Future<void> _showChangeNeededSheet(BuildContext context) async {
     if (_isChangeSheetOpen) return;
     
@@ -698,9 +792,14 @@ class CheckoutBottomBar extends StatelessWidget {
     final value = await showModalBottomSheet<double?>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      backgroundColor: Colors.transparent, // ✅ CORREÇÃO: Remove fundo cinza
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: _ChangeNeededBottomSheet(grandTotal: grandTotal),
       ),
     );
@@ -712,29 +811,148 @@ class CheckoutBottomBar extends StatelessWidget {
   }
 
   void _showOrderConfirmationSheet(BuildContext context) {
-    // ✅ CORREÇÃO: Previne que abra múltiplas vezes
     if (_isConfirmationSheetOpen) return;
     
     _isConfirmationSheetOpen = true;
+    // ✅ CORREÇÃO: Captura o contexto antes de usar no callback assíncrono
+    final outerContext = context;
     showModalBottomSheet(
-      context: context,
+      context: outerContext,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) {
+      builder: (builderContext) {
         return MultiBlocProvider(
           providers: [
-            BlocProvider.value(value: context.read<CartCubit>()),
-            BlocProvider.value(value: context.read<AddressCubit>()),
-            BlocProvider.value(value: context.read<DeliveryFeeCubit>()),
-            BlocProvider.value(value: context.read<CheckoutCubit>()),
-            BlocProvider.value(value: context.read<AuthCubit>()),
-            BlocProvider.value(value: context.read<StoreCubit>()),
+            BlocProvider.value(value: outerContext.read<CartCubit>()),
+            BlocProvider.value(value: outerContext.read<AddressCubit>()),
+            BlocProvider.value(value: outerContext.read<DeliveryFeeCubit>()),
+            BlocProvider.value(value: outerContext.read<CheckoutCubit>()),
+            BlocProvider.value(value: outerContext.read<AuthCubit>()),
+            BlocProvider.value(value: outerContext.read<StoreCubit>()),
           ],
           child: _OrderConfirmationBottomSheet(
             onShowPhoneSheet: (currentPhone) async {
-              // Fecha o sheet de confirmação e mostra o de telefone
-              Navigator.pop(context);
-              await _showPhoneCollectionSheet(context, currentPhone);
+              // ✅ Fecha o bottomSheet de confirmação
+              Navigator.pop(builderContext);
+              
+              // ✅ CORREÇÃO: Coleta telefone, salva e continua fluxo usando contexto externo
+              AppLogger.info('📞 [CHECKOUT] Coletando telefone do cliente...', tag: 'CHECKOUT');
+              final phone = await showPhoneCollectionDialog(outerContext, initialPhone: currentPhone);
+              
+              if (phone == null || phone.isEmpty) {
+                AppLogger.warning('📞 [CHECKOUT] Telefone não informado - pedido cancelado', tag: 'CHECKOUT');
+                if (outerContext.mounted) {
+                  ScaffoldMessenger.of(outerContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('É necessário informar um telefone para finalizar o pedido.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              // ✅ CRÍTICO: Salva telefone no backend E atualiza estado local
+              if (!outerContext.mounted) {
+                AppLogger.error('❌ [CHECKOUT] Contexto não está mounted após coletar telefone', tag: 'CHECKOUT');
+                return;
+              }
+              
+              final authCubit = outerContext.read<AuthCubit>();
+              final customer = authCubit.state.customer;
+              
+              // ✅ DEBUG: Log detalhado do estado do customer
+              AppLogger.info('🔍 [CHECKOUT] Estado do customer:', tag: 'CHECKOUT');
+              AppLogger.info('   ├─ customer = ${customer != null ? "NOT NULL" : "NULL"}', tag: 'CHECKOUT');
+              if (customer != null) {
+                AppLogger.info('   ├─ customer.id = ${customer.id}', tag: 'CHECKOUT');
+                AppLogger.info('   ├─ customer.name = ${customer.name}', tag: 'CHECKOUT');
+                AppLogger.info('   ├─ customer.email = ${customer.email}', tag: 'CHECKOUT');
+                AppLogger.info('   └─ customer.phone (antes) = ${customer.phone}', tag: 'CHECKOUT');
+              }
+              
+              if (customer == null) {
+                AppLogger.error('❌ [CHECKOUT] Customer é NULL! Não foi possível salvar telefone', tag: 'CHECKOUT');
+                if (outerContext.mounted) {
+                  ScaffoldMessenger.of(outerContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Erro: Cliente não encontrado. Faça login novamente.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              if (customer.id == null) {
+                AppLogger.error('❌ [CHECKOUT] Customer ID é NULL! Não foi possível salvar telefone', tag: 'CHECKOUT');
+                if (outerContext.mounted) {
+                  ScaffoldMessenger.of(outerContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Erro: ID do cliente inválido. Faça login novamente.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              // ✅ CRÍTICO: Wrappa toda a operação em try-finally para garantir que o fluxo continue
+              bool saveSuccessful = false;
+              
+              try {
+                AppLogger.info('💾 [CHECKOUT] Salvando telefone no backend: $phone', tag: 'CHECKOUT');
+                final customerRepo = getIt<CustomerRepository>();
+                
+                AppLogger.info('📤 [CHECKOUT] Chamando updateCustomerInfo...', tag: 'CHECKOUT');
+                final result = await customerRepo.updateCustomerInfo(
+                  customer.id!,
+                  customer.name ?? '',
+                  phone,
+                  email: customer.email,
+                );
+                
+                AppLogger.info('📥 [CHECKOUT] Resposta recebida do backend', tag: 'CHECKOUT');
+                
+                if (result.isRight && outerContext.mounted) {
+                  final updatedCustomer = result.right;
+                  authCubit.updateCustomer(updatedCustomer);
+                  saveSuccessful = true;
+                  AppLogger.success('✅ [CHECKOUT] Telefone salvo com sucesso no backend: ${updatedCustomer.phone}', tag: 'CHECKOUT');
+                  AppLogger.success('✅ [CHECKOUT] Estado local atualizado', tag: 'CHECKOUT');
+                  
+               } else if (result.isLeft) {
+                  AppLogger.error('❌ [CHECKOUT] Erro do backend ao salvar telefone: ${result.left}', tag: 'CHECKOUT');
+                  if (outerContext.mounted) {
+                    ScaffoldMessenger.of(outerContext).showSnackBar(
+                      SnackBar(
+                        content: Text('Erro ao salvar telefone: ${result.left ?? "Erro desconhecido"}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              } catch (e, stackTrace) {
+                AppLogger.error('❌ [CHECKOUT] Exceção ao salvar telefone: $e', tag: 'CHECKOUT');
+                AppLogger.error('   └─ Stack: $stackTrace', tag: 'CHECKOUT');
+                if (outerContext.mounted) {
+                  ScaffoldMessenger.of(outerContext).showSnackBar(
+                    SnackBar(
+                      content: Text('Erro ao salvar telefone: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } finally {
+                // ✅ CRÍTICO: Reabre a confirmação SEMPRE, independente de sucesso ou falha
+                // O telefone já foi coletado e o usuário pode prosseguir mesmo que o save falhe
+                AppLogger.info('🔄 [CHECKOUT] Reabrindo modal de confirmação...', tag: 'CHECKOUT');
+                await Future.delayed(const Duration(milliseconds: 500));
+                if (outerContext.mounted) {
+                  _isConfirmationSheetOpen = false; // ✅ Reset flag antes de reabrir
+                  _showOrderConfirmationSheet(outerContext);
+                }
+              }
             },
           ),
         );
@@ -743,122 +961,9 @@ class CheckoutBottomBar extends StatelessWidget {
       _isConfirmationSheetOpen = false;
     });
   }
-
-  // ✅ NOVO: Bottom sheet para coletar telefone (mobile) ou dialog (desktop)
-  Future<void> _showPhoneCollectionSheet(BuildContext context, String? currentPhone) async {
-    final phone = await showPhoneCollectionDialog(context, initialPhone: currentPhone);
-
-    if (phone != null && phone.isNotEmpty) {
-      final authState = context.read<AuthCubit>().state;
-      final customer = authState.customer;
-      
-      if (customer?.id != null) {
-        // Atualiza telefone no backend
-        try {
-          final customerRepo = getIt<CustomerRepository>();
-          final result = await customerRepo.updateCustomerInfo(
-            customer!.id!,
-            customer.name,
-            phone,
-            email: customer.email,
-          );
-          
-          if (result.isRight) {
-            // Atualiza o customer no AuthCubit
-            context.read<AuthCubit>().updateCustomer(result.right);
-            
-            // Mostra mensagem de sucesso e reabre o sheet de confirmação
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Telefone salvo com sucesso!'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-            
-            // Aguarda um pouco e reabre o sheet de confirmação
-            await Future.delayed(const Duration(milliseconds: 500));
-            _showOrderConfirmationSheet(context);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Erro ao salvar telefone: ${result.left}'),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Erro ao salvar telefone: $e'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-      }
-    } else if (phone == null) {
-      // Usuário cancelou ou não informou telefone
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('É necessário informar um telefone para finalizar o pedido.'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<CartCubit, CartState>(
-      builder: (context, cartState) {
-        return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
-          builder: (context, feeState) {
-            // ✅ CORREÇÃO APLICADA AQUI
-            double deliveryFee = 0.0;
-            if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
-              deliveryFee = feeState.deliveryFee;
-            }
-            final grandTotal = (cartState.cart.total / 100.0) + deliveryFee;
-
-            return BottomAppBar(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-                child: BlocBuilder<CheckoutCubit, CheckoutState>(
-                  builder: (context, checkoutState) {
-                    return DsPrimaryButton(
-                      label: 'Revisar pedido • ${UtilBrasilFields.obterReal(grandTotal)}',
-                      onPressed: () {
-                        // ✅ CORREÇÃO: Valida troco ANTES de mostrar o resumo
-                        final method = checkoutState.selectedPaymentMethod;
-                        final isCash = method?.method_type == 'CASH';
-                        final needsChangeConfig = isCash && checkoutState.changeFor == null;
-                        
-                        if (needsChangeConfig) {
-                          // Se é dinheiro e não configurou troco, mostra sheet de troco primeiro
-                          _showChangeNeededSheet(context).then((_) {
-                            // Após configurar troco, mostra o resumo
-                            final updatedState = context.read<CheckoutCubit>().state;
-                            if (updatedState.changeFor != null || !isCash) {
-                              _showOrderConfirmationSheet(context);
-                            }
-                          });
-                        } else {
-                          // Já configurou ou não é dinheiro, mostra resumo direto
-                          _showOrderConfirmationSheet(context);
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }
+
+
 
 class _OrderConfirmationBottomSheet extends StatelessWidget {
   final Function(String?)? onShowPhoneSheet;
@@ -873,106 +978,209 @@ class _OrderConfirmationBottomSheet extends StatelessWidget {
     final feeState = context.read<DeliveryFeeCubit>().state;
     final checkoutState = context.read<CheckoutCubit>().state;
     final authState = context.read<AuthCubit>().state;
+    final theme = Theme.of(context);
 
-    // ✅ CORREÇÃO APLICADA AQUI
     double deliveryFee = 0.0;
     if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
       deliveryFee = feeState.deliveryFee;
     }
     final grandTotal = (cartState.cart.total / 100.0) + deliveryFee;
 
+    // Estimativa de tempo
     final deliveryTime = '${store.store_operation_config?.deliveryEstimatedMin}-${store.store_operation_config?.deliveryEstimatedMax} min';
     
-    // ✅ CORREÇÃO: Se for pickup, mostra endereço da loja ou oculta; se for delivery, mostra endereço do cliente
+    // Endereço
     String addressLine = '';
     String addressComplement = '';
+    
+    // Título do tipo de entrega
+    String deliveryTitle = 'Entrega hoje';
+    IconData deliveryIcon = Icons.two_wheeler; // Ícone de moto por padrão
+
     if (feeState.deliveryType == DeliveryType.pickup) {
-      // Para retirada, mostra endereço da loja ou oculta
+      deliveryTitle = 'Retirada na loja';
+      deliveryIcon = Icons.storefront;
       if (store.street != null && store.street!.isNotEmpty) {
         addressLine = '${store.street}${store.number != null && store.number!.isNotEmpty ? ", ${store.number}" : ""}';
         addressComplement = store.complement ?? '';
       }
-      // Se não tiver endereço da loja, não mostra nada (addressLine fica vazio)
     } else {
-      // Para delivery, mostra endereço do cliente
       addressLine = '${addressState.selectedAddress?.street ?? ""}, ${addressState.selectedAddress?.number ?? ""}';
       addressComplement = addressState.selectedAddress?.complement ?? '';
     }
+    
+    // Pagamento
+    final paymentMethodName = checkoutState.selectedPaymentMethod?.name ?? 'Pagamento';
+    final isOnline = checkoutState.selectedPaymentMethod?.method_type == 'ONLINE';
+    final paymentTypeLabel = isOnline ? 'Pagamento pelo app' : 'Pagamento na entrega';
 
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      padding: const EdgeInsets.only(left: 24.0, right: 24.0, bottom: 24.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Revise o seu pedido', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 24),
-          _buildSummaryRow(
-            Icons.delivery_dining, 
-            feeState.deliveryType == DeliveryType.pickup ? 'Retirada' : 'Entrega hoje', 
-            deliveryTime
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 24),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
           ),
-          const Divider(),
-          if (addressLine.isNotEmpty) ...[
-            _buildSummaryRow(Icons.location_on, addressLine, addressComplement),
-            const Divider(),
-          ],
-          _buildSummaryRow(
-            Icons.account_balance_wallet,
-            'Pagamento na entrega',
-            '${checkoutState.selectedPaymentMethod?.name} • ${UtilBrasilFields.obterReal(grandTotal)}',
+          
+          // Título
+          Center(
+            child: Text(
+              'Revise o seu pedido',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
           ),
           const SizedBox(height: 32),
-          ElevatedButton(
-            child: const Text('Fazer pedido'),
-            onPressed: () async {
-              // ✅ NOVO: Verifica se a loja está aberta antes de fazer o pedido
-              final storeStatus = StoreStatusService.validateStoreStatus(store);
-              if (!storeStatus.canReceiveOrders) {
-                Navigator.pop(context); // Fecha o sheet de confirmação
-                // Mostra modal de loja fechada
-                await StoreClosedCartModal.show(
-                  context,
-                  onSeeOtherOptions: () => Navigator.pop(context),
-                  nextOpenTime: storeStatus.message,
-                );
-                return;
-              }
-              
-              // ✅ NOVO: Valida se tem telefone antes de finalizar
-              final customer = authState.customer;
-              if (customer?.phone == null || customer!.phone!.isEmpty) {
-                // Mostra bottom sheet para coletar telefone
-                Navigator.pop(context); // Fecha o sheet de confirmação
-                if (onShowPhoneSheet != null) {
-                  onShowPhoneSheet?.call(customer?.phone);
-                }
-                return;
-              }
-              
-              // Se tem telefone, prossegue para tela de animação
-              Navigator.pop(context); // Fecha o sheet de confirmação
-              
-              // ✅ CORREÇÃO: Obtém o cubit antes de navegar
-              final checkoutCubit = context.read<CheckoutCubit>();
-              
-              // ✅ CORREÇÃO: Navega para tela de animação passando o cubit via extra
-              context.push('/order/submitting', extra: {
-                'checkoutCubit': checkoutCubit,
-              });
-              
-              // ✅ Dispara o placeOrder após navegar (a tela de animação vai escutar o estado)
-              checkoutCubit.placeOrder(
-                cartState: cartState,
-                addressState: addressState,
-                feeState: feeState,
-                authState: authState,
-                store: store,
-              );
-            },
+
+          // Linha de Entrega
+          _buildSummaryRow(
+            context,
+            icon: deliveryIcon,
+            title: deliveryTitle,
+            subtitle: 'Hoje, $deliveryTime',
           ),
+          
+          const SizedBox(height: 16),
+
+          // Linha de Endereço (se houver)
+          if (addressLine.isNotEmpty) ...[
+            _buildSummaryRow(
+              context,
+              icon: Icons.location_on,
+              title: addressLine,
+              subtitle: addressComplement.isNotEmpty ? addressComplement : null,
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // TODO: Linha de Cupom (Se disponível no futuro)
+          // _buildSummaryRow(context, icon: Icons.local_offer_outlined, title: 'Cupom', subtitle: 'Nenhum cupom aplicado'),
+          // const SizedBox(height: 16),
+
+          // Linha CPF na Nota (se houver e estiver ativo na loja)
+          if (store.fiscalActive && authState.customer?.cpf != null && authState.customer!.cpf!.isNotEmpty) ...[
+            _buildSummaryRow(
+              context,
+              icon: Icons.receipt_long,
+              title: 'CPF na nota',
+              subtitle: authState.customer!.cpf!,
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Linha de Pagamento com PREÇO no final
+          _buildSummaryRow(
+            context,
+            icon: isOnline ? Icons.credit_card : Icons.attach_money,
+            title: paymentTypeLabel,
+            subtitle: paymentMethodName,
+            trailing: Text(
+              UtilBrasilFields.obterReal(grandTotal),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 32),
+          
+          // Botão Confirmar
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, // Cor vermelha conforme imagem
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Fazer pedido',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () async {
+                // Validações
+                final storeStatus = StoreStatusService.validateStoreStatus(store);
+                if (!storeStatus.canReceiveOrders) {
+                  Navigator.pop(context);
+                  await StoreClosedCartModal.show(
+                    context,
+                    onSeeOtherOptions: () => Navigator.pop(context),
+                    nextOpenTime: storeStatus.message,
+                  );
+                  return;
+                }
+
+                if (store.fiscalActive) {
+                  final cpf = authState.customer?.cpf;
+                  if (cpf == null || cpf.isEmpty) {
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       const SnackBar(content: Text('CPF é obrigatório.'), backgroundColor: Colors.red),
+                     );
+                     showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => _FiscalCpfBottomSheet(initialCpf: cpf),
+                     );
+                     return;
+                  }
+                }
+                
+                final customer = authState.customer;
+                if (customer?.phone == null || customer!.phone!.isEmpty) {
+                  // ✅ CORREÇÃO: NÃO fecha o bottom sheet aqui
+                  // O callback onShowPhoneSheet vai fechar, coletar telefone, salvar E reabrir
+                  if (onShowPhoneSheet != null) {
+                    onShowPhoneSheet?.call(customer?.phone);
+                  }
+                  return;
+                }
+                
+                Navigator.pop(context);
+                final checkoutCubit = context.read<CheckoutCubit>();
+                context.push('/order/submitting', extra: {'checkoutCubit': checkoutCubit});
+                checkoutCubit.placeOrder(
+                  cartState: cartState,
+                  addressState: addressState,
+                  feeState: feeState,
+                  authState: authState,
+                  store: store,
+                );
+              },
+            ),
+          ),
+          
+          // Botão Alterar Pedido
+          const SizedBox(height: 12),
           TextButton(
-            child: const Text('Alterar pedido'),
+            child: const Text(
+              'Alterar pedido',
+              style: TextStyle(
+                color: Colors.red, 
+                fontWeight: FontWeight.bold,
+                fontSize: 14
+              ),
+            ),
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -980,24 +1188,292 @@ class _OrderConfirmationBottomSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildSummaryRow(IconData icon, String title, String subtitle) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey.shade700),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
+  Widget _buildSummaryRow(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.black87, size: 22),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold, // Título em negrito
+                  fontSize: 14,
+                  color: Colors.black87,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+           const SizedBox(width: 8),
+           trailing,
+        ],
+      ],
+    );
+  }
+}
+
+// ✅ NOVO: Widget da seção CPF na Nota
+class _FiscalCpfSection extends StatelessWidget {
+  const _FiscalCpfSection();
+
+  @override
+  Widget build(BuildContext context) {
+    // Escuta alterações no customer (AuthCubit) e Store (para saber se é fiscal active)
+    return BlocBuilder<StoreCubit, StoreState>(
+      builder: (context, storeState) {
+        final store = storeState.store;
+        final isFiscalMandatory = store?.fiscalActive ?? false;
+
+        return BlocBuilder<AuthCubit, AuthState>(
+          builder: (context, authState) {
+            final cpf = authState.customer?.cpf;
+            final hasCpf = cpf != null && cpf.isNotEmpty;
+            
+            // Se não ativado, oculta a seção
+            if (!isFiscalMandatory) return const SizedBox.shrink();
+
+            // Se obrigatório e vazio, destaca erro
+            final showWarning = isFiscalMandatory && !hasCpf;
+
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: Colors.grey)),
-              ],
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_outlined, size: 24, color: showWarning ? Colors.red : Colors.black87),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CPF na nota',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600, 
+                                fontSize: 16,
+                                color: showWarning ? Colors.red : Colors.black87
+                              ),
+                            ),
+                            if (!hasCpf)
+                               Text(
+                                 isFiscalMandatory ? 'Obrigatório' : 'Opcional', 
+                                 style: TextStyle(
+                                   color: showWarning ? Colors.red.shade700 : Colors.grey.shade600, 
+                                   fontSize: 14,
+                                   fontWeight: isFiscalMandatory ? FontWeight.bold : FontWeight.normal
+                                 )
+                               ),
+                          ],
+                        ),
+                      ),
+                  if (hasCpf)
+                    TextButton(
+                      onPressed: () => _openCpfSheet(context, cpf),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(_obfuscateCpf(cpf), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 14)),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () => _openCpfSheet(context, null),
+                      child: const Text('Adicionar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+          },
+        );
+      },
+    );
+  }
+
+  String _obfuscateCpf(String cpf) {
+    if (cpf.length < 11) return cpf;
+    return '***.${cpf.substring(3, 6)}.${cpf.substring(6, 9)}-**';
+  }
+
+  void _openCpfSheet(BuildContext context, String? currentCpf) {
+      showModalBottomSheet(
+        context: context, 
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _FiscalCpfBottomSheet(initialCpf: currentCpf),
+      );
+  }
+}
+
+// ✅ NOVO: Bottom Sheet para editar CPF
+class _FiscalCpfBottomSheet extends StatefulWidget {
+  final String? initialCpf;
+  const _FiscalCpfBottomSheet({super.key, this.initialCpf});
+  @override
+  State<_FiscalCpfBottomSheet> createState() => _FiscalCpfBottomSheetState();
+}
+
+class _FiscalCpfBottomSheetState extends State<_FiscalCpfBottomSheet> {
+  final _inputController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialCpf != null && widget.initialCpf!.isNotEmpty) {
+      // Aplica formatação se não estiver formatado
+      if (widget.initialCpf!.length <= 11) {
+         _inputController.text = UtilBrasilFields.obterCpf(widget.initialCpf!);
+      } else {
+         _inputController.text = widget.initialCpf!;
+      }
+    }
+  }
+  
+  @override
+  void dispose() {
+    _inputController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveCpf() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    // Remove pontuação para salvar limpo
+    final cpfClean = UtilBrasilFields.removeCaracteres(_inputController.text);
+    
+    setState(() => _isLoading = true);
+    
+    try {
+       final authCubit = context.read<AuthCubit>();
+       final customer = authCubit.state.customer;
+       
+       if (customer?.id == null) return;
+       
+       final repo = getIt<CustomerRepository>();
+       // Mantem phone atual. Assumimos que phone não é nulo se user está logado e no checkout, mas usamos ?? '' por segurança
+       final result = await repo.updateCustomerInfo(
+         customer!.id!,
+         customer.name,
+         customer.phone ?? '', // Phone é obrigatório posicional
+         cpf: cpfClean,
+         email: customer.email,
+       );
+       
+       if (result.isRight && mounted) {
+          authCubit.updateCustomer(result.right);
+          Navigator.pop(context);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('CPF salvo com sucesso!'), backgroundColor: Colors.green),
+          );
+       } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text(result.left ?? 'Erro ao salvar CPF'), backgroundColor: Colors.red),
+          );
+       }
+    } catch (e) {
+       if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+          );
+       }
+    } finally {
+       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.read<DsThemeSwitcher>().theme;
+    
+    return Container(
+       decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+       ),
+       padding: EdgeInsets.only(
+          left: 20, 
+          right: 20, 
+          top: 24, 
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24
+       ),
+       child: Form(
+         key: _formKey,
+         child: Column(
+           mainAxisSize: MainAxisSize.min,
+           crossAxisAlignment: CrossAxisAlignment.stretch,
+           children: [
+             Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+             const SizedBox(height: 24),
+             const Text('CPF na nota', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+             const SizedBox(height: 8),
+             Text('É necessário informar o seu CPF para fazer o pedido nesta loja', 
+                 style: TextStyle(color: Colors.grey.shade600, fontSize: 14), textAlign: TextAlign.center),
+             const SizedBox(height: 24),
+             TextFormField(
+               controller: _inputController,
+               decoration: const InputDecoration(
+                  labelText: 'CPF',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+               ),
+               keyboardType: TextInputType.number,
+               inputFormatters: [
+                 FilteringTextInputFormatter.digitsOnly,
+                 CpfInputFormatter(),
+               ],
+               validator: (value) {
+                 if (value == null || value.isEmpty) return 'Informe o CPF';
+                 if (!UtilBrasilFields.isCPFValido(value)) return 'CPF inválido';
+                 return null;
+               },
+             ),
+             const SizedBox(height: 24),
+             SizedBox(
+               height: 48,
+               child: ElevatedButton(
+                 style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                 ),
+                 onPressed: _isLoading ? null : _saveCpf,
+                 child: _isLoading 
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Confirmar', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+               ),
+             ),
+           ],
+         ),
+       ),
     );
   }
 }

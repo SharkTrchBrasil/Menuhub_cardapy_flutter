@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_status_badge.dart
-// ✅ Widget Status do pedido - Estilo iFood
+// ✅ Widget Status do pedido - Estilo Menuhub
 // Badge com ícone e mensagem contextual
 
 import 'package:flutter/material.dart';

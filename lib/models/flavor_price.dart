@@ -29,25 +29,26 @@ class FlavorPrice extends Equatable {
     this.externalCodeByCatalog,
   });
 
-  factory FlavorPrice.fromJson(Map<String, dynamic> json) {
-    // Handle price being int or double (if backend sends decimals)
-    final num? priceNum = json['price'];
-    int priceInCents = 0;
-    if (priceNum != null) {
-      if (priceNum is double) {
-        // If it's a large double (e.g. 4550.0), assume it's already cents
-        if (priceNum > 1000) {
-          priceInCents = priceNum.round();
-        } else {
-          // Small double (e.g. 45.50), assume Reais -> convert to cents
-          priceInCents = (priceNum * 100).round();
-        }
-      } else {
-        // If it's int, assume it's already cents
-        priceInCents = priceNum.toInt();
+  static int _parsePrice(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) {
+       // Se for double, lógica antiga de segurança:
+       if (value > 1000) return value.round();
+       return (value * 100).round();
+    }
+    if (value is Map) {
+      final amount = value['amount'] ?? value['value'];
+      if (amount is num) return (amount as num).toInt();
+      if (amount is String) {
+          return double.tryParse(amount)?.toInt() ?? 0;
       }
     }
+    if (value is String) return double.tryParse(value)?.toInt() ?? 0;
+    return 0;
+  }
 
+  factory FlavorPrice.fromJson(Map<String, dynamic> json) {
     // Handle is_available being bool or int (0/1)
     bool available = true;
     if (json['is_available'] != null) {
@@ -63,7 +64,7 @@ class FlavorPrice extends Equatable {
       sizeOptionId: json['size_option_id'],
       sizeOptionName: json['size_option_name'],
       sizeOptionImagePath: json['size_option_image_path'],
-      price: priceInCents,
+      price: _parsePrice(json['price']),
       isAvailable: available,
       posCode: json['pos_code'],
       // ✅ CAMPOS ADICIONAIS DO CATÁLOGO

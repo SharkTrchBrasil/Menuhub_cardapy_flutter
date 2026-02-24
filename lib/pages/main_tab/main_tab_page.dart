@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import 'package:totem/core/responsive_builder.dart';
+import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/services/persistent_order_notification_service.dart';
 import 'package:totem/services/urgent_notification_service.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
@@ -89,31 +91,53 @@ class _MainTabPageState extends State<MainTabPage> {
           // ✅ NOVO: Define contexto para o serviço de notificações urgentes
           WidgetsBinding.instance.addPostFrameCallback((_) {
             UrgentNotificationService().setContext(context);
+            // ✅ NOVO: Define contexto para notificação persistente de pedido
+            PersistentOrderNotificationService().setContext(context);
           });
           
-          return Scaffold(
-            body: Stack(
-              children: [
-                // Conteúdo principal com IndexedStack
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  bottom: 65, // Espaço para bottom nav
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: _tabs,
-                  ),
-                ),
-                
-                // Bottom Navigation Bar para mobile
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildBottomNavigationBar(context, theme),
-                ),
-              ],
+          return BlocListener<OrdersCubit, OrdersState>(
+            listenWhen: (previous, current) {
+              // ✅ Monitora quando há mudanças nos pedidos ativos
+              final prevActive = previous.activeOrders;
+              final currActive = current.activeOrders;
+              
+              // Detecta mudança se:
+              // 1. Quantidade de pedidos ativos mudou
+              // 2. Status de algum pedido ativo mudou
+              if (prevActive.length != currActive.length) return true;
+              
+              for (int i = 0; i < currActive.length; i++) {
+                if (i >= prevActive.length) return true;
+                if (prevActive[i].id != currActive[i].id ||
+                    prevActive[i].lastStatus != currActive[i].lastStatus) {
+                  return true;
+                }
+              }
+              
+              return false;
+            },
+            listener: (context, state) {
+              // ✅ Mostra/esconde notificação baseado em pedidos ativos
+              final activeOrders = state.activeOrders;
+              final notificationService = PersistentOrderNotificationService();
+              
+              if (activeOrders.isEmpty) {
+                // Não há pedidos ativos, esconde notificação
+                notificationService.hideNotification();
+              } else {
+                // Há pedido(s) ativo(s), mostra notificação do mais recente
+                final mostRecentOrder = activeOrders.first;
+                notificationService.showNotification(mostRecentOrder);
+              }
+            },
+            child: Scaffold(
+              body: IndexedStack(
+                index: _selectedIndex,
+                children: _tabs,
+              ),
+              // ✅ CORREÇÃO: Usa bottomNavigationBar nativo do Scaffold
+              // Isso garante que as tabs fiquem sempre na parte inferior da tela
+              bottomNavigationBar: _buildBottomNavigationBar(context, theme),
             ),
           );
         },
@@ -134,12 +158,13 @@ class _MainTabPageState extends State<MainTabPage> {
         ],
       ),
       child: SafeArea(
-      child: Container(
-        height: 65,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
+        top: false,
+        child: Container(
+          height: 65,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
               _buildNavItem(
                 context,
                 icon: EvaIcons.homeOutline,

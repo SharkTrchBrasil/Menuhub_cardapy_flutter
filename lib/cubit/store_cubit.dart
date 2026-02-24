@@ -24,17 +24,17 @@ class StoreCubit extends Cubit<StoreState> {
 
       // ✅ CORREÇÃO: Seleciona categoria padrão baseado nas categorias da loja
       if (state.selectedCategory == null && state.categories.isNotEmpty) {
-        AppLogger.debug('⚙️ Selecionando categoria padrão: ${state.categories.first.name}');
+        AppLogger.d('⚙️ Selecionando categoria padrão: ${state.categories.first.name}');
         emit(state.copyWith(selectedCategory: state.categories.first));
       }
     });
 
     _storeSub = _realtimeRepository.storeController.listen((storeData) {
-      AppLogger.debug('🏪 StoreCubit: Loja recebida');
-      AppLogger.debug('   ├─ Nome: ${storeData.name}');
-      AppLogger.debug('   ├─ Categorias: ${storeData.categories.length}');
+      AppLogger.d('🏪 StoreCubit: Loja recebida');
+      AppLogger.d('   ├─ Nome: ${storeData.name}');
+      AppLogger.d('   ├─ Categorias: ${storeData.categories.length}');
       for (var cat in storeData.categories) {
-        AppLogger.debug('      └─ ${cat.name} (ID: ${cat.id})');
+        AppLogger.d('      └─ ${cat.name} (ID: ${cat.id})');
       }
 
       emit(state.copyWith(store: storeData));
@@ -49,17 +49,17 @@ class StoreCubit extends Cubit<StoreState> {
           storeDescription: storeData.description,
           storeImageUrl: storeData.image?.url,
         );
-        AppLogger.debug('🔍 SEO: Título atualizado para "${storeData.name}"');
+        AppLogger.d('🔍 SEO: Título atualizado para "${storeData.name}"');
       }
 
-      AppLogger.debug('📊 Estado após atualizar loja:');
-      AppLogger.debug('   ├─ state.store != null: ${state.store != null}');
-      AppLogger.debug('   ├─ state.categories.length: ${state.categories.length}');
-      AppLogger.debug('   └─ state.selectedCategory: ${state.selectedCategory?.name}');
+      AppLogger.d('📊 Estado após atualizar loja:');
+      AppLogger.d('   ├─ state.store != null: ${state.store != null}');
+      AppLogger.d('   ├─ state.categories.length: ${state.categories.length}');
+      AppLogger.d('   └─ state.selectedCategory: ${state.selectedCategory?.name}');
 
       // ✅ ADICIONE: Quando a loja carregar, seleciona a primeira categoria
       if (state.selectedCategory == null && storeData.categories.isNotEmpty) {
-        AppLogger.debug('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
+        AppLogger.d('⚙️ Selecionando categoria padrão da loja: ${storeData.categories.first.name}');
         emit(state.copyWith(selectedCategory: storeData.categories.first));
       }
 
@@ -72,7 +72,7 @@ class StoreCubit extends Cubit<StoreState> {
     });
 
     _bannersSub = _realtimeRepository.bannersController.listen((banners) {
-      AppLogger.debug('🎨 StoreCubit: Banners recebidos: ${banners.length}');
+      AppLogger.d('🎨 StoreCubit: Banners recebidos: ${banners.length}');
       emit(state.copyWith(banners: banners));
     });
   }
@@ -93,10 +93,10 @@ class StoreCubit extends Cubit<StoreState> {
     if (pausedUntil != null && pausedUntil.isAfter(DateTime.now())) {
       final duration = pausedUntil.difference(DateTime.now());
       
-      AppLogger.debug('⏰ StoreCubit: Pausa ativa. Timer configurado para ${duration.inMinutes} min ${duration.inSeconds % 60}s');
+      AppLogger.d('⏰ StoreCubit: Pausa ativa. Timer configurado para ${duration.inMinutes} min ${duration.inSeconds % 60}s');
       
       _pauseExpirationTimer = Timer(duration + const Duration(seconds: 2), () {
-        AppLogger.debug('⏰ StoreCubit: Pausa expirou! Forçando atualização do estado...');
+        AppLogger.d('⏰ StoreCubit: Pausa expirou! Forçando atualização do estado...');
         
         // ✅ Limpa o pausedUntil localmente e re-emite o estado
         if (state.store != null) {
@@ -110,7 +110,7 @@ class StoreCubit extends Cubit<StoreState> {
           );
           
           emit(state.copyWith(store: updatedStore));
-          AppLogger.debug('✅ StoreCubit: Estado atualizado - Loja agora está ABERTA!');
+          AppLogger.d('✅ StoreCubit: Estado atualizado - Loja agora está ABERTA!');
         }
       });
     }

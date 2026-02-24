@@ -26,9 +26,14 @@ Future<String?> showPhoneCollectionDialog(BuildContext context, {String? initial
     return showModalBottomSheet<String?>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      backgroundColor: Colors.transparent, // ✅ CORREÇÃO: Remove fundo cinza
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: PhoneCollectionWidget(initialPhone: initialPhone),
       ),
     );
@@ -69,8 +74,18 @@ class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
     final theme = Theme.of(context);
     final isDesktop = ResponsiveBuilder.isDesktop(context);
 
+    // ✅ CORREÇÃO: Container branco explícito para evitar fundo cinza
     return Container(
-      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

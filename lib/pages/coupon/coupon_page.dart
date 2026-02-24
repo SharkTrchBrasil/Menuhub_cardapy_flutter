@@ -3,8 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:coupon_uikit/coupon_uikit.dart';
-
+import 'package:totem/core/extensions.dart';
 import 'package:totem/core/upper_case_text_formatter.dart';
 
 // Models
@@ -12,15 +11,36 @@ import 'package:totem/models/coupon.dart';
 
 // Cubits e States
 import 'package:totem/pages/cart/cart_cubit.dart';
+import 'package:totem/pages/cart/cart_state.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
 
 // Widgets e Temas
 import 'package:totem/themes/ds_theme.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
-import 'package:totem/widgets/ds_primary_button.dart';
-import 'package:totem/widgets/ds_text_field.dart';
 
+class TicketClipper extends CustomClipper<Path> {
+  final double holeRadius;
+  final double top;
+
+  TicketClipper({this.holeRadius = 10.0, this.top = 0.5});
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.moveTo(0, 0);
+    path.lineTo(size.width, 0);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.addOval(Rect.fromCircle(center: Offset(0, size.height * top), radius: holeRadius));
+    path.addOval(Rect.fromCircle(center: Offset(size.width, size.height * top), radius: holeRadius));
+    path.fillType = PathFillType.evenOdd;
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
 
 class CouponPage extends StatefulWidget {
   const CouponPage({super.key});
@@ -30,16 +50,9 @@ class CouponPage extends StatefulWidget {
 }
 
 class _CouponPageState extends State<CouponPage> {
-  String? _selectedCouponCode;
   bool _isLoading = false;
   final TextEditingController _couponCodeController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    // Inicia com o cupom que já está no carrinho
-    _selectedCouponCode = context.read<CartCubit>().state.cart.couponCode;
-  }
+  final Set<String> _expandedCoupons = {};
 
   @override
   void dispose() {
@@ -47,424 +60,379 @@ class _CouponPageState extends State<CouponPage> {
     super.dispose();
   }
 
-  /// Aplica um cupom e trata a resposta
+  /// Aplica um cupom - Se já tiver outro, remove primeiro
   Future<void> _applyCoupon(String code) async {
     if (_isLoading || code.isEmpty) return;
-
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
 
     try {
-      await context.read<CartCubit>().applyCoupon(code);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Cupom "${code.toUpperCase()}" aplicado com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        context.pop();
+      final cartCubit = context.read<CartCubit>();
+      final currentCoupon = cartCubit.state.cart.couponCode;
+      
+      // ✅ Se já tem cupom diferente, remove primeiro para garantir só 1
+      if (currentCoupon != null && currentCoupon.toUpperCase() != code.toUpperCase()) {
+        await cartCubit.removeCoupon();
       }
+      
+      await cartCubit.applyCoupon(code);
+      if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
-        String errorMessage = e.toString().replaceAll('Exception: ', '');
-        
-        // Mapeia mensagens de erro para mensagens amigáveis
-        if (errorMessage.toLowerCase().contains('cupom inválido') ||
-            errorMessage.toLowerCase().contains('invalid') ||
-            errorMessage.toLowerCase().contains('não é válido')) {
-          errorMessage = 'Este cupom não é válido para sua compra.';
-        } else if (errorMessage.toLowerCase().contains('expirado') ||
-                   errorMessage.toLowerCase().contains('expired')) {
-          errorMessage = 'Este cupom já expirou.';
-        } else if (errorMessage.toLowerCase().contains('limite') ||
-                   errorMessage.toLowerCase().contains('limit')) {
-          errorMessage = 'Este cupom atingiu o limite de usos.';
-        } else if (errorMessage.toLowerCase().contains('primeira compra') ||
-                   errorMessage.toLowerCase().contains('first order')) {
-          errorMessage = 'Este cupom é válido apenas para a primeira compra.';
-        } else if (errorMessage.toLowerCase().contains('pedido mínimo') ||
-                   errorMessage.toLowerCase().contains('min subtotal')) {
-          errorMessage = 'O valor do pedido não atende ao mínimo exigido.';
-        } else if (errorMessage.toLowerCase().contains('não encontrado') ||
-                   errorMessage.toLowerCase().contains('not found')) {
-          errorMessage = 'Cupom não encontrado.';
-        } else if (errorMessage.isEmpty || errorMessage == 'null') {
-          errorMessage = 'Não foi possível aplicar o cupom.';
-        }
-        
+        String msg = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Remove o cupom aplicado
+  /// Remove o cupom atual e limpa descontos
   Future<void> _removeCoupon() async {
     if (_isLoading) return;
     setState(() => _isLoading = true);
-
+    
     try {
       await context.read<CartCubit>().removeCoupon();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cupom removido.'),
+            content: Text('Cupom removido'),
             backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
           ),
         );
-        context.pop();
+        // ✅ NÃO dá pop() aqui - deixa o usuário na tela de cupons
+        setState(() {}); // Força rebuild para refletir o estado
       }
     } catch (e) {
-      // Erro silencioso
-    } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao remover cupom: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final DsTheme theme = context.watch<DsThemeSwitcher>().theme;
+    final theme = context.watch<DsThemeSwitcher>().theme;
 
     return Scaffold(
-      backgroundColor: theme.backgroundColor,
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: Text(
-          'Cupons',
-          style: theme.displayMediumTextStyle
-              .colored(theme.productTextColor)
-              .weighted(FontWeight.bold),
-        ),
-        backgroundColor: theme.backgroundColor,
+        backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.close, color: theme.productTextColor),
+          icon: Icon(Icons.arrow_back_ios, color: theme.primaryColor, size: 20),
           onPressed: () => context.pop(),
         ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Seção de digitar código manual
-            _buildManualCodeSection(theme),
-            
-            const SizedBox(height: 32),
-            
-            // Divider com texto
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'ou escolha um cupom',
-                    style: theme.smallTextStyle.colored(Colors.grey),
-                  ),
-                ),
-                const Expanded(child: Divider()),
-              ],
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Lista de cupons do StoreCubit
-            _buildCouponsList(theme),
-          ],
+        title: const Text(
+          'CUPONS',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87, letterSpacing: 0.5),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: Colors.grey.shade100, height: 1.0),
         ),
       ),
+      body: BlocBuilder<CartCubit, CartState>(
+        builder: (context, cartState) {
+          final appliedCouponCode = cartState.cart.couponCode;
+          
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildCouponCodeField(theme),
+                ),
+                const SizedBox(height: 24),
+                _buildFreeCouponsBanner(theme),
+                const SizedBox(height: 24),
+                _buildNoCouponOption(theme, appliedCouponCode),
+                const SizedBox(height: 16),
+                _buildCouponsList(theme, appliedCouponCode),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildManualCodeSection(DsTheme theme) {
+  Widget _buildCouponCodeField(DsTheme theme) {
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(13),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.confirmation_number_outlined,
-                color: theme.primaryColor,
-                size: 24,
+          Icon(Icons.local_offer, color: Colors.grey.shade400, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _couponCodeController,
+              inputFormatters: [UpperCaseTextFormatter()],
+              decoration: InputDecoration(
+                hintText: 'Código de cupom',
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 16),
+                border: InputBorder.none,
               ),
-              const SizedBox(width: 12),
-              Text(
-                'Tem um código?',
-                style: theme.bodyTextStyle
-                    .colored(theme.productTextColor)
-                    .weighted(FontWeight.w600),
-              ),
-            ],
+              onChanged: (val) => setState(() {}),
+            ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: DsTextField(
-                  hint: 'Digite o código do cupom',
-                  controller: _couponCodeController,
-                  formatters: [UpperCaseTextFormatter()],
-                  onChanged: (value) {
-                    setState(() {});
-                  },
-                ),
+          TextButton(
+            onPressed: _couponCodeController.text.isNotEmpty && !_isLoading
+                ? () => _applyCoupon(_couponCodeController.text)
+                : null,
+            child: Text(
+              'Aplicar',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _couponCodeController.text.isNotEmpty ? theme.primaryColor : Colors.grey.shade300,
               ),
-              const SizedBox(width: 12),
-              SizedBox(
-                height: 48,
-                child: DsPrimaryButton(
-                  label: 'Aplicar',
-                  onPressed: _couponCodeController.text.isNotEmpty && !_isLoading
-                      ? () => _applyCoupon(_couponCodeController.text)
-                      : null,
-                  child: _isLoading && _couponCodeController.text.isNotEmpty
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : null,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCouponsList(DsTheme theme) {
+  Widget _buildFreeCouponsBanner(DsTheme theme) {
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, state) {
-        final allCoupons = state.store?.coupons ?? [];
-        final activeCoupons = allCoupons.where((c) => c.isActive).toList();
+        final availableCount = state.store?.coupons
+            .where((c) => c.isActive && (c.isListed ?? true))
+            .length ?? 0;
+        if (availableCount == 0) return const SizedBox.shrink();
 
-        if (activeCoupons.isEmpty) {
-          return _buildEmptyState(theme);
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Cupons disponíveis',
-              style: theme.bodyTextStyle
-                  .colored(theme.productTextColor)
-                  .weighted(FontWeight.w600),
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ClipPath(
+            clipper: TicketClipper(holeRadius: 8, top: 0.5),
+            child: Container(
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black12),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Você ganhou cupom grátis',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.local_offer, size: 14, color: Colors.grey.shade700),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$availableCount disponíveis',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: theme.primaryColor, shape: BoxShape.circle),
+                    child: const Icon(Icons.chevron_right, color: Colors.white),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            
-            // Opção de não usar cupom (se já tem um aplicado)
-            if (_selectedCouponCode != null) ...[
-              _buildRemoveCouponOption(theme),
-              const SizedBox(height: 12),
-            ],
-            
-            // Lista de cupons com cards do coupon_uikit
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: activeCoupons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final coupon = activeCoupons[index];
-                final isSelected = _selectedCouponCode == coupon.code;
-                return _buildCouponCard(coupon, theme, isSelected);
-              },
-            ),
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _buildEmptyState(DsTheme theme) {
+  Widget _buildNoCouponOption(DsTheme theme, String? appliedCouponCode) {
+    final isSelected = appliedCouponCode == null;
+    
     return Container(
-      padding: const EdgeInsets.all(32),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: isSelected ? Border.all(color: theme.primaryColor, width: 1) : null,
       ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.local_offer_outlined,
-            size: 64,
-            color: Colors.grey.shade300,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: appliedCouponCode != null ? _removeCoupon : null, // ✅ Só habilita se tiver cupom
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                  child: Icon(Icons.local_offer_outlined, color: Colors.grey.shade500, size: 20),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(child: Text('Não quero cupom', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected ? theme.primaryColor : Colors.grey.shade200,
+                  ),
+                  child: isSelected ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Nenhum cupom disponível',
-            style: theme.bodyTextStyle.colored(Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Digite um código acima se você tiver um cupom.',
-            style: theme.smallTextStyle.colored(Colors.grey.shade500),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildRemoveCouponOption(DsTheme theme) {
-    return InkWell(
-      onTap: _isLoading ? null : _removeCoupon,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.remove_circle_outline, color: Colors.orange.shade600),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Remover cupom aplicado',
-                style: theme.bodyTextStyle.colored(Colors.orange.shade600),
-              ),
-            ),
-            if (_isLoading)
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-          ],
-        ),
-      ),
+  Widget _buildCouponsList(DsTheme theme, String? appliedCouponCode) {
+    return BlocBuilder<StoreCubit, StoreState>(
+      builder: (context, state) {
+        final coupons = state.store?.coupons
+            .where((c) => c.isActive && (c.isListed ?? true))
+            .toList() ?? [];
+        
+        return Column(
+          children: coupons.map((coupon) {
+            final isSelected = appliedCouponCode?.toUpperCase() == coupon.code.toUpperCase();
+            return _buildCouponCard(coupon, theme, isSelected);
+          }).toList(),
+        );
+      },
     );
   }
 
   Widget _buildCouponCard(Coupon coupon, DsTheme theme, bool isSelected) {
-    final discountText = _getDiscountText(coupon);
-    final conditionsText = _getConditionsText(coupon);
-
-    return GestureDetector(
-      onTap: _isLoading
-          ? null
-          : () {
-              setState(() => _selectedCouponCode = coupon.code);
-              _applyCoupon(coupon.code);
-            },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? theme.primaryColor : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: CouponCard(
-          height: 100,
-          backgroundColor: theme.cardColor,
-          curveAxis: Axis.vertical,
-          curvePosition: 90,
-          curveRadius: 12,
-          borderRadius: 14,
-          border: BorderSide(
-            color: Colors.grey.shade200,
-            width: 1,
-          ),
-          firstChild: Container(
-            width: 90,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.primaryColor,
-                  theme.primaryColor.withAlpha(204),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  _getCouponIcon(coupon),
-                  color: Colors.white,
-                  size: 28,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  discountText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          secondChild: Padding(
+    bool isExpanded = _expandedCoupons.contains(coupon.code);
+    
+    return Container(
+      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isSelected ? theme.primaryColor : Colors.transparent, width: 1),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _isLoading ? null : () => _applyCoupon(coupon.code),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
+                      child: Icon(Icons.local_offer, color: Colors.green.shade700, size: 20),
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
-                      child: Text(
-                        coupon.code.toUpperCase(),
-                        style: theme.bodyTextStyle
-                            .colored(theme.productTextColor)
-                            .weighted(FontWeight.bold),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _getDiscountValue(coupon),
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _getCouponDescription(coupon),
+                            style: const TextStyle(fontSize: 14, color: Colors.black54),
+                          ),
+                          const SizedBox(height: 4),
+                          if (coupon.minOrderValue != null && coupon.minOrderValue! > 0)
+                            Text(
+                              'Válido para pedidos acima de ${coupon.minOrderValue!.toCurrency}',
+                              style: const TextStyle(fontSize: 12, color: Colors.black45),
+                            ),
+                        ],
                       ),
                     ),
-                    if (isSelected)
-                      Icon(
-                        Icons.check_circle,
-                        color: theme.primaryColor,
-                        size: 20,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? theme.primaryColor : Colors.grey.shade200,
+                          ),
+                          child: isSelected ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+                        ),
+                        const SizedBox(height: 12),
+                        if (coupon.endDate != null)
+                          Text(_getExpiryText(coupon), style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                        const SizedBox(height: 2),
+                        const Text('1 disponível', style: TextStyle(fontSize: 11, color: Colors.black45)),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  conditionsText,
-                  style: theme.smallTextStyle.colored(Colors.grey.shade600),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedCoupons.remove(coupon.code);
+                      } else {
+                        _expandedCoupons.add(coupon.code);
+                      }
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Text('Regras', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey.shade600)),
+                      Icon(isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 16, color: Colors.grey.shade600),
+                    ],
+                  ),
                 ),
+                if (isExpanded) ...[
+                  const SizedBox(height: 12),
+                  const Divider(),
+                  ..._buildRulesList(coupon),
+                ],
               ],
             ),
           ),
@@ -473,50 +441,46 @@ class _CouponPageState extends State<CouponPage> {
     );
   }
 
-  String _getDiscountText(Coupon coupon) {
-    if (coupon.discountType == 'PERCENTAGE') {
-      return '${coupon.discountValue.toInt()}%';
-    } else if (coupon.discountType == 'FIXED_AMOUNT') {
-      final valueInReais = coupon.discountValue / 100;
-      return 'R\$${valueInReais.toStringAsFixed(0)}';
-    } else if (coupon.discountType == 'FREE_DELIVERY') {
-      return 'FRETE\nGRÁTIS';
-    }
-    return '${coupon.discountValue.toInt()}%';
+  List<Widget> _buildRulesList(Coupon coupon) {
+    final texts = <String>[];
+    if (coupon.isForFirstOrder) texts.add('Válido apenas para primeira compra');
+    if (coupon.maxUsesPerCustomer != null) texts.add('Limite de ${coupon.maxUsesPerCustomer} uso(s) por cliente');
+    if (coupon.targetAudience != null && coupon.targetAudience != 'ALL') texts.add(coupon.targetAudienceText);
+    if (coupon.deliveryRadius != null) texts.add('Raio de entrega: ${coupon.deliveryRadius}');
+    if (texts.isEmpty) texts.add('Sem regras adicionais');
+
+    return texts.map((t) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.circle, size: 4, color: Colors.black45),
+          const SizedBox(width: 8),
+          Expanded(child: Text(t, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+        ],
+      ),
+    )).toList();
   }
 
-  String _getConditionsText(Coupon coupon) {
-    final conditions = <String>[];
-    
-    if (coupon.isFreeDelivery) {
-      conditions.add('Frete grátis no pedido');
-    } else if (coupon.targetProductId != null) {
-      conditions.add('Desconto em produto específico');
-    } else {
-      conditions.add('Desconto em toda a sacola');
-    }
-    
-    if (coupon.minOrderValue != null && coupon.minOrderValue! > 0) {
-      final minValue = coupon.minOrderValue! / 100;
-      conditions.add('Mínimo R\$ ${minValue.toStringAsFixed(0)}');
-    }
-    
-    if (coupon.isForFirstOrder) {
-      conditions.add('Apenas primeira compra');
-    }
-    
-    return conditions.join(' • ');
+  String _getDiscountValue(Coupon coupon) {
+    if (coupon.discountType == 'PERCENTAGE') return '${coupon.discountValue.toInt()}%';
+    if (coupon.discountType == 'FIXED_AMOUNT') return coupon.discountValue.toInt().toCurrency;
+    if (coupon.discountType == 'FREE_DELIVERY') return 'FRETE GRÁTIS';
+    return '';
   }
 
-  IconData _getCouponIcon(Coupon coupon) {
-    if (coupon.discountType == 'FREE_DELIVERY') {
-      return Icons.local_shipping;
-    } else if (coupon.discountType == 'PERCENTAGE') {
-      return Icons.percent;
-    }
-    return Icons.sell;
+  String _getCouponDescription(Coupon coupon) {
+    if (coupon.title != null) return coupon.title!;
+    if (coupon.discountType == 'PERCENTAGE') return '${coupon.discountValue.toInt()}% para pedir onde quiser';
+    if (coupon.discountType == 'FIXED_AMOUNT') return '${coupon.discountValue.toInt().toCurrency} para pedir onde quiser';
+    return 'Aproveite seu desconto';
+  }
+
+  String _getExpiryText(Coupon coupon) {
+    if (coupon.endDate == null) return '';
+    final diff = coupon.endDate!.difference(DateTime.now());
+    if (diff.isNegative) return 'Expirado';
+    if (diff.inDays > 0) return 'Acaba em ${diff.inDays}d';
+    if (diff.inHours > 0) return 'Acaba em ${diff.inHours}h ${diff.inMinutes % 60}min';
+    return 'Acaba em ${diff.inMinutes}min';
   }
 }
-
-
-

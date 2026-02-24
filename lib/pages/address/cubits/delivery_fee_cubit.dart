@@ -17,16 +17,18 @@ part 'delivery_fee_state.dart';
 class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
   final DeliveryFeeRepository? _repository;
   final RealtimeRepository? _realtimeRepository;
-  
+
   // ✅ CORREÇÃO BUG #2: Flag para evitar cálculos simultâneos (loop infinito)
   bool _isCalculating = false;
   // ✅ Cache para evitar recálculos desnecessários
   String? _lastCalculationKey;
 
-  DeliveryFeeCubit({DeliveryFeeRepository? repository, RealtimeRepository? realtimeRepository}) 
-      : _repository = repository ?? getIt<DeliveryFeeRepository>(),
-        _realtimeRepository = realtimeRepository ?? getIt<RealtimeRepository>(),
-        super(const DeliveryFeeInitial());
+  DeliveryFeeCubit({
+    DeliveryFeeRepository? repository,
+    RealtimeRepository? realtimeRepository,
+  }) : _repository = repository ?? getIt<DeliveryFeeRepository>(),
+       _realtimeRepository = realtimeRepository ?? getIt<RealtimeRepository>(),
+       super(const DeliveryFeeInitial());
 
   // ✅ INICIALIZA COM TIPO PADRÃO DA LOJA
   void initializeWithStore(Store? store) {
@@ -34,6 +36,14 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     if (state is DeliveryFeeInitial) {
       emit(const DeliveryFeeInitial(deliveryType: DeliveryType.delivery));
     }
+    // Sempre que a loja for reinicializada ou atualizada, invalidamos o cache
+    invalidateCache();
+  }
+
+  /// Limpa o cache de cálculo para forçar um novo processamento
+  void invalidateCache() {
+    _lastCalculationKey = null;
+    AppLogger.d('🧹 [DELIVERY_FEE] Cache invalidado');
   }
 
   // ✅ LÓGICA DE ATUALIZAÇÃO DE TIPO CORRIGIDA E MAIS ROBUSTA
@@ -54,67 +64,106 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     required CustomerAddress? address,
     required Store store,
     required double cartSubtotal,
+    bool isSilent = false,
+    void Function(double? fee, String? error)? onResult,
   }) async {
     // ✅ CORREÇÃO BUG #2: Cria chave única para este cálculo
-    final calculationKey = '${address?.id}_${address?.latitude}_${address?.longitude}_${cartSubtotal.toInt()}_${state.deliveryType}';
-    
-    // ✅ CORREÇÃO BUG #2: Evita recálculo se já está calculando ou se os parâmetros são iguais
-    if (_isCalculating) {
-      AppLogger.debug('⏭️ [DELIVERY_FEE] Cálculo já em andamento, ignorando chamada duplicada');
+    final calculationKey =
+        '${address?.id}_${address?.latitude}_${address?.longitude}_${cartSubtotal.toInt()}_${state.deliveryType}';
+
+    // ✅ MELHORIA: Só ignora se for EXATAMENTE a mesma chave de cálculo
+    if (_isCalculating && _lastCalculationKey == calculationKey) {
+      AppLogger.d(
+        '⏭️ [DELIVERY_FEE] Cálculo já em andamento para esta chave, ignorando',
+      );
+      // Adiciona um listener temporário para chamar o callback quando acabar, se necessário
       return;
     }
-    
-    // Se já temos um resultado válido com os mesmos parâmetros, não recalcula
-    if (_lastCalculationKey == calculationKey && state is DeliveryFeeLoaded) {
-      AppLogger.debug('⏭️ [DELIVERY_FEE] Usando cache - parâmetros iguais ao último cálculo');
+
+    // Se já temos um resultado válido com os mesmos parâmetros e NÃO estamos calculando, não recalcula
+    if (!_isCalculating &&
+        _lastCalculationKey == calculationKey &&
+        state is DeliveryFeeLoaded) {
+      AppLogger.d(
+        '⏭️ [DELIVERY_FEE] Usando cache - parâmetros iguais ao último cálculo',
+      );
+      if (onResult != null) {
+        final loaded = state as DeliveryFeeLoaded;
+        onResult(loaded.deliveryFee, null);
+      }
       return;
     }
-    
+
+    if (!_isCalculating &&
+        _lastCalculationKey == calculationKey &&
+        state is DeliveryFeeError) {
+      AppLogger.d('⏭️ [DELIVERY_FEE] Usando cache de erro');
+      if (onResult != null) {
+        final errorState = state as DeliveryFeeError;
+        onResult(null, errorState.message);
+      }
+      return;
+    }
+
     // ✅ Marca como calculando e salva a chave
     _isCalculating = true;
     _lastCalculationKey = calculationKey;
-    
+
     // Pega o tipo de entrega atual do estado, qualquer que seja ele.
     final currentDeliveryType = state.deliveryType;
 
     // Se o tipo de entrega for retirada, o frete é sempre zero.
     if (currentDeliveryType == DeliveryType.pickup) {
       _isCalculating = false;
-      emit(const DeliveryFeeLoaded(
-        deliveryFee: 0,
-        isFree: true,
-        deliveryType: DeliveryType.pickup,
-      ));
+      if (onResult != null) onResult(0, null);
+      if (!isSilent) {
+        emit(
+          const DeliveryFeeLoaded(
+            deliveryFee: 0,
+            isFree: true,
+            deliveryType: DeliveryType.pickup,
+          ),
+        );
+      }
       return;
     }
 
     // Se não for retirada, mas não tiver endereço, requer um endereço.
     if (address == null) {
       _isCalculating = false;
-      emit(DeliveryFeeRequiresAddress(deliveryType: currentDeliveryType));
+      if (onResult != null) onResult(null, 'Endereço nulo');
+      if (!isSilent) {
+        emit(DeliveryFeeRequiresAddress(deliveryType: currentDeliveryType));
+      }
       return;
     }
 
-    emit(DeliveryFeeLoading(deliveryType: currentDeliveryType));
+    if (!isSilent) emit(DeliveryFeeLoading(deliveryType: currentDeliveryType));
 
     // ✅ CRÍTICO: Verificar tipo de frete ativo para validar dados necessários
     // ✅ CORREÇÃO: Inclui progressive_radius e simple_radius que também precisam de coordenadas
     final requiresCoordinates = store.deliveryFeeRules.any(
-      (r) => r.isActive && (
-        r.ruleType == 'per_km' || 
-        r.ruleType == 'radius' || 
-        r.ruleType == 'progressive_radius' || 
-        r.ruleType == 'simple_radius'
-      ),
+      (r) =>
+          r.isActive &&
+          (r.ruleType == 'per_km' ||
+              r.ruleType == 'radius' ||
+              r.ruleType == 'progressive_radius' ||
+              r.ruleType == 'simple_radius'),
     );
 
     // ✅ CRÍTICO: Validar coordenadas quando frete é por km/raio
-    if (requiresCoordinates && (address.latitude == null || address.longitude == null)) {
+    if (requiresCoordinates &&
+        (address.latitude == null || address.longitude == null)) {
       _isCalculating = false;
-      emit(DeliveryFeeError(
-        'É necessário permitir acesso à localização para calcular o frete. O frete desta loja é calculado por distância.',
-        deliveryType: currentDeliveryType,
-      ));
+      if (onResult != null) onResult(null, 'Coordenadas necessárias');
+      if (!isSilent) {
+        emit(
+          DeliveryFeeError(
+            'É necessário permitir acesso à localização para calcular o frete. O frete desta loja é calculado por distância.',
+            deliveryType: currentDeliveryType,
+          ),
+        );
+      }
       return;
     }
 
@@ -124,13 +173,14 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     String? errorMessage;
 
     // ✅ VALIDAÇÃO: Verifica se tem coordenadas ou address_id
-    if (address.latitude != null && address.longitude != null || address.id != null) {
+    if (address.latitude != null && address.longitude != null ||
+        address.id != null) {
       try {
         final subtotalInCents = (cartSubtotal * 100).toInt();
-        
+
         // ✅ NOVO: Tenta WebSocket primeiro (evita CORS)
         Map<String, dynamic>? result;
-        
+
         try {
           print('🚚 Calculando frete via WebSocket...');
           result = await _realtimeRepository?.calculateDeliveryFee(
@@ -156,33 +206,46 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             // ✅ TRATAMENTO DE ERRO: Se houver erro, captura mensagem específica
             errorMessage = result['error'] as String?;
             print('⚠️ Erro ao calcular frete: $errorMessage');
-            
+
             // ✅ CRÍTICO: Tratamento específico para diferentes tipos de erro
             final lowerError = errorMessage?.toLowerCase() ?? '';
-            
+
             // Erro de "não entrega" ou "fora da área"
-            if (lowerError.contains('não entrega') || 
+            if (lowerError.contains('não entrega') ||
                 lowerError.contains('fora da área') ||
                 lowerError.contains('fora do raio') ||
                 lowerError.contains('fora da área de entrega')) {
-              emit(DeliveryFeeError(
-                errorMessage ?? 'Endereço fora da área de entrega',
-                deliveryType: currentDeliveryType,
-              ));
+              _isCalculating = false;
+              if (onResult != null) onResult(null, errorMessage);
+              if (!isSilent) {
+                emit(
+                  DeliveryFeeError(
+                    errorMessage ??
+                        'O restaurante não realiza entregas nesta região',
+                    deliveryType: currentDeliveryType,
+                  ),
+                );
+              }
               return;
             }
-            
-            
+
             // ✅ NOVO: Erro de coordenadas não configuradas
-            if (lowerError.contains('não tem coordenadas') || 
+            if (lowerError.contains('não tem coordenadas') ||
                 lowerError.contains('coordenadas configuradas')) {
-              emit(DeliveryFeeError(
-                errorMessage ?? 'Loja não tem coordenadas configuradas. Entre em contato com o suporte.',
-                deliveryType: currentDeliveryType,
-              ));
+              _isCalculating = false;
+              if (onResult != null) onResult(null, errorMessage);
+              if (!isSilent) {
+                emit(
+                  DeliveryFeeError(
+                    errorMessage ??
+                        'Loja não tem coordenadas configuradas. Entre em contato com o suporte.',
+                    deliveryType: currentDeliveryType,
+                  ),
+                );
+              }
               return;
             }
-            
+
             // Para outros erros, tenta fallback
             calculatedFee = null;
           } else {
@@ -203,14 +266,15 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             } else {
               calculatedFee = 0.0;
             }
-            
+
             // ✅ VALIDAÇÃO: Garante que fee não é negativo
             if (calculatedFee != null && calculatedFee! < 0) {
               calculatedFee = 0.0;
             }
-            
-            eligibleForFreeDelivery = result['eligible_for_free_delivery'] as bool? ?? false;
-            
+
+            eligibleForFreeDelivery =
+                result['eligible_for_free_delivery'] as bool? ?? false;
+
             // ✅ VALIDAÇÃO: Se elegível para frete grátis, força fee = 0
             if (eligibleForFreeDelivery) {
               calculatedFee = 0.0;
@@ -224,15 +288,17 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
       } catch (e) {
         // ✅ TRATAMENTO DE EXCEÇÃO: Loga erro e tenta cálculo local
         print('❌ Exceção ao calcular frete: $e');
-        
+
         // ✅ NOVO: Se for erro de conexão, tenta calcular localmente
         final errorStr = e.toString().toLowerCase();
-        if (errorStr.contains('connection') || 
-            errorStr.contains('xmlhttprequest') || 
+        if (errorStr.contains('connection') ||
+            errorStr.contains('xmlhttprequest') ||
             errorStr.contains('network') ||
             errorStr.contains('timeout')) {
-          print('🔄 Erro de conexão detectado - calculando frete localmente...');
-          
+          print(
+            '🔄 Erro de conexão detectado - calculando frete localmente...',
+          );
+
           // ✅ CÁLCULO LOCAL: Usa as regras de frete carregadas no Store
           final localResult = _calculateFeeLocally(
             store: store,
@@ -240,11 +306,13 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             cartSubtotal: cartSubtotal,
             deliveryType: currentDeliveryType,
           );
-          
+
           if (localResult != null) {
             calculatedFee = localResult['fee'];
             eligibleForFreeDelivery = localResult['isFree'] ?? false;
-            print('✅ Frete calculado localmente: R\$ ${calculatedFee?.toStringAsFixed(2)}');
+            print(
+              '✅ Frete calculado localmente: R\$ ${calculatedFee?.toStringAsFixed(2)}',
+            );
           } else {
             // Se cálculo local também falhar, tenta fallback legado
             calculatedFee = null;
@@ -259,94 +327,130 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     if (calculatedFee == null) {
       // ✅ CRÍTICO: Verifica se há regras novas configuradas
       final hasNewRules = store.deliveryFeeRules.any((r) => r.isActive);
-      
+
       // ✅ VALIDAÇÃO: Se há erro específico de "não entrega", emite erro
       if (errorMessage != null) {
         final lowerError = errorMessage.toLowerCase();
-        if (lowerError.contains('fora da área') || 
+        if (lowerError.contains('fora da área') ||
             lowerError.contains('não entrega') ||
             lowerError.contains('fora do raio') ||
             lowerError.contains('não tem coordenadas')) {
           _isCalculating = false;
-          emit(DeliveryFeeError(
-            errorMessage,
-            deliveryType: currentDeliveryType,
-          ));
+          if (onResult != null) onResult(null, errorMessage);
+          if (!isSilent) {
+            emit(
+              DeliveryFeeError(errorMessage, deliveryType: currentDeliveryType),
+            );
+          }
           return;
         }
       }
-      
+
       // ✅ CRÍTICO: Só usa fallback legado se realmente não há regras novas
       if (hasNewRules) {
         // Se há regras novas mas cálculo falhou, mostra erro claro
         _isCalculating = false;
-        emit(DeliveryFeeError(
-          errorMessage ?? 'Não foi possível calcular o frete. Verifique se o endereço está completo e tente novamente.',
-          deliveryType: currentDeliveryType,
-        ));
+        if (onResult != null) onResult(null, errorMessage);
+        if (!isSilent) {
+          emit(
+            DeliveryFeeError(
+              errorMessage ??
+                  'Não foi possível calcular o frete. Verifique se o endereço está completo e tente novamente.',
+              deliveryType: currentDeliveryType,
+            ),
+          );
+        }
         return;
       }
-      
+
       // ✅ FALLBACK: Usa sistema antigo (legado) apenas se não há regras novas
       final config = store.store_operation_config;
       final double baseFee = _calculateBaseFee(address, store);
-      
+
       // ✅ Verifica se está fora do raio de entrega
       if (baseFee == double.infinity) {
         _isCalculating = false;
-        emit(DeliveryFeeError(
-          'Endereço fora da área de entrega da loja',
-          deliveryType: currentDeliveryType,
-        ));
+        if (onResult != null) onResult(null, 'Fora da área');
+        if (!isSilent) {
+          emit(
+            DeliveryFeeError(
+              'O restaurante não realiza entregas nesta região',
+              deliveryType: currentDeliveryType,
+            ),
+          );
+        }
         return;
       }
 
       // ✅ CORREÇÃO: Usa frete grátis das regras de frete (prioridade) ou config antigo (fallback)
-      final freeShippingThreshold = store.getFreeDeliveryThresholdForDelivery() ?? 0;
+      final freeShippingThreshold =
+          store.getFreeDeliveryThresholdForDelivery() ?? 0;
 
       if (freeShippingThreshold > 0 && cartSubtotal >= freeShippingThreshold) {
         _isCalculating = false;
-        emit(DeliveryFeeLoaded(
-          deliveryFee: 0,
-          isFree: true,
-          deliveryType: currentDeliveryType,
-        ));
+        if (onResult != null) onResult(0, null);
+        if (!isSilent) {
+          emit(
+            DeliveryFeeLoaded(
+              deliveryFee: 0,
+              isFree: true,
+              deliveryType: currentDeliveryType,
+            ),
+          );
+        }
         return;
       }
 
       _isCalculating = false;
-      emit(DeliveryFeeLoaded(
-        deliveryFee: baseFee,
-        isFree: baseFee == 0,
-        deliveryType: currentDeliveryType,
-      ));
+      if (onResult != null) onResult(baseFee, null);
+      if (!isSilent) {
+        emit(
+          DeliveryFeeLoaded(
+            deliveryFee: baseFee,
+            isFree: baseFee == 0,
+            deliveryType: currentDeliveryType,
+          ),
+        );
+      }
       return;
     }
 
     // ✅ Usa o resultado do novo sistema
     if (eligibleForFreeDelivery) {
       _isCalculating = false;
-      emit(DeliveryFeeLoaded(
-        deliveryFee: 0,
-        isFree: true,
-        deliveryType: currentDeliveryType,
-      ));
+      if (onResult != null) onResult(0, null);
+      if (!isSilent) {
+        emit(
+          DeliveryFeeLoaded(
+            deliveryFee: 0,
+            isFree: true,
+            deliveryType: currentDeliveryType,
+          ),
+        );
+      }
       return;
     }
 
     _isCalculating = false;
-    emit(DeliveryFeeLoaded(
-      deliveryFee: calculatedFee,
-      isFree: calculatedFee == 0,
-      deliveryType: currentDeliveryType,
-    ));
+    if (onResult != null) onResult(calculatedFee, null);
+    if (!isSilent) {
+      emit(
+        DeliveryFeeLoaded(
+          deliveryFee: calculatedFee ?? 0,
+          isFree: (calculatedFee ?? 0) == 0,
+          deliveryType: currentDeliveryType,
+        ),
+      );
+    }
   }
 
   // A função de cálculo base permanece a mesma.
   double _calculateBaseFee(CustomerAddress address, Store store) {
     // ✅ VALIDAÇÃO: Verifica se está dentro do raio de entrega
-    if (store.latitude != null && store.longitude != null &&
-        address.latitude != null && address.longitude != null) {
+    if (store.latitude != null &&
+        store.longitude != null &&
+        address.latitude != null &&
+        address.longitude != null) {
       final isWithinRadius = _isWithinDeliveryRadius(
         storeLat: store.latitude!,
         storeLon: store.longitude!,
@@ -404,7 +508,8 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     final double dLat = _degreesToRadians(lat2 - lat1);
     final double dLon = _degreesToRadians(lon2 - lon1);
 
-    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_degreesToRadians(lat1)) *
             math.cos(_degreesToRadians(lat2)) *
             math.sin(dLon / 2) *
@@ -435,8 +540,10 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
       }
 
       // Verifica coordenadas
-      if (store.latitude == null || store.longitude == null ||
-          address.latitude == null || address.longitude == null) {
+      if (store.latitude == null ||
+          store.longitude == null ||
+          address.latitude == null ||
+          address.longitude == null) {
         print('⚠️ Cálculo local: Coordenadas incompletas');
         return null;
       }
@@ -448,12 +555,15 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
         lat2: address.latitude!,
         lon2: address.longitude!,
       );
-      print('📏 Cálculo local: Distância = ${distanceKm.toStringAsFixed(2)} km');
+      print(
+        '📏 Cálculo local: Distância = ${distanceKm.toStringAsFixed(2)} km',
+      );
 
       // Busca regras ativas para delivery
-      final activeRules = store.deliveryFeeRules
-          .where((r) => r.isActive && r.deliveryMethod == 'delivery')
-          .toList();
+      final activeRules =
+          store.deliveryFeeRules
+              .where((r) => r.isActive && r.deliveryMethod == 'delivery')
+              .toList();
 
       if (activeRules.isEmpty) {
         print('⚠️ Cálculo local: Nenhuma regra ativa para delivery');
@@ -465,9 +575,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
 
       for (final rule in activeRules) {
         // Verifica frete grátis por valor mínimo
-        if (rule.freeDeliveryThreshold != null && 
+        if (rule.freeDeliveryThreshold != null &&
             cartSubtotal >= rule.freeDeliveryThreshold!) {
-          print('✅ Cálculo local: Frete grátis (subtotal >= ${rule.freeDeliveryThreshold})');
+          print(
+            '✅ Cálculo local: Frete grátis (subtotal >= ${rule.freeDeliveryThreshold})',
+          );
           return {'fee': 0.0, 'isFree': true};
         }
 
@@ -484,21 +596,25 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           final sortedRanges = List<Map<String, dynamic>>.from(
             ranges.map((r) => Map<String, dynamic>.from(r as Map)),
           );
-          sortedRanges.sort((a, b) => 
-            (a['max_km'] as num).compareTo(b['max_km'] as num));
+          sortedRanges.sort(
+            (a, b) => (a['max_km'] as num).compareTo(b['max_km'] as num),
+          );
 
           for (final range in sortedRanges) {
             final maxKm = (range['max_km'] as num?)?.toDouble() ?? 0;
             if (distanceKm <= maxKm) {
               final feeCents = (range['fee'] as num?)?.toDouble() ?? 0;
               final feeReais = feeCents / 100.0;
-              print('✅ Cálculo local: Faixa encontrada (até $maxKm km) = R\$ ${feeReais.toStringAsFixed(2)}');
+              print(
+                '✅ Cálculo local: Faixa encontrada (até $maxKm km) = R\$ ${feeReais.toStringAsFixed(2)}',
+              );
               return {'fee': feeReais, 'isFree': feeReais == 0};
             }
           }
 
           // Fora de todas as faixas
-          if (config['allow_outside_range'] == true && sortedRanges.isNotEmpty) {
+          if (config['allow_outside_range'] == true &&
+              sortedRanges.isNotEmpty) {
             final lastRange = sortedRanges.last;
             final feeCents = (lastRange['fee'] as num?)?.toDouble() ?? 0;
             final feeReais = feeCents / 100.0;
@@ -506,35 +622,42 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             return {'fee': feeReais, 'isFree': feeReais == 0};
           }
 
-          print('❌ Cálculo local: Distância $distanceKm km fora de todas as faixas');
+          print(
+            '❌ Cálculo local: Distância $distanceKm km fora de todas as faixas',
+          );
           continue; // Tenta próxima regra
         }
 
         // ════════════════════════════════════════════════════════════
         // REGRA: radius, simple_radius, progressive_radius
         // ════════════════════════════════════════════════════════════
-        if (rule.ruleType == 'radius' || 
-            rule.ruleType == 'simple_radius' || 
+        if (rule.ruleType == 'radius' ||
+            rule.ruleType == 'simple_radius' ||
             rule.ruleType == 'progressive_radius') {
-          
           // Simple radius: raio fixo com taxa fixa
           if (rule.ruleType == 'simple_radius') {
             final radiusKm = (config['radius_km'] as num?)?.toDouble() ?? 0;
             final feeCents = (config['fee'] as num?)?.toDouble() ?? 0;
-            
+
             if (distanceKm <= radiusKm) {
               final feeReais = feeCents / 100.0;
-              print('✅ Cálculo local: Dentro do raio simples ($radiusKm km) = R\$ ${feeReais.toStringAsFixed(2)}');
+              print(
+                '✅ Cálculo local: Dentro do raio simples ($radiusKm km) = R\$ ${feeReais.toStringAsFixed(2)}',
+              );
               return {'fee': feeReais, 'isFree': feeReais == 0};
             } else {
-              print('❌ Cálculo local: Fora do raio simples ($distanceKm km > $radiusKm km)');
+              print(
+                '❌ Cálculo local: Fora do raio simples ($distanceKm km > $radiusKm km)',
+              );
               continue;
             }
           }
 
           // Progressive radius: taxa base + progressiva
-          final maxRadiusKm = (config['max_radius_km'] as num?)?.toDouble() ?? 0;
-          final baseRadiusKm = (config['base_radius_km'] as num?)?.toDouble() ?? 0;
+          final maxRadiusKm =
+              (config['max_radius_km'] as num?)?.toDouble() ?? 0;
+          final baseRadiusKm =
+              (config['base_radius_km'] as num?)?.toDouble() ?? 0;
           final freeKm = (config['free_km'] as num?)?.toDouble() ?? 0;
           final baseFeeCents = (config['base_fee'] as num?)?.toDouble() ?? 0;
           final kmRate = (config['km_rate'] as num?)?.toDouble() ?? 0;
@@ -542,12 +665,17 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           // Verifica se está dentro do raio máximo
           if (maxRadiusKm > 0 && distanceKm > maxRadiusKm) {
             if (config['allow_outside_radius'] == true) {
-              final outsideFeeCents = (config['outside_fee'] as num?)?.toDouble() ?? baseFeeCents;
+              final outsideFeeCents =
+                  (config['outside_fee'] as num?)?.toDouble() ?? baseFeeCents;
               final feeReais = outsideFeeCents / 100.0;
-              print('⚠️ Cálculo local: Fora do raio máximo, usando outside_fee = R\$ ${feeReais.toStringAsFixed(2)}');
+              print(
+                '⚠️ Cálculo local: Fora do raio máximo, usando outside_fee = R\$ ${feeReais.toStringAsFixed(2)}',
+              );
               return {'fee': feeReais, 'isFree': feeReais == 0};
             }
-            print('❌ Cálculo local: Fora do raio máximo ($distanceKm km > $maxRadiusKm km)');
+            print(
+              '❌ Cálculo local: Fora do raio máximo ($distanceKm km > $maxRadiusKm km)',
+            );
             continue;
           }
 
@@ -564,13 +692,17 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           }
 
           final feeReais = feeCents / 100.0;
-          print('✅ Cálculo local: Raio progressivo = R\$ ${feeReais.toStringAsFixed(2)}');
+          print(
+            '✅ Cálculo local: Raio progressivo = R\$ ${feeReais.toStringAsFixed(2)}',
+          );
           return {'fee': feeReais, 'isFree': feeReais == 0};
         }
       }
 
       // Nenhuma regra se aplicou
-      print('❌ Cálculo local: Nenhuma regra se aplicou à distância $distanceKm km');
+      print(
+        '❌ Cálculo local: Nenhuma regra se aplicou à distância $distanceKm km',
+      );
       return null;
     } catch (e) {
       print('❌ Erro no cálculo local: $e');

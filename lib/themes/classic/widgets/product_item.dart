@@ -67,7 +67,8 @@ class ProductItem extends StatelessWidget {
       // Lógica para categoria geral
       final link = product.categoryLinks.firstWhereOrNull((l) => l.categoryId == category.id);
       if (link != null) {
-        if (link.isOnPromotion && link.promotionalPrice != null) {
+        // ✅ Usa o getter hasPromotion do modelo (detecta promoção automaticamente)
+        if (link.hasPromotion) {
           displayPrice = link.promotionalPrice;
           originalPrice = link.price;
         } else {
@@ -141,6 +142,12 @@ class ProductItem extends StatelessWidget {
                       children: [
                         if (isAvailable) ...[
                           if (hasPromo) ...[
+                            // Preço com desconto (principal)
+                            Text(
+                              displayPrice.toCurrency,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 8),
                             // Preço original riscado
                             Text(
                               originalPrice!.toCurrency,
@@ -150,12 +157,6 @@ class ProductItem extends StatelessWidget {
                                 decoration: TextDecoration.lineThrough,
                                 decorationColor: Colors.grey.shade500,
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Preço com desconto em verde
-                            Text(
-                              displayPrice.toCurrency,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green.shade600),
                             ),
                             const SizedBox(width: 8),
                             // Badge de desconto

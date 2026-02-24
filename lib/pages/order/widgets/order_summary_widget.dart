@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_summary_widget.dart
-// ✅ Widget Resumo de valores - Estilo iFood
+// ✅ Widget Resumo de valores - Estilo Menuhub
 // Subtotal, taxa de entrega, taxa de serviço, total
 
 import 'package:flutter/material.dart';

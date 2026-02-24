@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_items_list.dart
-// ✅ Widget Lista de itens do pedido - Estilo iFood
+// ✅ Widget Lista de itens do pedido - Estilo Menuhub
 // Imagem com badge de quantidade, nome, opções indentadas, preço
 
 import 'package:flutter/material.dart';

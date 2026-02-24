@@ -164,11 +164,13 @@ class CartVariant {
       'variant_id': id,
       'options': cartOptions
           .where((o) => o.quantity > 0)
-          .map((o) => {
-        'variant_option_id': o.id,
-        'quantity': o.quantity,
-        'price': o.price,
-      })
+          .map((o) {
+            return {
+              'variant_option_id': o.id,
+              'quantity': o.quantity,
+              'price': o.price,
+            };
+          })
           .toList(),
     };
   }

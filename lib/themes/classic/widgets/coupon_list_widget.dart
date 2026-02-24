@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
-import 'package:totem/core/extensions.dart';
+import 'package:totem/core/extensions.dart'; // Importa a extensão centralizada
 import 'package:coupon_uikit/coupon_uikit.dart';
 
 import '../../../models/coupon.dart';
@@ -21,14 +21,14 @@ class CouponListWidget extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        // Filtra apenas cupons ativos
-        final activeCoupons = coupons.where((c) => c.isActive).toList();
+        // Filtra cupons ativos e listados (para não mostrar cupons de influencer ocultos por exemplo)
+        final activeCoupons = coupons.where((c) => c.isActive && (c.isListed ?? true)).toList();
 
         if (activeCoupons.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        // Altura ajustada para o card com corte horizontal
+        // Altura ajustada
         return SizedBox(
           height: 100,
           child: ListView.separated(
@@ -52,12 +52,12 @@ class CouponListWidget extends StatelessWidget {
     final minOrderText = _getMinOrderText(coupon);
 
     return SizedBox(
-      width: 150, // Largura suficiente para o conteúdo lateral
+      width: 160,
       child: CouponCard(
         height: 70,
         backgroundColor: Colors.white,
-        curveAxis: Axis.horizontal, // Corte horizontal
-        curvePosition: 80, // Corte próximo ao fundo (separando o footer)
+        curveAxis: Axis.horizontal,
+        curvePosition: 80,
         curveRadius: 8,
         borderRadius: 12,
         border: BorderSide(
@@ -65,22 +65,22 @@ class CouponListWidget extends StatelessWidget {
           width: 0.8,
         ),
         firstChild: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Ícone Circular
+              // Ícone Circular (Ticket)
               Container(
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: Colors.green.shade50,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.local_activity, // Ícone de ticket
+                  Icons.local_activity,
                   color: Colors.green.shade700,
-                  size: 20,
+                  size: 18,
                 ),
               ),
               const SizedBox(width: 10),
@@ -93,25 +93,26 @@ class CouponListWidget extends StatelessWidget {
                     Text(
                       'Cupom de',
                       style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w400,
-                        height: 1.1,
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      discountValue,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade800,
-                        height: 1.1,
+                    // Valor com escala para não cortar se for grande
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        discountValue,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -126,7 +127,7 @@ class CouponListWidget extends StatelessWidget {
           child: Text(
             minOrderText,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: Colors.grey.shade500,
               fontWeight: FontWeight.w500,
             ),
@@ -139,25 +140,23 @@ class CouponListWidget extends StatelessWidget {
     );
   }
 
-  // Texto completo de pedido mínimo para o rodapé
   String _getMinOrderText(Coupon coupon) {
      if (coupon.minOrderValue != null && coupon.minOrderValue! > 0) {
-      final valueInReais = coupon.minOrderValue! / 100;
-      return 'Mínimo R\$ ${valueInReais.toStringAsFixed(0)}';
+      // Usa .toCurrency do extensions.dart (divide por 100 automaticamente)
+      return 'Mínimo ${coupon.minOrderValue!.toCurrency}';
     }
-    return '';
+    return 'Sem mínimo';
   }
 
   String _getDiscountDisplayValue(Coupon coupon) {
     if (coupon.discountType == 'PERCENTAGE') {
       return '${coupon.discountValue.toInt()}%';
     } else if (coupon.discountType == 'FIXED_AMOUNT') {
-      // discountValue vem em centavos, converte para reais
-      final valueInReais = coupon.discountValue / 100;
-      return 'R\$ ${valueInReais.toStringAsFixed(0)}';
+      // Usa .toCurrency do extensions.dart (divide por 100 automaticamente)
+      return coupon.discountValue.toInt().toCurrency;
     } else if (coupon.discountType == 'FREE_DELIVERY') {
       return 'FRETE GRÁTIS';
     }
-    return 'R\$ 0';
+    return '';
   }
 }

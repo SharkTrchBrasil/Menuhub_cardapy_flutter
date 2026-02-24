@@ -357,7 +357,7 @@ class PizzaAdapterHelper {
       }).toList();
     }
 
-    // ✅ IFOOD STYLE: Ordem correta dos grupos
+    // ✅ MENUHUB STYLE: Ordem correta dos grupos
     // 1. Preferências (Massa + Borda) - PRIMEIRO
     // 2. Sabores
     // 3. Outros grupos extras
@@ -417,7 +417,7 @@ class PizzaAdapterHelper {
       productOptionGroups: category.productOptionGroups, // ✅ Preserva productOptionGroups
     );
 
-    // ✅ TÍTULO: Usa o nome completo do tamanho (igual ao iFood)
+    // ✅ TÍTULO: Usa o nome completo do tamanho (igual ao Menuhub)
     // Ex: "GRANDE 3 SABORES (8 PEDAÇOS)" - sem limpeza
     final displayName = size.name;
 
@@ -449,7 +449,7 @@ class PizzaAdapterHelper {
     
     final adaptedProduct = Product(
       id: originalProduct.id,
-      name: displayName, // ✅ Nome completo do tamanho (igual ao iFood)
+      name: displayName, // ✅ Nome completo do tamanho (igual ao Menuhub)
       description: originalProduct.description,
       images: displayImages, // ✅ Imagem correta
       prices: originalProduct.prices, 

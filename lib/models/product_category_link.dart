@@ -41,22 +41,43 @@ class ProductCategoryLink extends Equatable {
     this.schedules = const [],
   });
 
+  /// ✅ Verifica se o produto está em promoção (flag OU preço promocional definido e menor)
+  bool get hasPromotion {
+    return (isOnPromotion && promotionalPrice != null) ||
+        (promotionalPrice != null && promotionalPrice! > 0 && promotionalPrice! < price);
+  }
+
   /// Retorna o preço efetivo (promocional ou normal)
   int get effectivePrice {
-    if (isOnPromotion && promotionalPrice != null) {
+    if (hasPromotion) {
       return promotionalPrice!;
     }
     return price;
+  }
+
+  static int _parsePrice(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is Map) {
+      final amount = value['amount'] ?? value['value'];
+      if (amount is num) return (amount as num).toInt();
+      if (amount is String) {
+          return double.tryParse(amount)?.toInt() ?? 0;
+      }
+    }
+    if (value is String) return double.tryParse(value)?.toInt() ?? 0;
+    return 0;
   }
 
   factory ProductCategoryLink.fromJson(Map<String, dynamic> json) {
     return ProductCategoryLink(
       productId: json['product_id'],
       categoryId: json['category_id'] ?? 0,
-      price: json['price'] ?? 0,
-      costPrice: json['cost_price'],
+      price: _parsePrice(json['price']),
+      costPrice: json['cost_price'] != null ? _parsePrice(json['cost_price']) : null,
       isOnPromotion: json['is_on_promotion'] ?? false,
-      promotionalPrice: json['promotional_price'],
+      promotionalPrice: json['promotional_price'] != null ? _parsePrice(json['promotional_price']) : null,
       isAvailable: json['is_available'] ?? true,
       isFeatured: json['is_featured'] ?? false,
       displayOrder: json['display_order'] ?? 0,

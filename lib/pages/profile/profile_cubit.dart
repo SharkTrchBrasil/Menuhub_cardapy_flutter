@@ -37,6 +37,7 @@ class ProfileCubit extends Cubit<ProfileState> {
     String? name,
     String? phone,
     String? email,
+    String? cpf,
   }) async {
     emit(state.copyWith(isUpdating: true));
 
@@ -46,6 +47,7 @@ class ProfileCubit extends Cubit<ProfileState> {
         name ?? state.customer!.name,
         phone ?? state.customer!.phone ?? '',
         email: email ?? state.customer?.email,
+        cpf: cpf ?? state.customer?.cpf,
       );
 
       if (result.isRight) {

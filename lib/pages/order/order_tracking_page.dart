@@ -1,5 +1,5 @@
 // lib/pages/order/order_tracking_page.dart
-// ✅ Tela de acompanhamento do pedido estilo iFood
+// ✅ Tela de acompanhamento do pedido estilo Menuhub
 // Exibe mapa, status, endereço e detalhes do pedido
 
 import 'package:brasil_fields/brasil_fields.dart';
@@ -8,11 +8,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/models/payment_method.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/pages/orders/widgets/wave_progress_indicator.dart';
+import 'package:intl/intl.dart';
 
-/// Tela de acompanhamento de pedido estilo iFood
+/// Tela de acompanhamento de pedido estilo Menuhub
 /// Exibe mapa no topo (para delivery), status, endereço e detalhes
 class OrderTrackingPage extends StatelessWidget {
   final Order order;
@@ -61,19 +64,37 @@ class OrderTrackingPage extends StatelessWidget {
             actions: [
               TextButton(
                 onPressed: () {
-                  // Implementar chat de ajuda
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ajuda em breve!')),
-                  );
+                  // Lógica de ajuda
                 },
-                child: Text(
+                child: const Text(
                   'Ajuda',
                   style: TextStyle(
-                    color: theme.primaryColor,
+                    color: Color(0xFFEA1D2C),
                     fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
               ),
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.chat_bubble_outline, color: Color(0xFFEA1D2C), size: 20),
+                ),
+                onPressed: () {
+                   // Lógica de chat
+                },
+              ),
+              const SizedBox(width: 8),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: isDelivery && store != null
@@ -194,22 +215,26 @@ class OrderTrackingPage extends StatelessWidget {
   Widget _buildStatusCard(BuildContext context, ThemeData theme) {
     final statusInfo = _getStatusInfo(order.orderStatus);
     
-    // Estimativa de tempo (mockado - idealmente viria do backend)
-    final now = DateTime.now();
-    final estimatedMin = now.add(const Duration(minutes: 30));
-    final estimatedMax = now.add(const Duration(minutes: 45));
-    final timeFormat = '${estimatedMin.hour}:${estimatedMin.minute.toString().padLeft(2, '0')} - ${estimatedMax.hour}:${estimatedMax.minute.toString().padLeft(2, '0')}';
+    // Estimativa de entrega
+    final eta = order.delivery.expectedDeliveryTime;
+    final etaEnd = order.delivery.expectedDeliveryTimeEnd;
+    String timeRange = 'Pendente';
+    if (eta != null) {
+      final start = DateFormat('HH:mm').format(eta);
+      final end = etaEnd != null ? DateFormat('HH:mm').format(etaEnd) : DateFormat('HH:mm').format(eta.add(const Duration(minutes: 15)));
+      timeRange = '$start - $end';
+    }
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
+            blurRadius: 15,
             offset: const Offset(0, 4),
           ),
         ],
@@ -218,44 +243,78 @@ class OrderTrackingPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: statusInfo['color'] as Color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   statusInfo['text'] as String,
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  style: const TextStyle(
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    color: Color(0xFF3F3E3E),
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.keyboard_arrow_down),
-                onPressed: () {
-                  // Expandir/colapsar detalhes de status
-                },
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Wave Progress
+          WaveProgressIndicator(
+            value: _getProgressValue(order.orderStatus),
+            waveColor: Colors.green,
+            baseColor: const Color(0xFFF2F2F2),
+            height: 4,
+          ),
+          const SizedBox(height: 16),
+          // Previsão
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Previsão de entrega: $timeRange',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF717171),
+                ),
+              ),
+              const Icon(Icons.keyboard_arrow_down, color: Color(0xFF717171)),
+            ],
+          ),
+          const Divider(height: 32),
+          // Código de entrega
+          Row(
+            children: [
+              const Text(
+                'Código de entrega',
+                style: TextStyle(fontSize: 14, color: Color(0xFF717171)),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.help_outline, size: 16, color: Color(0xFF717171)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF2F2F2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.keyboard, size: 16, color: Color(0xFF3F3E3E)),
+                    const SizedBox(width: 8),
+                    Text(
+                      order.deliveryCode ?? '7201',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF3F3E3E),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            order.deliveryType == 'delivery'
-                ? 'Previsão de entrega: $timeFormat'
-                : 'Previsão para retirada: $timeFormat',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Barra de progresso
-          _buildProgressBar(theme),
         ],
       ),
     );
@@ -310,80 +369,59 @@ class OrderTrackingPage extends StatelessWidget {
   /// Seção de endereço
   Widget _buildAddressSection(BuildContext context, ThemeData theme, dynamic store) {
     final isDelivery = order.deliveryType == 'delivery';
+    final address = order.delivery.deliveryAddress;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          isDelivery ? 'Endereço de entrega' : 'Endereço de retirada',
-          style: theme.textTheme.titleMedium?.copyWith(
+        const Text(
+          'Endereço de entrega',
+          style: TextStyle(
+            fontSize: 18,
             fontWeight: FontWeight.bold,
+            color: Color(0xFF3F3E3E),
           ),
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.location_on,
-                  color: theme.primaryColor,
-                  size: 24,
-                ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.location_on, color: Color(0xFF3F3E3E), size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${address.streetName}, ${address.streetNumber ?? 'S/N'}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  Text(
+                    '${address.neighborhood} - ${address.city}, ${address.state}',
+                    style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isDelivery
-                          ? 'Endereço selecionado' // Idealmente viria do pedido
-                          : store?.name ?? 'Loja',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isDelivery
-                          ? '${order.addressState ?? ''} ${order.addressZipCode ?? ''}'
-                          : '${store?.street ?? ''}, ${store?.number ?? ''}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         if (isDelivery) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: const Color(0xFFF2F2F2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Row(
+            child: const Row(
               children: [
-                Icon(Icons.info_outline, size: 18, color: Colors.grey[600]),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Esta entrega é feita pela loja e não pode ser rastreada',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF717171)),
                   ),
                 ),
+                Icon(Icons.help_outline, size: 18, color: Color(0xFF717171)),
               ],
             ),
           ),
@@ -394,99 +432,130 @@ class OrderTrackingPage extends StatelessWidget {
 
   /// Seção de detalhes do pedido
   Widget _buildOrderDetailsSection(BuildContext context, ThemeData theme) {
+    final totalFormatted = UtilBrasilFields.obterReal(order.bag.total.value / 100.0);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Detalhes do pedido',
-          style: theme.textTheme.titleMedium?.copyWith(
+          style: TextStyle(
+            fontSize: 18,
             fontWeight: FontWeight.bold,
+            color: Color(0xFF3F3E3E),
           ),
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Column(
+        const SizedBox(height: 16),
+        InkWell(
+          onTap: () => context.push('/order/${order.id}/summary', extra: order),
+          child: Row(
             children: [
-              // Informações do pedido
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.receipt_long, color: theme.primaryColor, size: 20),
+              // Logo da Loja
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: order.merchant.logo ?? '',
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => const Icon(Icons.store),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Pedido Nº ${order.sequentialId}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '${order.products.length} ${order.products.length == 1 ? 'item' : 'itens'}',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, color: Colors.grey[400]),
-                ],
+                ),
               ),
-              const Divider(height: 24),
-              // Método de pagamento
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      shape: BoxShape.circle,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.merchant.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                    child: const Icon(Icons.payments, color: Colors.green, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          order.deliveryType == 'delivery' 
-                              ? 'Pagamento na entrega'
-                              : 'Pagamento na retirada',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          paymentMethod?.name ?? 'Dinheiro',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                        ),
-                        if (order.needsChange && order.changeAmount != null)
-                          Text(
-                            'Troco para ${UtilBrasilFields.obterReal(order.changeAmount! / 100.0)}',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                          ),
-                      ],
+                    Text(
+                      'Pedido Nº ${order.sequentialId} • ${order.items.length} ${order.items.length == 1 ? 'item' : 'itens'}',
+                      style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const Icon(Icons.chevron_right, color: Color(0xFFEA1D2C)),
             ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Pagamento
+        Row(
+          children: [
+             if (order.payments.primaryMethod != null)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(_getPaymentIcon(order.payments.primaryMethod!.method), size: 20, color: const Color(0xFF3F3E3E)),
+              ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pagamento na entrega • ${order.payments.primaryMethod?.method.name.toUpperCase() == 'CREDIT_CARD' ? 'Crédito' : 'Dinheiro'}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                  Text(
+                    order.payments.primaryMethod?.displayName ?? 'Mastercard',
+                    style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Total com entrega',
+              style: TextStyle(fontSize: 16, color: Color(0xFF3F3E3E)),
+            ),
+            Text(
+              totalFormatted,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF3F3E3E)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        // Chat Button
+        Center(
+          child: TextButton.icon(
+            onPressed: () {},
+            icon: const Icon(Icons.chat_bubble_outline, size: 20),
+            label: const Text(
+              'Chat com a loja',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFEA1D2C),
+            ),
           ),
         ),
       ],
     );
+  }
+
+  IconData _getPaymentIcon(dynamic type) {
+    final typeStr = type.toString().toLowerCase();
+    if (typeStr.contains('credit')) return Icons.credit_card;
+    if (typeStr.contains('cash') || typeStr.contains('dinheiro')) return Icons.payments;
+    return Icons.payment;
   }
 
   /// Seção de itens do pedido
@@ -565,49 +634,50 @@ class OrderTrackingPage extends StatelessWidget {
     );
   }
 
-  /// Bottom bar com ações
+  /// Bottom bar com promo
   Widget _buildBottomBar(BuildContext context, ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
+      width: double.infinity,
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: SafeArea(
+        top: false,
         child: Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => context.go('/'),
-                icon: const Icon(Icons.home),
-                label: const Text('Início'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+            const Icon(Icons.percent, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vai uma bebida enquanto espera?',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  Text(
+                    'Entrega grátis - 35 min',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // Abrir chat/suporte
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Suporte em breve!')),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('Ajuda'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEA1D2C),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.timer, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Text('23:15', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                ],
               ),
             ),
+            const SizedBox(width: 8),
+            const Icon(Icons.keyboard_arrow_up, color: Colors.white),
           ],
         ),
       ),
@@ -616,11 +686,16 @@ class OrderTrackingPage extends StatelessWidget {
 
   /// Retorna informações do status
   Map<String, dynamic> _getStatusInfo(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'pending':
         return {
           'text': 'Aguardando confirmação da loja',
           'color': Colors.orange,
+        };
+      case 'confirmed':
+        return {
+          'text': 'Seu pedido foi confirmado',
+          'color': Colors.blue,
         };
       case 'preparing':
         return {
@@ -633,17 +708,20 @@ class OrderTrackingPage extends StatelessWidget {
           'color': Colors.green,
         };
       case 'on_route':
+      case 'out_for_delivery':
         return {
           'text': 'Pedido saiu para entrega',
           'color': Colors.purple,
         };
       case 'delivered':
       case 'finalized':
+      case 'concluded':
         return {
           'text': 'Pedido entregue!',
           'color': Colors.green,
         };
       case 'canceled':
+      case 'cancelled':
         return {
           'text': 'Pedido cancelado',
           'color': Colors.red,
@@ -653,6 +731,28 @@ class OrderTrackingPage extends StatelessWidget {
           'text': 'Processando...',
           'color': Colors.grey,
         };
+    }
+  }
+
+  double _getProgressValue(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 0.15;
+      case 'confirmed':
+        return 0.3;
+      case 'preparing':
+        return 0.5;
+      case 'ready':
+        return 0.7;
+      case 'on_route':
+      case 'out_for_delivery':
+        return 0.85;
+      case 'delivered':
+      case 'finalized':
+      case 'concluded':
+        return 1.0;
+      default:
+        return 0.0;
     }
   }
 }

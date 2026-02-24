@@ -49,6 +49,7 @@ class Store {
     this.locale,
     this.currencyCode,
     this.timezone,
+    this.fiscalActive = false,
   });
 
   final int? id;
@@ -91,6 +92,7 @@ class Store {
   final String? locale;
   final String? currencyCode;
   final String? timezone;
+  final bool fiscalActive;
 
   factory Store.fromJson(Map<String, dynamic> json) {
     return Store(
@@ -156,6 +158,7 @@ class Store {
       locale: json['locale'] as String?,
       currencyCode: json['currency_code'] as String?,
       timezone: json['timezone'] as String?,
+      fiscalActive: json['fiscal_active'] as bool? ?? false, // ✅ Padrão false se não vier
     );
   }
 
@@ -193,6 +196,7 @@ class Store {
     String? locale,
     String? currencyCode,
     String? timezone,
+    bool? fiscalActive,
   }) {
     return Store(
       id: id ?? this.id,
@@ -228,6 +232,7 @@ class Store {
       locale: locale ?? this.locale,
       currencyCode: currencyCode ?? this.currencyCode,
       timezone: timezone ?? this.timezone,
+      fiscalActive: fiscalActive ?? this.fiscalActive,
     );
   }
 

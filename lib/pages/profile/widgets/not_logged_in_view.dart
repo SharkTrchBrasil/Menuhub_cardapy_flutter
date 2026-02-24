@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
-/// Not Logged In View - Estilo iFood
+/// Not Logged In View - Estilo Menuhub
 /// Tela exibida quando o usuário não está logado na tab de perfil
 class NotLoggedInView extends StatelessWidget {
   final bool isDesktop;
@@ -20,18 +20,18 @@ class NotLoggedInView extends StatelessWidget {
             children: [
               // ✅ Header com ilustração e botão de login
               _buildLoginHeader(context),
-              
+
               const SizedBox(height: 16),
-              
+
               // ✅ Lista de opções do menu
               _buildMenuOptions(context),
-              
+
               // Espaço extra no final
               const SizedBox(height: 32),
             ],
           ),
         ),
-        
+
         // Loading overlay
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) {
@@ -53,7 +53,7 @@ class NotLoggedInView extends StatelessWidget {
   // ✅ Header com ilustração de sacola feliz e botão de login
   Widget _buildLoginHeader(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         isDesktop ? 32 : 20,
@@ -86,17 +86,17 @@ class NotLoggedInView extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               const SizedBox(width: 16),
-              
-              // ✅ Ilustração de sacola feliz (estilo iFood)
+
+              // ✅ Ilustração de sacola feliz (estilo Menuhub)
               _buildHappyBagIllustration(),
             ],
           ),
-          
+
           const SizedBox(height: 24),
-          
-          // ✅ Botão "Entrar ou cadastrar-se" (estilo iFood - borda vermelha)
+
+          // ✅ Botão "Entrar ou cadastrar-se" (estilo Menuhub - borda vermelha)
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
@@ -126,7 +126,7 @@ class NotLoggedInView extends StatelessWidget {
     );
   }
 
-  // ✅ Ilustração de sacola feliz (estilo iFood)
+  // ✅ Ilustração de sacola feliz (estilo Menuhub)
   Widget _buildHappyBagIllustration() {
     return Container(
       width: isDesktop ? 120 : 100,
@@ -179,10 +179,7 @@ class NotLoggedInView extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.transparent,
                 border: Border(
-                  bottom: BorderSide(
-                    color: Colors.white,
-                    width: 3,
-                  ),
+                  bottom: BorderSide(color: Colors.white, width: 3),
                 ),
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(10),
@@ -238,13 +235,10 @@ class NotLoggedInView extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // Separador
-        Container(
-          height: 8,
-          color: Colors.grey.shade100,
-        ),
-        
+        Container(height: 8, color: Colors.grey.shade100),
+
         // ✅ Opções que NÃO precisam de login
         Container(
           color: Colors.white,
@@ -282,7 +276,9 @@ class NotLoggedInView extends StatelessWidget {
                 onTap: () {
                   // TODO: Navegar para tela de sugestão
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Sugerir restaurantes - Em breve')),
+                    const SnackBar(
+                      content: Text('Sugerir restaurantes - Em breve'),
+                    ),
                   );
                 },
               ),
@@ -320,26 +316,15 @@ class NotLoggedInView extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: Colors.grey.shade700,
-            ),
+            Icon(icon, size: 24, color: Colors.grey.shade700),
             const SizedBox(width: 16),
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade800,
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade800),
               ),
             ),
-            Icon(
-              Icons.chevron_right,
-              size: 24,
-              color: Colors.grey.shade400,
-            ),
+            Icon(Icons.chevron_right, size: 24, color: Colors.grey.shade400),
           ],
         ),
       ),

@@ -14,12 +14,12 @@ class OrdersState extends Equatable {
   final List<Order> orders;
   final String? errorMessage;
 
-  /// Pedidos em andamento (ativos) - usa lastStatus do modelo iFood
+  /// Pedidos em andamento (ativos) - usa lastStatus do modelo Menuhub
   List<Order> get activeOrders {
     return orders.where((o) => o.isActive).toList();
   }
 
-  /// Pedidos do histórico (finalizados) - usa lastStatus do modelo iFood
+  /// Pedidos do histórico (finalizados) - usa lastStatus do modelo Menuhub
   List<Order> get historyOrders {
     return orders.where((o) => !o.isActive).toList();
   }

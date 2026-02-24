@@ -29,7 +29,7 @@ class OptionItem extends Equatable {
   final bool? isShared;
   final String? externalProductId;
   
-  // ✅ NOVO: Product real vinculado (para tamanhos de pizza - igual ao iFood)
+  // ✅ NOVO: Product real vinculado (para tamanhos de pizza - igual ao Menuhub)
   // No carrinho, este ID deve ser usado como product_id
   final int? linkedProductId;
   
@@ -108,8 +108,9 @@ class OptionItem extends Equatable {
         for (var item in (json['prices_by_size'] as List)) {
           if (item is Map) {
             final sizeName = item['parent_option_name'] as String?;
-            final priceValue = item['price'] as int?;
-            if (sizeName != null && priceValue != null) {
+            // ✅ FIX: Use _parsePrice para lidar com int ou MoneyAmount object
+            final priceValue = _parsePrice(item['price']);
+            if (sizeName != null && priceValue > 0) {
               pricesBySize[sizeName] = priceValue;
             }
           }
@@ -127,7 +128,7 @@ class OptionItem extends Equatable {
       priority: json['priority'],
       externalCode: json['external_code'],
       slices: json['slices'],
-      maxFlavors: json['max_flavors'],
+      maxFlavors: _parseInt(json['max_flavors']),
       tags: (json['tags'] as List<dynamic>? ?? [])
           .map((tag) => tag.toString())
           .toList(),
@@ -176,9 +177,18 @@ class OptionItem extends Equatable {
     );
   }
 
-  /// Helper para parsear preço (pode vir em reais ou centavos)
+  /// Helper para parsear preço (pode vir em reais, centavos ou como MoneyAmount object)
   static int _parsePrice(dynamic value) {
     if (value == null) return 0;
+    
+    // ✅ FIX: Se for um Map (MoneyAmount object), extrai o valor
+    if (value is Map) {
+      final priceValue = value['value'];
+      if (priceValue is int) return priceValue;
+      if (priceValue is double) return priceValue.round();
+      return 0;
+    }
+    
     if (value is int) return value;
     if (value is double) {
       // Se for menor que 1000, provavelmente está em reais
@@ -188,6 +198,20 @@ class OptionItem extends Equatable {
       return value.round();
     }
     return 0;
+  }
+
+  /// Helper para parsear inteiros que podem vir como objetos
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is Map) {
+      // Se for um objeto, tenta extrair um campo 'value'
+      final intValue = value['value'];
+      if (intValue is int) return intValue;
+      if (intValue is double) return intValue.toInt();
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {

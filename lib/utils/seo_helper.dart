@@ -1,16 +1,16 @@
 // lib/utils/seo_helper.dart
 // Utilitário para atualizar SEO dinamicamente (título, descrição, etc.)
+// ✅ Migrado para package:web para compatibilidade com WASM
 
 import 'package:flutter/foundation.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 /// Helper para atualizar informações de SEO dinamicamente no Flutter Web
 class SeoHelper {
   /// Atualiza o título da página (aparece na aba do navegador)
   static void setTitle(String title) {
     if (kIsWeb) {
-      html.document.title = title;
+      web.document.title = title;
     }
   }
 
@@ -74,17 +74,17 @@ class SeoHelper {
     final attribute = isProperty ? 'property' : 'name';
     
     // Tenta encontrar a meta tag existente
-    var meta = html.document.querySelector('meta[$attribute="$name"]');
+    final meta = web.document.querySelector('meta[$attribute="$name"]');
     
     if (meta == null) {
       // Cria se não existir
-      meta = html.MetaElement()
-        ..setAttribute(attribute, name)
-        ..content = content;
-      html.document.head?.append(meta);
+      final newMeta = web.document.createElement('meta') as web.HTMLMetaElement;
+      newMeta.setAttribute(attribute, name);
+      newMeta.content = content;
+      web.document.head?.append(newMeta);
     } else {
       // Atualiza se existir
-      (meta as html.MetaElement).content = content;
+      (meta as web.HTMLMetaElement).content = content;
     }
   }
 }

@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_address_widget.dart
-// ✅ Widget Endereço - Estilo iFood
+// ✅ Widget Endereço - Estilo Menuhub
 // Endereço completo de entrega/retirada
 
 import 'package:flutter/material.dart';

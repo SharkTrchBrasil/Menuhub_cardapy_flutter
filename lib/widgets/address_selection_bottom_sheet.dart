@@ -11,6 +11,7 @@ import 'package:totem/services/address_search_service.dart';
 import 'package:totem/core/di.dart';
 import 'package:dio/dio.dart';
 import 'package:totem/widgets/address_dialog/address_search_and_list_step.dart';
+import 'package:totem/widgets/address_dialog/address_checkout_selection_step.dart';
 import 'package:totem/widgets/address_dialog/address_map_and_form_step.dart';
 
 /// ✅ Bottom Sheet para seleção/cadastro de endereço no mobile
@@ -46,6 +47,7 @@ class AddressSelectionBottomSheet extends StatefulWidget {
             BlocProvider.value(value: context.read<AddressCubit>()),
             BlocProvider.value(value: context.read<AuthCubit>()),
             BlocProvider.value(value: context.read<StoreCubit>()),
+            BlocProvider.value(value: context.read<DeliveryFeeCubit>()),
           ],
           child: AddressSelectionBottomSheet(
             startWithSearch: startWithSearch,
@@ -84,6 +86,7 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
   final TextEditingController _neighborhoodController = TextEditingController();
   final TextEditingController _streetController = TextEditingController();
   String _favoriteLabel = '';
+  int? _addressIdBeingEdited;
 
   @override
   void initState() {
@@ -97,6 +100,7 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
     
     // Se tem endereço para editar, pré-popula os campos
     if (widget.addressToEdit != null) {
+      _addressIdBeingEdited = widget.addressToEdit!.id;
       _initializeForEdit(widget.addressToEdit!);
     }
   }
@@ -246,6 +250,33 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
     Navigator.of(context).pop();
   }
 
+  void _onEditAddress(CustomerAddress address) {
+    setState(() {
+      _addressIdBeingEdited = address.id;
+      _mapLatitude = address.latitude;
+      _mapLongitude = address.longitude;
+      _numberController.text = address.number ?? '';
+      _streetController.text = address.street;
+      _neighborhoodController.text = address.neighborhood;
+      _referenceController.text = address.reference ?? '';
+      _complementController.text = address.complement ?? '';
+      _favoriteLabel = address.label;
+      
+      _selectedSearchResult = AddressSearchResult(
+        description: '${address.street}, ${address.number}',
+        street: address.street,
+        number: address.number,
+        neighborhood: address.neighborhood,
+        city: address.city,
+        state: '',
+        latitude: address.latitude,
+        longitude: address.longitude,
+      );
+      
+      _currentStep = _AddressSheetStep.mapAndForm;
+    });
+  }
+
   void _onClearSearch() {
     _searchController.clear();
     setState(() {
@@ -293,9 +324,9 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
     }
 
     final newAddress = CustomerAddress(
-      id: widget.addressToEdit?.id, // Mantém ID se for edição
+      id: _addressIdBeingEdited, // Mantém ID se for edição
       label: _favoriteLabel.isNotEmpty ? _favoriteLabel : 'Endereço',
-      isFavorite: _favoriteLabel.isNotEmpty,
+      isFavorite: true, // ✅ SEMPRE marca como favorito ao salvar para ser o padrão
       street: _streetController.text.trim().isNotEmpty 
           ? _streetController.text.trim() 
           : (_selectedSearchResult!.street ?? ''),
@@ -347,7 +378,7 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
             final continueAnyway = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Endereço fora da área'),
+                title: const Text('Não entregamos neste endereço'),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,7 +391,7 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Você poderá usá-lo para retirada na loja.',
+                      'Este endereço ficará salvo e poderá ser usado para retirada na loja.',
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
                   ],
@@ -456,35 +487,48 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 4),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
+      child: Column(
+        children: [
+          // Header com botão de voltar e título
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: _goBack,
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Color(0xFFEA1D2C)),
+                ),
+                const Expanded(
+                  child: Text(
+                    'ENDEREÇOS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E3E3E),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 48), // Balanço do botão lateral
+              ],
             ),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _buildCurrentStep(),
-              ),
+          ),
+          const Divider(height: 1, color: Color(0xFFF5F5F5)),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _buildCurrentStep(customer),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildCurrentStep() {
+  Widget _buildCurrentStep(dynamic customer) {
     switch (_currentStep) {
       case _AddressSheetStep.searchAndList:
-        return AddressSearchAndListStep(
+        return AddressCheckoutSelectionStep(
           searchController: _searchController,
           searchFocusNode: _searchFocusNode,
           searchResults: _searchResults,
@@ -493,6 +537,14 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
           onClearSearch: _onClearSearch,
           onSearchResultSelected: _onSearchResultSelected,
           onSavedAddressSelected: _onSavedAddressSelected,
+          onEditAddress: _onEditAddress,
+          onDeleteAddress: (address) {
+            if (address.id != null && customer != null) {
+              final cust = customer as dynamic;
+              context.read<AddressCubit>().deleteAddress(cust.id!, address.id!);
+            }
+          },
+          onSearchChanged: _onSearchChanged,
         );
         
       case _AddressSheetStep.mapAndForm:
@@ -505,7 +557,7 @@ class _AddressSelectionBottomSheetState extends State<AddressSelectionBottomShee
           street: _selectedSearchResult!.street ?? '',
           neighborhood: _selectedSearchResult!.neighborhood ?? '',
           city: _selectedSearchResult!.city ?? '',
-          state: _selectedSearchResult!.state ?? '',
+          state: _selectedSearchResult!.state ?? '', // Aqui mantemos pois o SearchResult tem state
           onSave: _saveAddress,
           onBack: _goBack,
           numberController: _numberController,

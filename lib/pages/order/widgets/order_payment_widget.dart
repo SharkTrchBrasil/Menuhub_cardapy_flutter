@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_payment_widget.dart
-// ✅ Widget Pagamento - Estilo iFood
+// ✅ Widget Pagamento - Estilo Menuhub
 // Ícone de bandeira/método, tipo de pagamento, detalhes
 
 import 'package:flutter/material.dart';

@@ -1,199 +1,231 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import 'package:totem/core/extensions.dart';
-import 'package:totem/themes/ds_theme.dart';
-
 import '../../../cubit/auth_cubit.dart';
 import '../../../themes/ds_theme_switcher.dart';
 import '../../../widgets/ds_primary_button.dart';
-
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/helpers/store_hours_helper.dart';
 import 'package:totem/widgets/store_closed_widgets.dart';
 import 'package:totem/services/store_status_service.dart';
+import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
+import 'package:totem/models/delivery_type.dart';
+import 'package:totem/pages/cart/cart_cubit.dart';
+import 'package:totem/pages/cart/cart_state.dart';
 
 class CartBottomBar extends StatelessWidget {
-  // ✅ CORREÇÃO: Parâmetros renomeados para clareza
-  final double subtotal;
-  final double finalTotal;
-
-  final double minOrder;
-
-  final bool hasCoupon;
-
-
-  const CartBottomBar({
-    super.key,
-    required this.subtotal,
-    required this.finalTotal,
-
-    required this.minOrder,
-
-    required this.hasCoupon,
-
-  });
+  const CartBottomBar({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    // ✅ CORREÇÃO: A condição agora compara subtotal e total final
-    final bool hasGeneralDiscount = finalTotal < subtotal;
+    
+    // ✅ Reativo: Ouve alterações no StoreCubit para minOrder e cupons
+    final storeState = context.watch<StoreCubit>().state;
+    final minOrder = storeState.store?.getMinOrderForDelivery() ?? 0;
+    final storeCoupons = storeState.store?.coupons ?? [];
 
-    return Container(
-      decoration: BoxDecoration(color: theme.cartBackgroundColor),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Total sem taxa de entrega', style: TextStyle(color: theme.cartTextColor)),
+    return BlocBuilder<CartCubit, CartState>(
+      builder: (context, cartState) {
+        final cart = cartState.cart;
+        
+        return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
+          builder: (context, feeState) {
+            // ✅ Mesma lógica do OrderSummaryCard
+            double deliveryFee = 0.0;
+            bool isDeliveryFreeFromRule = false;
 
-                const SizedBox(height: 4),
+            if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+              deliveryFee = feeState.deliveryFee;
+              isDeliveryFreeFromRule = feeState.isFree ?? false;
+              if (isDeliveryFreeFromRule) {
+                deliveryFee = 0.0;
+              }
+            } else if (cart.deliveryFee > 0) {
+              // ✅ FALLBACK: Usa o frete do carrinho se o DeliveryFeeCubit não estiver carregado
+              deliveryFee = cart.finalDeliveryFee / 100.0;
+            }
 
-                // Se houver um desconto geral (cupom), mostra o preço antigo riscado
-                if (hasGeneralDiscount)
-                  Text(
-                    subtotal.toCurrency(), // Mostra o subtotal riscado
-                    style: theme.paragraphTextStyle
-                        .colored(theme.onBackgroundColor)
-                        .copyWith(decoration: TextDecoration.lineThrough),
-                  ),
+            // ✅ CORREÇÃO ROBUSTA: Verifica o tipo do cupom na store
+            bool hasFreeDeliveryCoupon = false;
+            if (cart.couponCode != null) {
+              // Busca o cupom aplicado na lista de cupons da store
+              final appliedCoupon = storeCoupons.where(
+                (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
+              ).firstOrNull;
+              
+              // Se encontrou o cupom, verifica se é do tipo FREE_DELIVERY
+              if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
+                hasFreeDeliveryCoupon = true;
+              } else if (cart.isFreeDelivery) {
+                // Fallback: usa a flag do carrinho se não encontrar o cupom na store
+                hasFreeDeliveryCoupon = true;
+              }
+            }
+            
+            final isFreeDelivery = isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
+            final effectiveFee = isFreeDelivery ? 0.0 : deliveryFee;
 
-                // Mostra o preço final (com ou sem desconto)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Mostra o ícone se o desconto for por cupom
-                    if (hasCoupon && hasGeneralDiscount) ...[
-                      Icon(Icons.local_offer, size: 18, color: Colors.green),
-                      const SizedBox(width: 4),
-                    ],
-                    Text(
-                      finalTotal.toCurrency(), // Mostra o total final
-                      style: theme.headingTextStyle
-                          .colored(theme.onBackgroundColor)
-                          .weighted(FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const Spacer(),
-            SizedBox(
-              width: 160,
-              child: DsPrimaryButton(
-                label: 'Continuar',
-                onPressed: () {
-                  // ✅ NOVO: Validação de loja fechada (impossibilita continuar)
-                  final activeStore = context.read<StoreCubit>().state.store;
-                  if (activeStore != null) {
-                    // ✅ CORREÇÃO: Usa o serviço centralizado para validar TODOS os cenários (pausa, fechado manual, horários)
-                    final status = StoreStatusService.validateStoreStatus(activeStore);
-                    
-                    if (!status.canReceiveOrders) {
-                      StoreClosedHelper.showModal(
-                        context,
-                        isCartPage: true,
-                        isDesktop: MediaQuery.of(context).size.width >= 768,
-                        nextOpenTime: status.message, // Passa a mensagem correta (ex: motivo da pausa ou horário de abertura)
-                        onSeeOtherOptions: () {
-                          // Apenas fecha o modal, mantendo o usuário na sacola para ver os itens
-                          Navigator.of(context).pop(); 
-                        },
-                      );
-                      return;
-                    }
-                  }
+            // Totais
+            final subtotalValue = cart.subtotal / 100.0;
+            final discountValue = cart.discount / 100.0;
+            // Total Visual = (Subtotal - Desconto) + Frete Efetivo
+            final finalTotal = subtotalValue - discountValue + effectiveFee;
+            
+            final itemCount = cart.items.fold<int>(0, (sum, item) => sum + (item.quantity > 0 ? item.quantity : 1));
+            // ✅ CORREÇÃO: hasCoupon considera desconto direto OU cupom de frete grátis
+            final hasCoupon = cart.discount > 0 || hasFreeDeliveryCoupon;
 
-                  if (minOrder > 0 && finalTotal < minOrder) {
-                    showModalBottomSheet(
-                      context: context,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                      ),
-                      builder:
-                          (_) => Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
+            // ✅ Label do texto
+            final labelText = isFreeDelivery ? 'Total com entrega grátis' : 'Total com entrega';
+
+            return Container(
+              color: Colors.white,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      // ✅ Informações do carrinho (sem logo)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              labelText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isFreeDelivery ? Colors.green.shade700 : Colors.grey.shade600,
+                                fontWeight: isFreeDelivery ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                            Row(
                               mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Text(
-                                  'Valor mínimo do pedido.',
-                                  textAlign: TextAlign.center,
+                                  finalTotal.toCurrency(),
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: theme.cartTextColor,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.bold,
+                                    color: hasCoupon ? Colors.green.shade700 : Colors.black87,
                                   ),
                                 ),
-                                const SizedBox(height: 14),
                                 Text(
-                                  'O valor mínimo para entrega é de R\$ ${minOrder.toCurrency()}.',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 24),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: DsPrimaryButton(
-                                        onPressed: () => context.pop(),
-                                        label: 'Adicionar mais itens',
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                  ],
-                                ),
-                                const SizedBox(height: 24),
-                                GestureDetector(
-                                  onTap: () => Navigator.pop(context),
-                                  child: Text(
-                                    'Ok, entendi',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.primaryColor,
-                                    ),
+                                  ' / $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade500,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                    );
-                  } else {
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 160,
+                        child: DsPrimaryButton(
+                          label: 'Continuar',
+                          onPressed: () {
+                            // Validação de loja fechada
+                            final activeStore = context.read<StoreCubit>().state.store;
+                            if (activeStore != null) {
+                              final status = StoreStatusService.validateStoreStatus(activeStore);
+                              
+                              if (!status.canReceiveOrders) {
+                                StoreClosedHelper.showModal(
+                                  context,
+                                  isCartPage: true,
+                                  isDesktop: MediaQuery.of(context).size.width >= 768,
+                                  nextOpenTime: status.message, 
+                                  onSeeOtherOptions: () {
+                                    Navigator.of(context).pop(); 
+                                  },
+                                );
+                                return;
+                              }
+                            }
 
-                    // ✅ A verificação é simples e direta
-                    final authState = context.read<AuthCubit>().state;
-
-                    if (authState.isLoggedIn) {
-                      // ✅ NOVO: Desktop vai direto para checkout unificado
-                      final isDesktop = MediaQuery.of(context).size.width >= 768;
-                      if (isDesktop) {
-                        // ✅ Fecha o sidepanel (se estiver dentro de um) antes de navegar
-                        Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
-                        // Use um delay pequeno para garantir que o sidepanel fechou
-                        Future.microtask(() => context.go('/checkout'));
-                      } else {
-                        context.go('/address');
-                      }
-                    } else {
-                      context.push('/onboarding');
-                    }
-
-
-                  }
-                },
+                            if (minOrder > 0 && finalTotal < minOrder) {
+                              showModalBottomSheet(
+                                context: context,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(20),
+                                  ),
+                                ),
+                                builder: (_) => Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'Valor mínimo do pedido.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: theme.cartTextColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 14),
+                                      Text(
+                                        'O valor mínimo para entrega é de R\$ ${minOrder.toCurrency()}.',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: DsPrimaryButton(
+                                              onPressed: () => context.pop(),
+                                              label: 'Adicionar mais itens',
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 24),
+                                      GestureDetector(
+                                        onTap: () => Navigator.pop(context),
+                                        child: Text(
+                                          'Ok, entendi',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: theme.primaryColor,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            } else {
+                              final authState = context.read<AuthCubit>().state;
+                              
+                              if (authState.isLoggedIn) {
+                                context.push('/address');
+                              } else {
+                                context.push('/signin');
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }

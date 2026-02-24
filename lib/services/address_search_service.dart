@@ -64,11 +64,12 @@ class AddressSearchService {
       final mapboxToken = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
       
       if (mapboxToken.isNotEmpty) {
-        return await _searchWithMapbox(input, countryCode, userLatitude, userLongitude, mapboxToken);
+        final results = await _searchWithMapbox(input, countryCode, userLatitude, userLongitude, mapboxToken);
+        if (results.isNotEmpty) return results;
+        print('⚠️ Mapbox retornou 0 resultados, tentando Nominatim...');
       }
       
-      // Fallback para Nominatim se não tiver token do Mapbox
-      print('⚠️ MAPBOX_ACCESS_TOKEN não configurado, usando Nominatim');
+      // Fallback para Nominatim se não tiver token do Mapbox ou resultados vazios
       return await _searchWithNominatim(input, countryCode, userLatitude, userLongitude);
     } catch (e) {
       print('❌ Erro ao buscar endereços: $e');
@@ -98,15 +99,15 @@ class AddressSearchService {
         'country': countryCode,
         'language': 'pt-BR',
         'types': 'address,place', // Endereços e lugares
-        'limit': 20, // ✅ Aumentado para filtrar depois
+        'limit': 10, 
       };
 
-      // ✅ CRÍTICO: Adiciona bias de localização se disponível
-      // Usa proximity para priorizar resultados próximos (raio de ~20km)
       if (userLatitude != null && userLongitude != null) {
-        queryParams['proximity'] = '$userLongitude,$userLatitude'; // Mapbox usa lon,lat
-        print('📍 Busca com proximidade: lat=$userLatitude, lon=$userLongitude');
+        queryParams['proximity'] = '$userLongitude,$userLatitude'; 
       }
+
+      print('🔍 [Mapbox] Request: $url');
+      print('🔍 [Mapbox] Params: $queryParams');
 
       final response = await _dio.get(
         url,

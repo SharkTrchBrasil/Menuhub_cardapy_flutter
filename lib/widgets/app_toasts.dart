@@ -22,7 +22,7 @@ Function showLoading({String? message}) {
         ),
         child: FoodLoadingCompact(
           size: 48,
-          color: const Color(0xFFEA1D2C), // Cor iFood
+          color: const Color(0xFFEA1D2C), // Cor Menuhub
         ),
       );
     },

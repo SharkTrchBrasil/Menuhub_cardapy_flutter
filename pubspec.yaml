@@ -34,7 +34,7 @@ dependencies:
   url_launcher:
   brasil_fields:
   bot_toast:
-  get_it: ^7.6.4
+  get_it: ^9.2.0
   injectable: ^2.3.2
   shared_preferences:
   url_strategy:
@@ -48,28 +48,31 @@ dependencies:
   phone_numbers_parser: ^9.0.3
   mask_text_input_formatter: ^2.9.0
   intl:
+  timezone: ^0.11.0  # ✅ CRITICAL FIX: Conversão de timezone da loja (não do dispositivo)
   rating_summary:
   nb_utils:
   collection:
   # animated_text_kit: ^4.2.3  # ❌ REMOVIDO: Não estava sendo usado
-  hydrated_bloc:
-  path_provider:
   hive:
   hive_flutter:
   # mobile_scanner:  # ❌ REMOVIDO: Não estava sendo usado (~100 KiB economizados)
-  flutter_dotenv: ^5.1.0
+  flutter_dotenv: ^6.0.0
   shimmer:
-  smooth_page_indicator: ^1.2.0+3  # ✅ ADICIONAR
+  smooth_page_indicator: ^2.0.1  # ✅ ADICIONAR
   # video_player: ^2.8.2  # ❌ REMOVIDO: Não usamos mais vídeos no cardápio (~150 KiB economizados)
-  geolocator: ^13.0.1
-  share_plus: ^10.1.2  # ✅ NOVO: Compartilhamento de produtos
-  flutter_map: ^7.0.2  # ✅ NOVO: Mapas (Android, iOS e WEB!) - Usa tiles do Mapbox
+  geolocator: ^14.0.2
+  share_plus: ^12.0.1  # ✅ NOVO: Compartilhamento de produtos
+  flutter_map: ^8.2.2  # ✅ NOVO: Mapas (Android, iOS e WEB!) - Usa tiles do Mapbox
   latlong2: ^0.9.1  # ✅ NOVO: Coordenadas geográficas para flutter_map
   encrypt:
   crypto:
   coupon_uikit: ^0.2.1
   qr_flutter: ^4.1.0
   package_info_plus: ^9.0.0
+  device_info_plus: ^11.0.0
+  firebase_crashlytics: ^4.3.0
+  firebase_analytics: ^11.4.0
+  sentry_flutter: ^8.13.0
 
 
 
@@ -85,7 +88,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

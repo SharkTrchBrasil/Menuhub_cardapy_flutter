@@ -6,12 +6,12 @@ import 'package:provider/provider.dart';
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/widgets/cart_bottom_bar.dart';
+import 'package:totem/widgets/unified_cart_bottom_bar.dart';
 import 'package:totem/pages/cart/widgets/cart_itens_section.dart';
 import 'package:totem/pages/cart/widgets/coupon_section.dart';
 import 'package:totem/pages/cart/widgets/free_shipping_progress.dart';
 import 'package:totem/pages/cart/widgets/min_order_info.dart';
-import 'package:totem/pages/cart/widgets/order_summary.dart';
+import 'package:totem/widgets/order_summary_card.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/services/product_recommendation_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
@@ -48,10 +48,7 @@ class CartTabPage extends StatelessWidget {
 
     final minOrder = store?.getMinOrderForDelivery() ?? 0;
 
-    int deliveryFeeInCents = 0;
-    if (deliveryFeeState is DeliveryFeeLoaded) {
-      deliveryFeeInCents = (deliveryFeeState.deliveryFee * 100).toInt();
-    }
+
 
     return Scaffold(
       backgroundColor: theme.cartBackgroundColor,
@@ -214,20 +211,13 @@ class CartTabPage extends StatelessWidget {
                           threshold: store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 40),
-                        OrderSummary(
-                          subtotalInCents: cart.subtotal,
-                          discountInCents: cart.discount,
-                          deliveryFeeInCents: deliveryFeeInCents,
-                        ),
+                        const OrderSummaryCard(),
                         const SizedBox(height: 40),
                       ],
                     ),
                   ),
-                  CartBottomBar(
-                    subtotal: cart.subtotal / 100.0,
-                    finalTotal: cart.total / 100.0,
-                    minOrder: minOrder,
-                    hasCoupon: cart.couponCode != null,
+                  const UnifiedCartBottomBar(
+                    variant: CartBottomBarVariant.cart,
                   ),
                 ],
               );

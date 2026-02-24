@@ -1,5 +1,5 @@
 // Em: lib/models/create_order_payload.dart
-// ✅ ALINHAMENTO iFOOD: Inclui campos de origem para popular o formato iFood
+// ✅ ALINHAMENTO iFOOD: Inclui campos de origem para popular o formato Menuhub
 
 import 'package:totem/models/customer_address.dart';
 
@@ -26,7 +26,7 @@ class CreateOrderPayload {
   final String? platform;     // 'ANDROID', 'IOS', 'WEB'
   final String? appName;      // 'Totem', 'Menuhub', etc
   final String? appVersion;   // '1.0.0'
-  final String? salesChannel; // 'TOTEM', 'MENU', 'IFOOD'
+  final String? salesChannel; // 'TOTEM', 'MENU', 'MENUHUB'
 
   CreateOrderPayload({
     required this.paymentMethodId,
@@ -76,7 +76,8 @@ class CreateOrderPayload {
   Map<String, dynamic> toJson() {
     return {
       'payment_method_id': paymentMethodId,
-      'delivery_type': deliveryType,
+      // Map deliveryType to Backend OrderType Enum (TABLE, POS, DELIVERY, PICKUP)
+      'orderType': _mapToOrderType(deliveryType),
       'observation': observation,
       'needs_change': needsChange,
       // Backend espera o valor em Reais, como definido no Pydantic
@@ -95,5 +96,13 @@ class CreateOrderPayload {
       'app_version': appVersion,
       'sales_channel': salesChannel,
     }..removeWhere((key, value) => value == null); // Remove chaves nulas
+  }
+
+  String _mapToOrderType(String type) {
+    final t = type.toLowerCase();
+    if (t == 'delivery') return 'DELIVERY';
+    if (t == 'pickup' || t == 'takeout') return 'PICKUP';
+    if (t == 'dine_in') return 'TABLE'; // Ou POS dependendo da regra
+    return 'POS'; // Default fallback
   }
 }

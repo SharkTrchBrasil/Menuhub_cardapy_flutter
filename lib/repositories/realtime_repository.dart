@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:either_dart/either.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:rxdart/rxdart.dart';
-import 'package:socket_io_client/socket_io_client.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:totem/models/product.dart';
 import 'package:totem/models/store.dart';
 import 'package:totem/models/category.dart' as models;
@@ -17,62 +15,58 @@ import 'package:totem/models/scheduled_pause.dart';
 import 'package:totem/models/store_operation_config.dart';
 import 'package:totem/models/coupon.dart';
 import 'package:totem/models/delivery_fee_rule.dart';
-import 'package:totem/themes/ds_theme.dart';
-import 'package:totem/themes/ds_theme_switcher.dart';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
 
 import '../models/banners.dart';
 import '../models/cart.dart';
-import '../models/coupon.dart';
 import '../models/create_order_payload.dart';
-import '../models/new_order.dart';
 import '../models/order.dart';
-import '../models/rating_summary.dart';
-
-import 'package:socket_io_client/socket_io_client.dart' as IO;
-
 import '../models/update_cart_payload.dart';
 import '../models/notification.dart';
 import '../services/urgent_notification_service.dart';
 import 'auth_repository.dart';
-// ✅ NOVO: Importa models e adapter do novo formato de menu
+// ✅ Importa models e adapter do novo formato de menu
 import '../models/menu/menu_response.dart';
 import '../helpers/menu_adapter.dart';
-
+import '../core/di.dart';
+import '../cubit/orders_cubit.dart';
+import '../pages/address/cubits/address_cubit.dart';
+import '../services/realtime/heartbeat_manager.dart';
+import '../services/menu_visit_service.dart';
 
 class RealtimeRepository {
-
-  RealtimeRepository(this._dsThemeSwitcher);
+  RealtimeRepository();
 
   late IO.Socket _socket;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
   static const int _baseReconnectDelay = 1000; // 1s
   static const int _maxReconnectDelay = 30000; // 30s
-  
-  // ✅ NOVO: Gerenciamento de token de conexão
-  String? _currentConnectionToken;
-  Timer? _tokenRenewalTimer;
+
+  // Gerenciamento de token de conexão
+  // ignore: unused_field
+  String? _currentConnectionToken; // armazenado para diagnóstico
   bool _isRenewingToken = false;
   Completer<void>? _reconnectionCompleter;
   String? _storeUrl; // Armazena store_url para renovação de token
+  HeartbeatManager? _heartbeatManager;
 
-  final DsThemeSwitcher _dsThemeSwitcher;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  
-  // ✅ Constante para chave de armazenamento
+
+  // Constante para chave de armazenamento
   static const String _keyStoreUrl = 'store_url';
 
   final BehaviorSubject<Store> storeController = BehaviorSubject<Store>();
 
-  final BehaviorSubject<List<Product>> productsController = BehaviorSubject<List<Product>>();
+  final BehaviorSubject<List<Product>> productsController =
+      BehaviorSubject<List<Product>>();
 
-  final BehaviorSubject<List<BannerModel>> bannersController = BehaviorSubject<List<BannerModel>>();
+  final BehaviorSubject<List<BannerModel>> bannersController =
+      BehaviorSubject<List<BannerModel>>();
 
-// CHANGE THIS LINE:
-  final BehaviorSubject<Order> orderController = BehaviorSubject<Order>(); // Changed to BehaviorSubject
-
+  final BehaviorSubject<Order> orderController = BehaviorSubject<Order>();
 
   Future<void> initialize(String connectionToken) async {
     final completer = Completer<void>();
@@ -85,41 +79,62 @@ class RealtimeRepository {
 
     // --- ✅ 2. MUDANÇA NA CONSTRUÇÃO DA URL ---
     // O parâmetro da query agora é `connection_token`.
-    final uri = '$apiUrl?connection_token=$connectionToken';
-
-    AppLogger.debug("🔌 RealtimeRepository: Conectando ao servidor...");
-    AppLogger.debug('🛠️ URL de conexão: $uri');
-
-    // ✅ ENTERPRISE: Configuração otimizada de reconexão com backoff exponencial
+    // Usamos setQuery para maior confiabilidade na atualização do token.
     _socket = IO.io(
-      uri,
+      apiUrl,
       IO.OptionBuilder()
-          .setTransports(<String>['websocket', 'polling']) // ✅ Fallback para polling se WebSocket falhar
+          .setTransports(<String>[
+            'websocket',
+            'polling',
+          ]) // ✅ Fallback para polling se WebSocket falhar
           .disableAutoConnect()
+          .enableForceNew() // ✅ ESSENCIAL: Garante que um novo socket seja criado com os novos parâmetros
+          .setQuery({'connection_token': connectionToken})
           // ✅ ENTERPRISE: Melhor lógica de reconexão
           .setReconnectionAttempts(_maxReconnectAttempts)
           .setReconnectionDelay(_baseReconnectDelay)
           .setReconnectionDelayMax(_maxReconnectDelay)
-          .setRandomizationFactor(0.1) // ✅ Adiciona variação aleatória para evitar thundering herd
+          .setRandomizationFactor(
+            0.1,
+          ) // ✅ Adiciona variação aleatória para evitar thundering herd
           .build(),
     );
 
     // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
     _socket.on('connect', (_) {
-      AppLogger.debug('✅ Socket.IO: Conectado com sucesso!');
+      AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
+
+      // ✅ NOVO: Inicia monitoramento de heartbeat
+      _heartbeatManager?.stop();
+      _heartbeatManager = HeartbeatManager(
+        socket: _socket,
+        onConnectionDead: () {
+          AppLogger.w(
+            '💀 [Realtime] Heartbeat detectou conexão morta! Forçando renovação de token...',
+          );
+          _renewConnectionTokenAndReconnect();
+        },
+      );
+      _heartbeatManager?.start();
+
       if (!completer.isCompleted) completer.complete();
+
+      // ✅ NOVO: Inicializa MenuVisitService após conexão
+      _initializeMenuVisitService();
     });
 
     _socket.on('connect_error', (error) {
-      AppLogger.debug('❌ Socket.IO: Erro de conexão: $error');
-      
+      AppLogger.d('❌ Socket.IO: Erro de conexão: $error');
+
       // ✅ NOVO: Detecta erro de token inválido e renova automaticamente
       final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') || 
-          errorString.contains('expired') || 
+      if (errorString.contains('invalid') ||
+          errorString.contains('expired') ||
           errorString.contains('used connection token') ||
           errorString.contains('connection token')) {
-        AppLogger.debug('🔄 Token de conexão inválido/expirado. Iniciando renovação automática...');
+        AppLogger.d(
+          '🔄 Token de conexão inválido/expirado. Iniciando renovação automática...',
+        );
         _renewConnectionTokenAndReconnect();
       } else if (!completer.isCompleted) {
         completer.completeError('Erro ao conectar: $error');
@@ -129,269 +144,165 @@ class RealtimeRepository {
     // ✅ MELHOR TRATAMENTO DE RECONEXÃO
     _socket.on('reconnect_attempt', (_) {
       _reconnectAttempts++;
-      final exponentialDelay = _baseReconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
+      final exponentialDelay =
+          _baseReconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
       final delay = exponentialDelay.clamp(0, _maxReconnectDelay);
-      AppLogger.debug('???? Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...');
+      AppLogger.d(
+        '???? Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...',
+      );
     });
 
     _socket.on('reconnect', (_) {
       _reconnectAttempts = 0; // ✅ Reset ao reconectar com sucesso
-      AppLogger.debug('???? Socket.IO: Reconectado com sucesso!');
+      AppLogger.d('???? Socket.IO: Reconectado com sucesso!');
       // Aqui você pode recarregar estado da aplicação se necessário
     });
 
     _socket.on('reconnect_error', (error) {
-      AppLogger.debug('❌ Socket.IO: Erro ao reconectar: $error');
+      AppLogger.d('❌ Socket.IO: Erro ao reconectar: $error');
       // ✅ NOVO: Detecta erro de token inválido durante reconexão
       final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') || 
-          errorString.contains('expired') || 
+      if (errorString.contains('invalid') ||
+          errorString.contains('expired') ||
           errorString.contains('used connection token')) {
-        AppLogger.debug('🔄 Token inválido durante reconexão. Renovando token...');
+        AppLogger.d('🔄 Token inválido durante reconexão. Renovando token...');
         _renewConnectionTokenAndReconnect();
       }
     });
 
     _socket.on('reconnect_failed', (_) {
-      AppLogger.debug('❌ Socket.IO: Falha ao reconectar após máximo de tentativas');
+      AppLogger.d('❌ Socket.IO: Falha ao reconectar após máximo de tentativas');
       // ✅ NOVO: Tenta renovar token e reconectar quando todas as tentativas falharem
-      AppLogger.debug('🔄 Tentando renovar token de conexão e reconectar...');
+      AppLogger.d('🔄 Tentando renovar token de conexão e reconectar...');
       _renewConnectionTokenAndReconnect();
     });
 
     // ✅ NOVO: Listener para notificações urgentes
     _socket.on('urgent_notifications', (data) {
-      AppLogger.debug('🚨 Notificações urgentes recebidas!');
+      AppLogger.d('🚨 Notificações urgentes recebidas!');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final List notificationsData = payload['notifications'] as List;
-        
-        final List<NotificationItem> notifications = notificationsData
-            .map((json) => NotificationItem.fromJson(json as Map<String, dynamic>))
-            .toList();
-        
-        AppLogger.debug('📢 Processando ${notifications.length} notificações urgentes');
-        
+
+        final List<NotificationItem> notifications =
+            notificationsData
+                .map(
+                  (json) =>
+                      NotificationItem.fromJson(json as Map<String, dynamic>),
+                )
+                .toList();
+
+        AppLogger.d(
+          '📢 Processando ${notifications.length} notificações urgentes',
+        );
+
         // Processa notificações urgentes
         final urgentService = UrgentNotificationService();
         urgentService.processUrgentNotifications(notifications);
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar notificações urgentes: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar notificações urgentes: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('initial_state_loaded', (data) {
-      AppLogger.debug('🎉 Estado inicial carregado recebido!');
-      AppLogger.debug('📊 Tipo de dados recebidos: ${data.runtimeType}');
+      AppLogger.d('🎉 Estado inicial carregado recebido!');
+      AppLogger.d('📊 Tipo de dados recebidos: ${data.runtimeType}');
 
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
 
-        AppLogger.debug('🔑 Chaves do payload: ${payload.keys.toList()}');
+        AppLogger.d('🔑 Chaves do payload: ${payload.keys.toList()}');
 
         // ✅ NOVO: Detecta formato do menu (novo ou antigo)
-        final bool isNewMenuFormat = payload.containsKey('data') && 
-                                     payload['data'] is Map &&
-                                     (payload['data'] as Map).containsKey('menu');
+        final bool isNewMenuFormat =
+            payload.containsKey('data') &&
+            payload['data'] is Map &&
+            (payload['data'] as Map).containsKey('menu');
 
         if (isNewMenuFormat) {
-          AppLogger.debug('📋 Novo formato de menu detectado (com data.menu)');
-          
+          AppLogger.d('📋 Novo formato de menu detectado (com data.menu)');
+
           // ✅ DEBUG: Imprime estrutura do menu recebido
           final dataPayload = payload['data'] as Map<String, dynamic>;
           final menuList = dataPayload['menu'] as List<dynamic>? ?? [];
-          AppLogger.debug('═══════════════════════════════════════════════════════');
-          AppLogger.debug('🔍 [DEBUG MENU] Total de categorias no menu: ${menuList.length}');
+          AppLogger.d(
+            '═══════════════════════════════════════════════════════',
+          );
+          AppLogger.d(
+            '🔍 [DEBUG MENU] Total de categorias no menu: ${menuList.length}',
+          );
           for (var i = 0; i < menuList.length; i++) {
             final cat = menuList[i] as Map<String, dynamic>;
             final catCode = cat['code'];
             final catName = cat['name'];
             final catTemplate = cat['template'];
             final itens = cat['itens'] as List<dynamic>? ?? [];
-            AppLogger.debug('   📁 [$i] Categoria: "$catName" (code: $catCode, template: $catTemplate)');
-            AppLogger.debug('      └─ Itens: ${itens.length}');
+            AppLogger.d(
+              '   📁 [$i] Categoria: "$catName" (code: $catCode, template: $catTemplate)',
+            );
+            AppLogger.d('      └─ Itens: ${itens.length}');
             for (var j = 0; j < itens.length && j < 3; j++) {
               final item = itens[j] as Map<String, dynamic>;
-              AppLogger.debug('         └─ Item[$j]: id=${item['id']}, code=${item['code']}, desc="${item['description']}"');
+              AppLogger.d(
+                '         └─ Item[$j]: id=${item['id']}, code=${item['code']}, desc="${item['description']}"',
+              );
             }
             if (itens.length > 3) {
-              AppLogger.debug('         └─ ... e mais ${itens.length - 3} itens');
+              AppLogger.d('         └─ ... e mais ${itens.length - 3} itens');
             }
           }
-          AppLogger.debug('═══════════════════════════════════════════════════════');
-          
+          AppLogger.d(
+            '═══════════════════════════════════════════════════════',
+          );
+
           _processNewMenuFormat(payload);
         } else {
-          AppLogger.debug('📋 Formato antigo de menu detectado (com products/categories separados)');
+          AppLogger.d(
+            '📋 Formato antigo de menu detectado (com products/categories separados)',
+          );
           _processOldMenuFormat(payload);
         }
 
-        AppLogger.debug('🎉 Estado inicial carregado com sucesso!');
+        AppLogger.d('🎉 Estado inicial carregado com sucesso!');
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar initial_state_loaded: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar initial_state_loaded: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
-
     // ✅ P1: EVENTOS DE DADOS DO BACKEND com suporte a delta updates
-    // ✅ CORREÇÃO: Escuta 'products_updated' (com 'd') que é o evento emitido pelo backend
-    _socket.on('products_updated', (data) {
-      AppLogger.debug('═══════════════════════════════════════════════════════');
-      AppLogger.debug('📦 [PRODUCTS_UPDATED] Evento recebido!');
-      AppLogger.debug('📊 Tipo de dados: ${data.runtimeType}');
-      
-      try {
-        // ✅ Processa payload do backend que vem como Map com 'products' e 'categories'
-        if (data is Map && data.containsKey('products')) {
-          // ✅ DEBUG: Mostra estrutura dos produtos recebidos
-          final List<dynamic> productsJson = data['products'] as List<dynamic>;
-          AppLogger.debug('🔍 [PRODUCTS_UPDATED] Total de produtos recebidos: ${productsJson.length}');
-          
-          // Mostra os primeiros 5 produtos
-          for (var i = 0; i < productsJson.length && i < 5; i++) {
-            final prod = productsJson[i] as Map<String, dynamic>;
-            final prodId = prod['id'];
-            final prodName = prod['name'];
-            final primaryCatId = prod['primary_category_id'];
-            final catLinks = prod['category_links'] as List<dynamic>? ?? [];
-            AppLogger.debug('   └─ Produto[$i]: id=$prodId, name="$prodName", primaryCatId=$primaryCatId, categoryLinks=${catLinks.length}');
-            for (var link in catLinks.take(2)) {
-              final linkMap = link as Map<String, dynamic>;
-              AppLogger.debug('      └─ Link: categoryId=${linkMap['category_id']}, price=${linkMap['price']}');
-            }
-          }
-          if (productsJson.length > 5) {
-            AppLogger.debug('   └─ ... e mais ${productsJson.length - 5} produtos');
-          }
-          
-          // ✅ DEBUG: Mostra categorias se presentes
-          if (data.containsKey('categories')) {
-            final List<dynamic> catsJson = data['categories'] as List<dynamic>;
-            AppLogger.debug('🔍 [PRODUCTS_UPDATED] Total de categorias recebidas: ${catsJson.length}');
-            for (var i = 0; i < catsJson.length && i < 5; i++) {
-              final cat = catsJson[i] as Map<String, dynamic>;
-              AppLogger.debug('   └─ Categoria[$i]: id=${cat['id']}, name="${cat['name']}", type=${cat['type']}');
-            }
-          } else {
-            AppLogger.debug('⚠️ [PRODUCTS_UPDATED] Nenhuma categoria no payload!');
-          }
-          AppLogger.debug('═══════════════════════════════════════════════════════');
-          
-          // ✅ Atualiza produtos
-          final List<Product> products = productsJson
-              .map((json) {
-                try {
-                  return Product.fromJson(json);
-                } catch (e) {
-                  AppLogger.error('❌ Erro ao parsear produto: $e');
-                  return null;
-                }
-              })
-              .whereType<Product>()
-              .toList();
-          productsController.add(products);
-          AppLogger.debug('✅ ${products.length} produtos atualizados no totem');
-          
-          // ✅ CORREÇÃO: Atualiza categorias na Store se presentes
-          if (data.containsKey('categories') && storeController.hasValue) {
-            try {
-              final currentStore = storeController.value;
-              final List<dynamic> categoriesJson = data['categories'] as List<dynamic>;
-              
-              // ✅ Processa e atualiza categorias
-              final List<models.Category> categories = categoriesJson
-                  .map((json) {
-                    try {
-                      return models.Category.fromJson(json as Map<String, dynamic>);
-                    } catch (e) {
-                      AppLogger.error('❌ Erro ao parsear categoria: $e');
-                      return null;
-                    }
-                  })
-                  .whereType<models.Category>()
-                  .toList();
-              
-              // ✅ CORREÇÃO: Atualiza a Store com as novas categorias
-              final updatedStore = currentStore.copyWith(categories: categories);
-              storeController.add(updatedStore);
-              AppLogger.debug('✅ ${categories.length} categorias atualizadas na Store');
-            } catch (e, stackTrace) {
-              AppLogger.error('❌ Erro ao atualizar categorias na Store: $e');
-              AppLogger.error('📍 StackTrace: $stackTrace');
-              // Não interrompe o fluxo, apenas loga o erro
-            }
-          }
-        } else if (data is Map && data.containsKey('type') && data['type'] == 'delta_update') {
-          // ✅ P1: Processa delta update se for mensagem delta
-          _handleDeltaUpdate(data as Map<String, dynamic>);
-        } else if (data is List) {
-          // ✅ Compatibilidade: Se vier como lista direta
-          final List<Product> products = (data as List)
-              .map((json) {
-                try {
-                  return Product.fromJson(json);
-                } catch (e) {
-                  AppLogger.error('❌ Erro ao parsear produto: $e');
-                  return null;
-                }
-              })
-              .whereType<Product>()
-              .toList();
-          productsController.add(products);
-        } else {
-          AppLogger.warning('⚠️ Formato de dados de produtos_updated não reconhecido: ${data.runtimeType}');
-          AppLogger.debug('📋 Dados recebidos: $data');
-        }
-      } catch (e, stackTrace) {
-        AppLogger.error('❌ Erro crítico ao processar products_updated: $e');
-        AppLogger.error('📍 StackTrace: $stackTrace');
-        AppLogger.error('📋 Dados que causaram erro: $data');
-        
-        // ✅ NOVO: Notifica sobre o erro (pode ser usado para mostrar mensagem ao usuário)
-        // O erro é logado mas não quebra o sistema - o usuário pode continuar usando
-        // Se necessário, pode-se adicionar um controller de erros aqui
+    // ✅ CORREÇÃO: Escuta 'products_updated' (plural) ou 'product_updated' (singular se for full payload)
+    _socket.on('products_updated', (data) => _handleProductsUpdated(data));
+
+    // ✅ SUPORTE A REFACTURE: Alguns ambientes mandam tudo por 'product_updated'
+    _socket.on('product_updated', (data) {
+      if (data is Map && data.containsKey('products')) {
+        AppLogger.d(
+          '📦 [COMPAT] Full catalog received via product_updated (singular)',
+        );
+        _handleProductsUpdated(data);
+      } else {
+        AppLogger.d('📦 [GRANULAR] Produto atualizado recebido');
+        _handleGranularProductEvent(data, 'updated');
       }
     });
 
     // ✅ CORREÇÃO: Nome do evento alinhado com backend (banners_updated)
     _socket.on('banners_updated', (data) {
-      AppLogger.debug('🎨 Banners atualizados recebidos');
-      final List<BannerModel> banners = (data as List).map((json) => BannerModel.fromJson(json)).toList();
+      AppLogger.d('🎨 Banners atualizados recebidos');
+      final List<BannerModel> banners =
+          (data as List).map((json) => BannerModel.fromJson(json)).toList();
       bannersController.add(banners);
     });
 
     // ✅ LISTENER: Atualizações de loja (quando admin atualiza configurações)
-    _socket.on('store_details_updated', (data) {
-      AppLogger.debug('🏪 store_details_updated recebido');
-      try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
-        if (payload['store'] != null) {
-          final storeData = payload['store'] as Map<String, dynamic>;
-          
-          // ✅ DEBUG: Verifica payment_method_groups
-          if (storeData.containsKey('payment_method_groups')) {
-            final groups = storeData['payment_method_groups'] as List?;
-            AppLogger.debug('   ├─ ✅ payment_method_groups: ${groups?.length ?? 0} grupos');
-          } else {
-            AppLogger.debug('   ├─ ❌ payment_method_groups NÃO encontrado!');
-          }
-          
-          final Store updatedStore = Store.fromJson(storeData);
-          storeController.add(updatedStore);
-          AppLogger.debug('✅ Loja atualizada (payment_method_groups: ${updatedStore.paymentMethodGroups.length})');
-        }
-      } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_details_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
-      }
-    });
+    _socket.on('store_details_updated', (data) => _handleStoreUpdate(data));
 
     // ✅ ENTERPRISE: Listeners granulares para atualizações específicas
     // Agora processa os eventos granulares para atualizar apenas a parte específica do Store
     _socket.on('payment_methods_updated', (data) {
-      AppLogger.debug('💳 [TOTEM] payment_methods_updated recebido');
+      AppLogger.d('💳 [TOTEM] payment_methods_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -400,14 +311,20 @@ class RealtimeRepository {
         // Pega o store atual
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse dos payment_method_groups
-        final paymentMethodGroups = (payload['payment_method_groups'] as List<dynamic>?)
-            ?.map((e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>))
-            .toList() ?? [];
+        final paymentMethodGroups =
+            (payload['payment_method_groups'] as List<dynamic>?)
+                ?.map(
+                  (e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            [];
 
         // Atualiza apenas os métodos de pagamento
         final updatedStore = currentStore.copyWith(
@@ -415,16 +332,18 @@ class RealtimeRepository {
         );
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Métodos de pagamento atualizados (${paymentMethodGroups.length} grupos)');
+        AppLogger.d(
+          '✅ [TOTEM] Métodos de pagamento atualizados (${paymentMethodGroups.length} grupos)',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar payment_methods_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar payment_methods_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     // ✅ NOVO: Listener específico para delivery_fee_rules_updated
     _socket.on('delivery_fee_rules_updated', (data) {
-      AppLogger.debug('🚚 [TOTEM] delivery_fee_rules_updated recebido');
+      AppLogger.d('🚚 [TOTEM] delivery_fee_rules_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -432,14 +351,20 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse das regras de frete
-        final deliveryFeeRules = (payload['delivery_fee_rules'] as List<dynamic>?)
-            ?.map((e) => DeliveryFeeRule.fromJson(e as Map<String, dynamic>))
-            .toList() ?? [];
+        final deliveryFeeRules =
+            (payload['delivery_fee_rules'] as List<dynamic>?)
+                ?.map(
+                  (e) => DeliveryFeeRule.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            [];
 
         // Atualiza apenas as regras de frete
         final updatedStore = currentStore.copyWith(
@@ -447,15 +372,17 @@ class RealtimeRepository {
         );
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Regras de frete atualizadas (${deliveryFeeRules.length} regras)');
+        AppLogger.d(
+          '✅ [TOTEM] Regras de frete atualizadas (${deliveryFeeRules.length} regras)',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar delivery_fee_rules_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar delivery_fee_rules_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('store_hours_updated', (data) {
-      AppLogger.debug('🕐 [TOTEM] store_hours_updated recebido');
+      AppLogger.d('🕐 [TOTEM] store_hours_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -463,30 +390,34 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse dos hours
-        final hours = (payload['hours'] as List<dynamic>?)
-            ?.map((e) => StoreHour.fromJson(e))
-            .toList() ?? [];
+        final hours =
+            (payload['hours'] as List<dynamic>?)
+                ?.map((e) => StoreHour.fromJson(e))
+                .toList() ??
+            [];
 
         // Atualiza apenas os horários
-        final updatedStore = currentStore.copyWith(
-          hours: hours,
-        );
+        final updatedStore = currentStore.copyWith(hours: hours);
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Horários atualizados (${hours.length} horários)');
+        AppLogger.d(
+          '✅ [TOTEM] Horários atualizados (${hours.length} horários)',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_hours_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar store_hours_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('scheduled_pauses_updated', (data) {
-      AppLogger.debug('⏸️ [TOTEM] scheduled_pauses_updated recebido');
+      AppLogger.d('⏸️ [TOTEM] scheduled_pauses_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -494,30 +425,34 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse das pausas
-        final pauses = (payload['pauses'] as List<dynamic>?)
-            ?.map((e) => ScheduledPause.fromJson(e as Map<String, dynamic>))
-            .toList() ?? [];
+        final pauses =
+            (payload['pauses'] as List<dynamic>?)
+                ?.map((e) => ScheduledPause.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
 
         // Atualiza apenas as pausas
-        final updatedStore = currentStore.copyWith(
-          scheduledPauses: pauses,
-        );
+        final updatedStore = currentStore.copyWith(scheduledPauses: pauses);
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Pausas agendadas atualizadas (${pauses.length} pausas)');
+        AppLogger.d(
+          '✅ [TOTEM] Pausas agendadas atualizadas (${pauses.length} pausas)',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar scheduled_pauses_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar scheduled_pauses_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('operation_config_updated', (data) {
-      AppLogger.debug('⚙️ [TOTEM] operation_config_updated recebido');
+      AppLogger.d('⚙️ [TOTEM] operation_config_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -525,14 +460,19 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse da operation_config
-        final operationConfig = payload['operation_config'] != null
-            ? StoreOperationConfig.fromJson(payload['operation_config'] as Map<String, dynamic>)
-            : null;
+        final operationConfig =
+            payload['operation_config'] != null
+                ? StoreOperationConfig.fromJson(
+                  payload['operation_config'] as Map<String, dynamic>,
+                )
+                : null;
 
         // Atualiza apenas a configuração operacional
         final updatedStore = currentStore.copyWith(
@@ -540,16 +480,16 @@ class RealtimeRepository {
         );
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Configuração operacional atualizada');
+        AppLogger.d('✅ [TOTEM] Configuração operacional atualizada');
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar operation_config_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar operation_config_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     // ✅ PAUSA PROGRAMADA: Listener para mudanças de status da loja
     _socket.on('store_status_changed', (data) {
-      AppLogger.debug('⏸️ [TOTEM] store_status_changed recebido');
+      AppLogger.d('⏸️ [TOTEM] store_status_changed recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -557,27 +497,32 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         final isOpen = payload['is_open'] as bool? ?? true;
         final reason = payload['reason'] as String?;
         final pausedUntilStr = payload['paused_until'] as String?;
-        
+
         DateTime? pausedUntil;
         if (pausedUntilStr != null) {
           pausedUntil = DateTime.tryParse(pausedUntilStr);
         }
 
-        AppLogger.debug('   └─ is_open: $isOpen, reason: $reason, paused_until: $pausedUntilStr');
+        AppLogger.d(
+          '   └─ is_open: $isOpen, reason: $reason, paused_until: $pausedUntilStr',
+        );
 
         // Atualiza o operation_config com o novo status
         final currentConfig = currentStore.store_operation_config;
         if (currentConfig != null) {
           final updatedConfig = currentConfig.copyWith(
             isStoreOpen: isOpen,
-            pausedUntil: isOpen ? null : pausedUntil, // Se abrir, limpa pausedUntil
+            pausedUntil:
+                isOpen ? null : pausedUntil, // Se abrir, limpa pausedUntil
           );
 
           final updatedStore = currentStore.copyWith(
@@ -585,21 +530,23 @@ class RealtimeRepository {
           );
 
           storeController.add(updatedStore);
-          
+
           if (isOpen) {
-            AppLogger.debug('✅ [TOTEM] Loja REABERTA (reason: $reason)');
+            AppLogger.d('✅ [TOTEM] Loja REABERTA (reason: $reason)');
           } else {
-            AppLogger.debug('⏸️ [TOTEM] Loja PAUSADA até $pausedUntilStr (reason: $reason)');
+            AppLogger.d(
+              '⏸️ [TOTEM] Loja PAUSADA até $pausedUntilStr (reason: $reason)',
+            );
           }
         }
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_status_changed: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar store_status_changed: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('store_profile_updated', (data) {
-      AppLogger.debug('👤 [TOTEM] store_profile_updated recebido');
+      AppLogger.d('👤 [TOTEM] store_profile_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -607,7 +554,9 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
@@ -618,15 +567,17 @@ class RealtimeRepository {
         // O backend já envia as URLs completas em image_path e banner_path
         ImageModel? updatedImage;
         ImageModel? updatedBanner;
-        
-        if (profile['image_path'] != null && (profile['image_path'] as String).isNotEmpty) {
+
+        if (profile['image_path'] != null &&
+            (profile['image_path'] as String).isNotEmpty) {
           updatedImage = ImageModel(url: profile['image_path'] as String);
-          AppLogger.debug('   └─ Logo atualizada: ${profile['image_path']}');
+          AppLogger.d('   └─ Logo atualizada: ${profile['image_path']}');
         }
-        
-        if (profile['banner_path'] != null && (profile['banner_path'] as String).isNotEmpty) {
+
+        if (profile['banner_path'] != null &&
+            (profile['banner_path'] as String).isNotEmpty) {
           updatedBanner = ImageModel(url: profile['banner_path'] as String);
-          AppLogger.debug('   └─ Banner atualizado: ${profile['banner_path']}');
+          AppLogger.d('   └─ Banner atualizado: ${profile['banner_path']}');
         }
 
         // Atualiza apenas os campos de perfil
@@ -651,15 +602,17 @@ class RealtimeRepository {
         );
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Perfil da loja atualizado (incluindo logo e banner)');
+        AppLogger.d(
+          '✅ [TOTEM] Perfil da loja atualizado (incluindo logo e banner)',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_profile_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar store_profile_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('coupons_updated', (data) {
-      AppLogger.debug('🎫 [TOTEM] coupons_updated recebido');
+      AppLogger.d('🎫 [TOTEM] coupons_updated recebido');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -667,57 +620,82 @@ class RealtimeRepository {
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
         // Parse dos cupons
-        final coupons = (payload['coupons'] as List<dynamic>?)
-            ?.map((e) => Coupon.fromJson(e as Map<String, dynamic>))
-            .toList() ?? [];
+        final coupons =
+            (payload['coupons'] as List<dynamic>?)
+                ?.map((e) => Coupon.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
 
         // Atualiza apenas os cupons
-        final updatedStore = currentStore.copyWith(
-          coupons: coupons,
-        );
-
+        final updatedStore = currentStore.copyWith(coupons: coupons);
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Cupons atualizados (${coupons.length} cupons)');
+        AppLogger.d('✅ [TOTEM] Cupons atualizados (${coupons.length} cupons)');
       } catch (e, stackTrace) {
+        AppLogger.d('❌ Erro ao processar coupons_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
+      }
+    });
+
+    _socket.on('store_internationalization_updated', (data) {
+      AppLogger.d('🌐 [TOTEM] store_internationalization_updated recebido');
+      try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
         final currentStore = storeController.value;
         if (currentStore.id != storeId) {
-          AppLogger.debug('⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)');
+          AppLogger.d(
+            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
+          );
           return;
         }
 
-        final internationalization = payload['internationalization'] as Map<String, dynamic>?;
+        final internationalization =
+            payload['internationalization'] as Map<String, dynamic>?;
         if (internationalization == null) return;
 
         // Atualiza apenas os campos de internacionalização
         final updatedStore = currentStore.copyWith(
           locale: internationalization['locale'] ?? currentStore.locale,
-          currencyCode: internationalization['currency_code'] ?? currentStore.currencyCode,
+          currencyCode:
+              internationalization['currency_code'] ??
+              currentStore.currencyCode,
           timezone: internationalization['timezone'] ?? currentStore.timezone,
         );
 
         storeController.add(updatedStore);
-        AppLogger.debug('✅ [TOTEM] Internacionalização atualizada (locale: ${updatedStore.locale}, currency: ${updatedStore.currencyCode}, timezone: ${updatedStore.timezone})');
+        AppLogger.d(
+          '✅ [TOTEM] Internacionalização atualizada (locale: ${updatedStore.locale}, currency: ${updatedStore.currencyCode}, timezone: ${updatedStore.timezone})',
+        );
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_internationalization_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d(
+          '❌ Erro ao processar store_internationalization_updated: $e',
+        );
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
     // O evento `initial_state_loaded` agora é manipulado no handler de conexão do backend,
     // então não precisamos de um listener específico para ele aqui, mas para outros eventos sim.
     _socket.on('order_update', (data) {
-      AppLogger.debug('🛒 Atualização de pedido recebida');
-      final Order order = Order.fromJson(data);
-      orderController.add(order);
+      AppLogger.d('🛒 Atualização de pedido recebida');
+      try {
+        final Order order = Order.fromJson(data);
+        orderController.add(order);
+
+        // ✅ ATUALIZA CUBIT: Garante que o estado global de pedidos do cliente seja atualizado
+        getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar order_update: $e');
+      }
     });
 
     // ============================================================
@@ -728,66 +706,100 @@ class RealtimeRepository {
 
     // --- PRODUTOS ---
     _socket.on('product_created', (data) {
-      AppLogger.debug('📦 [GRANULAR] Produto criado recebido');
+      AppLogger.d('📦 [GRANULAR] Produto criado recebido');
       _handleGranularProductEvent(data, 'created');
     });
 
     _socket.on('product_updated', (data) {
-      AppLogger.debug('📦 [GRANULAR] Produto atualizado recebido');
+      AppLogger.d('📦 [GRANULAR] Produto atualizado recebido');
       _handleGranularProductEvent(data, 'updated');
     });
 
     _socket.on('product_deleted', (data) {
-      AppLogger.debug('📦 [GRANULAR] Produto deletado recebido');
+      AppLogger.d('📦 [GRANULAR] Produto deletado recebido');
       _handleGranularProductEvent(data, 'deleted');
     });
 
     // --- CATEGORIAS ---
     _socket.on('category_created', (data) {
-      AppLogger.debug('📁 [GRANULAR] Categoria criada recebida');
+      AppLogger.d('📁 [GRANULAR] Categoria criada recebida');
       _handleGranularCategoryEvent(data, 'created');
     });
 
     _socket.on('category_updated', (data) {
-      AppLogger.debug('📁 [GRANULAR] Categoria atualizada recebida');
+      AppLogger.d('📁 [GRANULAR] Categoria atualizada recebida');
       _handleGranularCategoryEvent(data, 'updated');
     });
 
     _socket.on('category_deleted', (data) {
-      AppLogger.debug('📁 [GRANULAR] Categoria deletada recebida');
+      AppLogger.d('📁 [GRANULAR] Categoria deletada recebida');
       _handleGranularCategoryEvent(data, 'deleted');
     });
 
     // --- VARIANTES (Complementos) ---
     _socket.on('variant_created', (data) {
-      AppLogger.debug('🧩 [GRANULAR] Variante criada recebida');
+      AppLogger.d('🧩 [GRANULAR] Variante criada recebida');
       _handleGranularVariantEvent(data, 'created');
     });
 
     _socket.on('variant_updated', (data) {
-      AppLogger.debug('🧩 [GRANULAR] Variante atualizada recebida');
+      AppLogger.d('🧩 [GRANULAR] Variante atualizada recebida');
       _handleGranularVariantEvent(data, 'updated');
     });
 
     _socket.on('variant_deleted', (data) {
-      AppLogger.debug('🧩 [GRANULAR] Variante deletada recebida');
+      AppLogger.d('🧩 [GRANULAR] Variante deletada recebida');
       _handleGranularVariantEvent(data, 'deleted');
     });
 
     // --- OPÇÕES DE VARIANTE ---
     _socket.on('variant_option_created', (data) {
-      AppLogger.debug('🔘 [GRANULAR] Opção de variante criada recebida');
+      AppLogger.d('🔘 [GRANULAR] Opção de variante criada recebida');
       _handleGranularVariantOptionEvent(data, 'created');
     });
 
     _socket.on('variant_option_updated', (data) {
-      AppLogger.debug('🔘 [GRANULAR] Opção de variante atualizada recebida');
+      AppLogger.d('🔘 [GRANULAR] Opção de variante atualizada recebida');
       _handleGranularVariantOptionEvent(data, 'updated');
     });
 
     _socket.on('variant_option_deleted', (data) {
-      AppLogger.debug('🔘 [GRANULAR] Opção de variante deletada recebida');
+      AppLogger.d('🔘 [GRANULAR] Opção de variante deletada recebida');
       _handleGranularVariantOptionEvent(data, 'deleted');
+    });
+
+    // --- ENDEREÇOS ---
+    _socket.on('address_created', (data) {
+      AppLogger.d('🏠 [GRANULAR] Endereço criado recebido');
+      try {
+        getIt<AddressCubit>().onRealtimeAddressEvent(
+          data as Map<String, dynamic>,
+        );
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar address_created: $e');
+      }
+    });
+
+    _socket.on('address_updated', (data) {
+      AppLogger.d('🏠 [GRANULAR] Endereço atualizado recebido');
+      try {
+        getIt<AddressCubit>().onRealtimeAddressEvent(
+          data as Map<String, dynamic>,
+        );
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar address_updated: $e');
+      }
+    });
+
+    _socket.on('address_deleted', (data) {
+      AppLogger.d('🏠 [GRANULAR] Endereço deletado recebido');
+      try {
+        getIt<AddressCubit>().onRealtimeAddressEvent(
+          data as Map<String, dynamic>,
+        );
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar address_deleted: $e');
+      }
     });
 
     _socket.connect();
@@ -800,46 +812,6 @@ class RealtimeRepository {
     );
   }
 
-
-  // ✅ P1: Processa delta update
-  void _handleDeltaUpdate(Map<String, dynamic> deltaMessage) {
-    try {
-      final delta = deltaMessage['delta'] as Map<String, dynamic>;
-      final entityType = deltaMessage['entity_type'] as String;
-      final entityId = deltaMessage['entity_id'];
-      
-      if (entityType == 'product') {
-        // Aplica delta ao produto existente
-        final currentProducts = productsController.value;
-        final productIndex = currentProducts.indexWhere((p) => p.id == entityId);
-        
-        if (productIndex != -1) {
-          final existingProduct = currentProducts[productIndex];
-          final productJson = existingProduct.toJson();
-          
-          // Aplica delta
-          delta.forEach((key, value) {
-            if (value == null) {
-              productJson.remove(key);
-            } else {
-              productJson[key] = value;
-            }
-          });
-          
-          // Recria produto atualizado
-          final updatedProduct = Product.fromJson(productJson);
-          final updatedProducts = List<Product>.from(currentProducts);
-          updatedProducts[productIndex] = updatedProduct;
-          
-          productsController.add(updatedProducts);
-          AppLogger.debug('✅ Delta update aplicado ao produto $entityId');
-        }
-      }
-    } catch (e) {
-      AppLogger.debug('❌ Erro ao processar delta update: $e');
-    }
-  }
-
   // ============================================================
   // ✅ ENTERPRISE: HANDLERS PARA EVENTOS GRANULARES
   // Esses métodos processam eventos individuais e atualizam
@@ -850,7 +822,7 @@ class RealtimeRepository {
   /// ULTRA-ROBUSTO: Garante que o resultado seja um Map dart puro, sem proxies de JS
   Map<String, dynamic> _convertToStringDynamicMap(dynamic data) {
     if (data == null) return {};
-    
+
     final Map<String, dynamic> result = {};
     try {
       // Tenta tratar como Map genérico
@@ -874,7 +846,7 @@ class RealtimeRepository {
         }
       }
     } catch (e) {
-      AppLogger.error('❌ Erro fatal ao converter Map (JS Interop): $e');
+      AppLogger.e('❌ Erro fatal ao converter Map (JS Interop): $e');
     }
     return result;
   }
@@ -882,17 +854,17 @@ class RealtimeRepository {
   /// ✅ HELPER: Converte valores recursivamente (para listas e maps aninhados)
   dynamic _convertValue(dynamic value) {
     if (value == null) return null;
-    
+
     // Tipos primitivos retornam direto
     if (value is String || value is num || value is bool) {
       return value;
     }
-    
+
     // Tratamento de lista
     if (value is List) {
       return value.map((item) => _convertValue(item)).toList();
     }
-    
+
     // Se chegou aqui, assume que é um objeto/mapa e tenta converter
     // Isso captura objetos JS que não passam no teste 'is Map' mas têm estrutura
     return _convertToStringDynamicMap(value);
@@ -903,15 +875,19 @@ class RealtimeRepository {
     try {
       final Map<String, dynamic> payload = data as Map<String, dynamic>;
       final storeId = payload['store_id'] as int?;
-      
+
       // Verifica se o evento é para a loja atual
-      if (storeId != null && storeController.hasValue && storeController.value.id != storeId) {
-        AppLogger.debug('⚠️ [GRANULAR] Evento de produto para outra loja (ignorado)');
+      if (storeId != null &&
+          storeController.hasValue &&
+          storeController.value.id != storeId) {
+        AppLogger.d(
+          '⚠️ [GRANULAR] Evento de produto para outra loja (ignorado)',
+        );
         return;
       }
 
       if (!productsController.hasValue) {
-        AppLogger.debug('⚠️ [GRANULAR] Lista de produtos não inicializada ainda');
+        AppLogger.d('⚠️ [GRANULAR] Lista de produtos não inicializada ainda');
         return;
       }
 
@@ -921,112 +897,123 @@ class RealtimeRepository {
         case 'created':
           // ✅ CORREÇÃO: Backend envia 'product', não 'item'
           final rawProductData = payload['product'];
-          
+
           if (rawProductData != null) {
             try {
               // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
               // Isso remove qualquer vestígio de Proxy JS que causa crash no DDC
-              final Map<String, dynamic> productData = jsonDecode(jsonEncode(rawProductData));
+              final Map<String, dynamic> productData = jsonDecode(
+                jsonEncode(rawProductData),
+              );
               final newProduct = Product.fromJson(productData);
-              
-              // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-              final hasPrice = (newProduct.price != null && newProduct.price! > 0) ||
-                  newProduct.variantLinks.any((link) => 
-                    link.variant.options.any((opt) => opt.resolvedPrice > 0));
-              if (!hasPrice) {
-                AppLogger.debug('⏸️ [GRANULAR] Produto ${newProduct.name} ignorado (preço zero)');
-                return;
-              }
-              
+
               // Verifica se já existe (para evitar duplicatas)
-              final existingIndex = currentProducts.indexWhere((p) => p.id == newProduct.id);
+              final existingIndex = currentProducts.indexWhere(
+                (p) => p.id == newProduct.id,
+              );
               if (existingIndex == -1) {
                 currentProducts.add(newProduct);
                 productsController.add(currentProducts);
-                AppLogger.debug('✅ [GRANULAR] Produto ${newProduct.name} adicionado à lista');
+                AppLogger.d(
+                  '✅ [GRANULAR] Produto ${newProduct.name} adicionado à lista',
+                );
               } else {
-                AppLogger.debug('⚠️ [GRANULAR] Produto ${newProduct.id} já existe, ignorando criação');
+                AppLogger.d(
+                  '⚠️ [GRANULAR] Produto ${newProduct.id} já existe, ignorando criação',
+                );
               }
             } catch (e, stackTrace) {
-              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar produto criado: $e');
-              AppLogger.error('📍 StackTrace: $stackTrace');
+              AppLogger.e(
+                '❌ [GRANULAR] Erro ao converter/processar produto criado: $e',
+              );
+              AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "product" para criação');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo "product" para criação',
+            );
           }
           break;
 
         case 'updated':
           // ✅ CORREÇÃO: Backend envia 'product', não 'item'
           final rawProductDataUpdated = payload['product'];
-          
+
           if (rawProductDataUpdated != null) {
             try {
               // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
-              final Map<String, dynamic> productData = jsonDecode(jsonEncode(rawProductDataUpdated));
+              final Map<String, dynamic> productData = jsonDecode(
+                jsonEncode(rawProductDataUpdated),
+              );
               var updatedProduct = Product.fromJson(productData);
-              
-              final existingIndex = currentProducts.indexWhere((p) => p.id == updatedProduct.id);
-              
+
+              final existingIndex = currentProducts.indexWhere(
+                (p) => p.id == updatedProduct.id,
+              );
+
               // ✅ SMART MERGE PARA PRODUTOS
               // Se o produto já existe, preservamos campos complexos caso não venham no payload
               if (existingIndex != -1) {
                 final oldProduct = currentProducts[existingIndex];
-                
+
                 if (!productData.containsKey('prices')) {
-                   updatedProduct = updatedProduct.copyWith(prices: oldProduct.prices);
+                  updatedProduct = updatedProduct.copyWith(
+                    prices: oldProduct.prices,
+                  );
                 }
                 if (!productData.containsKey('variant_links')) {
-                   updatedProduct = updatedProduct.copyWith(variantLinks: oldProduct.variantLinks);
+                  updatedProduct = updatedProduct.copyWith(
+                    variantLinks: oldProduct.variantLinks,
+                  );
                 }
                 if (!productData.containsKey('category_links')) {
-                   updatedProduct = updatedProduct.copyWith(categoryLinks: oldProduct.categoryLinks);
+                  updatedProduct = updatedProduct.copyWith(
+                    categoryLinks: oldProduct.categoryLinks,
+                  );
                 }
-                if (!productData.containsKey('gallery_images') && !productData.containsKey('images')) {
-                   updatedProduct = updatedProduct.copyWith(images: oldProduct.images);
+                if (!productData.containsKey('gallery_images') &&
+                    !productData.containsKey('images')) {
+                  updatedProduct = updatedProduct.copyWith(
+                    images: oldProduct.images,
+                  );
                 }
                 // Preserva linked_product_id se não vier (crítico para pizzas)
                 if (!productData.containsKey('linked_product_id')) {
-                    updatedProduct = updatedProduct.copyWith(linkedProductId: oldProduct.linkedProductId);
+                  updatedProduct = updatedProduct.copyWith(
+                    linkedProductId: oldProduct.linkedProductId,
+                  );
                 }
-                
-                AppLogger.debug('✅ [GRANULAR] Merge inteligente aplicado ao produto ${updatedProduct.name}');
+
+                AppLogger.d(
+                  '✅ [GRANULAR] Merge inteligente aplicado ao produto ${updatedProduct.name}',
+                );
               }
-              
-              // ✅ FILTRO: Verifica se produto tem preço válido (após possível merge de preços/variantes)
-              final hasPrice = (updatedProduct.price != null && updatedProduct.price! > 0) ||
-                  updatedProduct.variantLinks.any((link) => 
-                    link.variant.options.any((opt) => opt.resolvedPrice > 0)) ||
-                  // Também considera Flavor Prices (pizzas)
-                  updatedProduct.prices.any((p) => (p.price) > 0);
-              
-              if (hasPrice) {
-                // Produto tem preço válido - adiciona ou atualiza
-                if (existingIndex != -1) {
-                  currentProducts[existingIndex] = updatedProduct;
-                  productsController.add(currentProducts);
-                  AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} atualizado na lista');
-                } else {
-                  // Produto não existe, adiciona
-                  currentProducts.add(updatedProduct);
-                  productsController.add(currentProducts);
-                  AppLogger.debug('✅ [GRANULAR] Produto ${updatedProduct.name} adicionado (update para novo)');
-                }
+
+              // ✅ CORREÇÃO: Usa o produto atualizado diretamente (o backend já filtra se deve ou não aparecer)
+              if (existingIndex != -1) {
+                currentProducts[existingIndex] = updatedProduct;
+                productsController.add(currentProducts);
+                AppLogger.d(
+                  '✅ [GRANULAR] Produto ${updatedProduct.name} atualizado na lista',
+                );
               } else {
-                 if (existingIndex != -1) {
-                   final removedProduct = currentProducts.removeAt(existingIndex);
-                   productsController.add(currentProducts);
-                   AppLogger.debug('⏸️ [GRANULAR] Produto ${removedProduct.name} removido (preço zerado/indisponível)');
-                 } else {
-                    AppLogger.debug('⏸️ [GRANULAR] Produto ${updatedProduct.name} ignorado (preço zerado)');
-                 }
+                // Produto não existe, adiciona
+                currentProducts.add(updatedProduct);
+                productsController.add(currentProducts);
+                AppLogger.d(
+                  '✅ [GRANULAR] Produto ${updatedProduct.name} adicionado (update para novo)',
+                );
               }
             } catch (e, stackTrace) {
-              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar produto atualizado: $e');
-              AppLogger.error('📍 StackTrace: $stackTrace');
+              AppLogger.e(
+                '❌ [GRANULAR] Erro ao converter/processar produto atualizado: $e',
+              );
+              AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "product" para atualização');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo "product" para atualização',
+            );
           }
           break;
 
@@ -1034,22 +1021,30 @@ class RealtimeRepository {
           // ✅ CORREÇÃO: Backend envia 'product_id', não 'item_id'
           final productId = payload['product_id'] as int?;
           if (productId != null) {
-            final existingIndex = currentProducts.indexWhere((p) => p.id == productId);
+            final existingIndex = currentProducts.indexWhere(
+              (p) => p.id == productId,
+            );
             if (existingIndex != -1) {
               final removedProduct = currentProducts.removeAt(existingIndex);
               productsController.add(currentProducts);
-              AppLogger.debug('✅ [GRANULAR] Produto ${removedProduct.name} removido da lista');
+              AppLogger.d(
+                '✅ [GRANULAR] Produto ${removedProduct.name} removido da lista',
+              );
             } else {
-              AppLogger.debug('⚠️ [GRANULAR] Produto $productId não encontrado para remoção');
+              AppLogger.d(
+                '⚠️ [GRANULAR] Produto $productId não encontrado para remoção',
+              );
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "product_id" para deleção');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo "product_id" para deleção',
+            );
           }
           break;
       }
     } catch (e, stackTrace) {
-      AppLogger.error('❌ [GRANULAR] Erro ao processar evento de produto: $e');
-      AppLogger.error('📍 StackTrace: $stackTrace');
+      AppLogger.e('❌ [GRANULAR] Erro ao processar evento de produto: $e');
+      AppLogger.e('📍 StackTrace: $stackTrace');
     }
   }
 
@@ -1060,87 +1055,127 @@ class RealtimeRepository {
       final storeId = payload['store_id'] as int?;
 
       if (!storeController.hasValue) {
-        AppLogger.debug('⚠️ [GRANULAR] Store não inicializada ainda');
+        AppLogger.d('⚠️ [GRANULAR] Store não inicializada ainda');
         return;
       }
 
       final currentStore = storeController.value;
       if (storeId != null && currentStore.id != storeId) {
-        AppLogger.debug('⚠️ [GRANULAR] Evento de categoria para outra loja (ignorado)');
+        AppLogger.d(
+          '⚠️ [GRANULAR] Evento de categoria para outra loja (ignorado)',
+        );
         return;
       }
 
-      final currentCategories = List<models.Category>.from(currentStore.categories);
+      final currentCategories = List<models.Category>.from(
+        currentStore.categories,
+      );
 
       switch (action) {
         case 'created':
           // ✅ CORREÇÃO: Backend envia 'category', não 'item'
           final rawCategoryDataCreated = payload['category'];
-          AppLogger.debug('🔍 [GRANULAR] Payload criação: ${payload.keys.toList()}');
-          
+          AppLogger.d(
+            '🔍 [GRANULAR] Payload criação: ${payload.keys.toList()}',
+          );
+
           if (rawCategoryDataCreated != null) {
             try {
               // ✅ NUCLEAR OPTION: Sanitização via JSON
-              final Map<String, dynamic> categoryDataCreated = jsonDecode(jsonEncode(rawCategoryDataCreated));
+              final Map<String, dynamic> categoryDataCreated = jsonDecode(
+                jsonEncode(rawCategoryDataCreated),
+              );
               final newCategory = models.Category.fromJson(categoryDataCreated);
-              final existingIndex = currentCategories.indexWhere((c) => c.id == newCategory.id);
+              final existingIndex = currentCategories.indexWhere(
+                (c) => c.id == newCategory.id,
+              );
               if (existingIndex == -1) {
                 currentCategories.add(newCategory);
-                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                final updatedStore = currentStore.copyWith(
+                  categories: currentCategories,
+                );
                 storeController.add(updatedStore);
-                AppLogger.debug('✅ [GRANULAR] Categoria ${newCategory.name} adicionada');
+                AppLogger.d(
+                  '✅ [GRANULAR] Categoria ${newCategory.name} adicionada',
+                );
               }
             } catch (e, stackTrace) {
-              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar categoria criada: $e');
-              AppLogger.error('📍 StackTrace: $stackTrace');
+              AppLogger.e(
+                '❌ [GRANULAR] Erro ao converter/processar categoria criada: $e',
+              );
+              AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "category" válido para criação. Keys: ${payload.keys.toList()}');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo "category" válido para criação. Keys: ${payload.keys.toList()}',
+            );
           }
           break;
-          
+
         case 'updated':
           // ✅ CORREÇÃO: Backend envia 'category', não 'item'
           final rawCategoryData = payload['category'];
-          
+
           if (rawCategoryData != null) {
             try {
               // ✅ NUCLEAR OPTION
-              final Map<String, dynamic> categoryData = jsonDecode(jsonEncode(rawCategoryData));
+              final Map<String, dynamic> categoryData = jsonDecode(
+                jsonEncode(rawCategoryData),
+              );
               var updatedCategory = models.Category.fromJson(categoryData);
-              
-              final existingIndex = currentCategories.indexWhere((c) => c.id == updatedCategory.id);
+
+              final existingIndex = currentCategories.indexWhere(
+                (c) => c.id == updatedCategory.id,
+              );
               if (existingIndex != -1) {
                 final oldCategory = currentCategories[existingIndex];
-                
+
                 // ✅ SMART MERGE: Preserva campos complexos se não vierem no payload
                 // Isso evita que updates parciais (ex: só mudou o nome) apaguem as opções/preços
                 if (!categoryData.containsKey('option_groups')) {
-                  updatedCategory = updatedCategory.copyWith(optionGroups: oldCategory.optionGroups);
+                  updatedCategory = updatedCategory.copyWith(
+                    optionGroups: oldCategory.optionGroups,
+                  );
                 }
                 if (!categoryData.containsKey('product_option_groups')) {
-                  updatedCategory = updatedCategory.copyWith(productOptionGroups: oldCategory.productOptionGroups);
+                  updatedCategory = updatedCategory.copyWith(
+                    productOptionGroups: oldCategory.productOptionGroups,
+                  );
                 }
                 if (!categoryData.containsKey('product_links')) {
-                  updatedCategory = updatedCategory.copyWith(productLinks: oldCategory.productLinks);
+                  updatedCategory = updatedCategory.copyWith(
+                    productLinks: oldCategory.productLinks,
+                  );
                 }
 
                 currentCategories[existingIndex] = updatedCategory;
-                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                final updatedStore = currentStore.copyWith(
+                  categories: currentCategories,
+                );
                 storeController.add(updatedStore);
-                AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (com merge inteligente)');
+                AppLogger.d(
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (com merge inteligente)',
+                );
               } else {
                 currentCategories.add(updatedCategory);
-                final updatedStore = currentStore.copyWith(categories: currentCategories);
+                final updatedStore = currentStore.copyWith(
+                  categories: currentCategories,
+                );
                 storeController.add(updatedStore);
-                AppLogger.debug('✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada (update para nova)');
+                AppLogger.d(
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada (update para nova)',
+                );
               }
             } catch (e, stackTrace) {
-              AppLogger.error('❌ [GRANULAR] Erro ao converter/processar categoria: $e');
-              AppLogger.error('📍 StackTrace: $stackTrace');
+              AppLogger.e(
+                '❌ [GRANULAR] Erro ao converter/processar categoria: $e',
+              );
+              AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo \"category\" válido para atualização. Payload keys: ${payload.keys.toList()}');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo \"category\" válido para atualização. Payload keys: ${payload.keys.toList()}',
+            );
           }
           break;
 
@@ -1148,21 +1183,29 @@ class RealtimeRepository {
           // ✅ CORREÇÃO: Backend envia 'category_id', não 'item_id'
           final categoryId = payload['category_id'] as int?;
           if (categoryId != null) {
-            final existingIndex = currentCategories.indexWhere((c) => c.id == categoryId);
+            final existingIndex = currentCategories.indexWhere(
+              (c) => c.id == categoryId,
+            );
             if (existingIndex != -1) {
               final removedCategory = currentCategories.removeAt(existingIndex);
-              final updatedStore = currentStore.copyWith(categories: currentCategories);
+              final updatedStore = currentStore.copyWith(
+                categories: currentCategories,
+              );
               storeController.add(updatedStore);
-              AppLogger.debug('✅ [GRANULAR] Categoria ${removedCategory.name} removida');
+              AppLogger.d(
+                '✅ [GRANULAR] Categoria ${removedCategory.name} removida',
+              );
             }
           } else {
-            AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "category_id" para deleção');
+            AppLogger.d(
+              '⚠️ [GRANULAR] Payload sem campo "category_id" para deleção',
+            );
           }
           break;
       }
     } catch (e, stackTrace) {
-      AppLogger.error('❌ [GRANULAR] Erro ao processar evento de categoria: $e');
-      AppLogger.error('📍 StackTrace: $stackTrace');
+      AppLogger.e('❌ [GRANULAR] Erro ao processar evento de categoria: $e');
+      AppLogger.e('📍 StackTrace: $stackTrace');
     }
   }
 
@@ -1173,34 +1216,41 @@ class RealtimeRepository {
       final Map<String, dynamic> payload = data as Map<String, dynamic>;
       final storeId = payload['store_id'] as int?;
 
-      if (storeId != null && storeController.hasValue && storeController.value.id != storeId) {
-        AppLogger.debug('⚠️ [GRANULAR] Evento de variante para outra loja (ignorado)');
+      if (storeId != null &&
+          storeController.hasValue &&
+          storeController.value.id != storeId) {
+        AppLogger.d(
+          '⚠️ [GRANULAR] Evento de variante para outra loja (ignorado)',
+        );
         return;
       }
 
       // ✅ CORREÇÃO: Backend envia 'variant', não 'item'
-      AppLogger.debug('🧩 [GRANULAR] Evento de variante processado: $action');
-      
+      AppLogger.d('🧩 [GRANULAR] Evento de variante processado: $action');
+
       // Variantes afetam produtos, então precisamos recarregar os produtos afetados
       // Por enquanto, logamos o evento. Em uma implementação futura, podemos
       // atualizar apenas os produtos específicos que usam essa variante
       final variantData = payload['variant'] as Map<String, dynamic>?;
       final variantId = payload['variant_id'] as int?;
-      
+
       if (variantData != null) {
-        AppLogger.debug('🧩 [GRANULAR] Variante recebida: ${variantData['id'] ?? variantId}');
+        AppLogger.d(
+          '🧩 [GRANULAR] Variante recebida: ${variantData['id'] ?? variantId}',
+        );
         // TODO: Implementar atualização granular de produtos que usam esta variante
         // Por enquanto, o evento é processado mas não atualiza produtos automaticamente
         // Isso pode ser implementado se necessário no futuro
       } else if (variantId != null && action == 'deleted') {
-        AppLogger.debug('🧩 [GRANULAR] Variante $variantId deletada');
+        AppLogger.d('🧩 [GRANULAR] Variante $variantId deletada');
       } else {
-        AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "variant" ou "variant_id"');
+        AppLogger.d(
+          '⚠️ [GRANULAR] Payload sem campo "variant" ou "variant_id"',
+        );
       }
-      
     } catch (e, stackTrace) {
-      AppLogger.error('❌ [GRANULAR] Erro ao processar evento de variante: $e');
-      AppLogger.error('📍 StackTrace: $stackTrace');
+      AppLogger.e('❌ [GRANULAR] Erro ao processar evento de variante: $e');
+      AppLogger.e('📍 StackTrace: $stackTrace');
     }
   }
 
@@ -1210,36 +1260,50 @@ class RealtimeRepository {
       final Map<String, dynamic> payload = data as Map<String, dynamic>;
       final storeId = payload['store_id'] as int?;
 
-      if (storeId != null && storeController.hasValue && storeController.value.id != storeId) {
-        AppLogger.debug('⚠️ [GRANULAR] Evento de opção de variante para outra loja (ignorado)');
+      if (storeId != null &&
+          storeController.hasValue &&
+          storeController.value.id != storeId) {
+        AppLogger.d(
+          '⚠️ [GRANULAR] Evento de opção de variante para outra loja (ignorado)',
+        );
         return;
       }
 
       // ✅ CORREÇÃO: Backend envia 'variant_option', não 'item'
-      AppLogger.debug('🔘 [GRANULAR] Evento de opção de variante processado: $action');
-      
+      AppLogger.d(
+        '🔘 [GRANULAR] Evento de opção de variante processado: $action',
+      );
+
       // Opções de variante afetam produtos através de suas variantes
-      final variantOptionData = payload['variant_option'] as Map<String, dynamic>?;
+      final variantOptionData =
+          payload['variant_option'] as Map<String, dynamic>?;
       final variantId = payload['variant_id'] as int?;
-      
+
       if (variantOptionData != null) {
-        AppLogger.debug('🔘 [GRANULAR] Opção de variante recebida: ${variantOptionData['id']} (variante: ${variantOptionData['variant_id'] ?? variantId})');
+        AppLogger.d(
+          '🔘 [GRANULAR] Opção de variante recebida: ${variantOptionData['id']} (variante: ${variantOptionData['variant_id'] ?? variantId})',
+        );
         // TODO: Implementar atualização granular de produtos que usam esta opção
       } else if (variantId != null && action == 'deleted') {
         final optionId = payload['item_id'] as int?;
-        AppLogger.debug('🔘 [GRANULAR] Opção de variante $optionId deletada (variante: $variantId)');
+        AppLogger.d(
+          '🔘 [GRANULAR] Opção de variante $optionId deletada (variante: $variantId)',
+        );
       } else {
-        AppLogger.debug('⚠️ [GRANULAR] Payload sem campo "variant_option" ou "variant_id"');
+        AppLogger.d(
+          '⚠️ [GRANULAR] Payload sem campo "variant_option" ou "variant_id"',
+        );
       }
-      
     } catch (e, stackTrace) {
-      AppLogger.error('❌ [GRANULAR] Erro ao processar evento de opção de variante: $e');
-      AppLogger.error('📍 StackTrace: $stackTrace');
+      AppLogger.e(
+        '❌ [GRANULAR] Erro ao processar evento de opção de variante: $e',
+      );
+      AppLogger.e('📍 StackTrace: $stackTrace');
     }
   }
 
   void dispose() {
-    _tokenRenewalTimer?.cancel();
+    _heartbeatManager?.stop();
     storeController.close();
     productsController.close();
     bannersController.close();
@@ -1251,12 +1315,12 @@ class RealtimeRepository {
   Future<void> _renewConnectionTokenAndReconnect() async {
     // Evita múltiplas renovações simultâneas
     if (_isRenewingToken) {
-      AppLogger.debug('⏳ Renovação de token já em andamento, aguardando...');
+      AppLogger.d('⏳ Renovação de token já em andamento, aguardando...');
       return;
     }
 
     _isRenewingToken = true;
-    AppLogger.debug('🔄 Iniciando renovação automática de token de conexão...');
+    AppLogger.d('🔄 Iniciando renovação automática de token de conexão...');
 
     try {
       // Obtém o store_url salvo ou do ambiente
@@ -1266,7 +1330,9 @@ class RealtimeRepository {
       }
 
       if (storeUrl == null || storeUrl.isEmpty) {
-        AppLogger.debug('❌ Store URL não encontrada. Não é possível renovar token.');
+        AppLogger.d(
+          '❌ Store URL não encontrada. Não é possível renovar token.',
+        );
         _isRenewingToken = false;
         return;
       }
@@ -1274,51 +1340,51 @@ class RealtimeRepository {
       // ✅ Cria AuthRepository temporário para buscar novo token
       // Configura Dio com base URL correta (sem interceptors para evitar loop)
       final apiUrl = dotenv.env['API_URL'];
-      final dioForRenewal = Dio(BaseOptions(
-        baseUrl: '$apiUrl/app',
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 30),
-      ));
-      
-      final authRepo = AuthRepository(
-        dioForRenewal,
-        _secureStorage,
+      final dioForRenewal = Dio(
+        BaseOptions(
+          baseUrl: '$apiUrl/app',
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+        ),
       );
 
-      AppLogger.debug('🔐 Solicitando novo token de conexão para: $storeUrl');
+      final authRepo = AuthRepository(dioForRenewal, _secureStorage);
+
+      AppLogger.d('🔐 Solicitando novo token de conexão para: $storeUrl');
       final authResult = await authRepo.getToken(storeUrl);
 
       if (authResult.isLeft) {
-        AppLogger.debug('❌ Falha ao renovar token: ${authResult.left}');
+        AppLogger.d('❌ Falha ao renovar token: ${authResult.left}');
         _isRenewingToken = false;
         return;
       }
 
       final totemAuth = authResult.right;
       final newConnectionToken = totemAuth.connectionToken;
-      
-      AppLogger.debug('✅ Novo token de conexão obtido com sucesso');
+
+      AppLogger.d('✅ Novo token de conexão obtido com sucesso');
 
       // Desconecta socket antigo se estiver conectado
       if (_socket.connected) {
-        await _socket.disconnect();
+        _heartbeatManager?.stop();
+        _socket.disconnect();
       }
 
       // ✅ Reconecta com novo token
       await _reconnectWithNewToken(newConnectionToken);
-      
+
       _isRenewingToken = false;
-      AppLogger.debug('✅ Reconexão automática concluída com sucesso');
+      AppLogger.d('✅ Reconexão automática concluída com sucesso');
     } catch (e, stackTrace) {
-      AppLogger.debug('❌ Erro ao renovar token de conexão: $e');
-      AppLogger.debug('📍 StackTrace: $stackTrace');
+      AppLogger.d('❌ Erro ao renovar token de conexão: $e');
+      AppLogger.d('📍 StackTrace: $stackTrace');
       _isRenewingToken = false;
-      
+
       // ✅ Retenta após delay (para casos de deploy ou rede instável)
       Future.delayed(const Duration(seconds: 5), () {
         if (!_socket.connected) {
-          AppLogger.debug('🔄 Retentando renovação de token após delay...');
+          AppLogger.d('🔄 Retentando renovação de token após delay...');
           _renewConnectionTokenAndReconnect();
         }
       });
@@ -1330,21 +1396,25 @@ class RealtimeRepository {
     _currentConnectionToken = newConnectionToken;
     _reconnectionCompleter = Completer<void>();
 
-    final apiUrl = dotenv.env['API_URL'];
-    final uri = '$apiUrl?connection_token=$newConnectionToken';
-
-    AppLogger.debug('🔌 Reconectando com novo token: $uri');
-
     // Desconecta socket antigo
-    _socket.disconnect();
-    _socket.dispose();
+    try {
+      _socket.clearListeners();
+      _socket.disconnect();
+      _socket.dispose();
+    } catch (e) {
+      AppLogger.d('⚠️ Erro ao limpar socket anterior: $e');
+    }
+
+    final apiUrl = dotenv.env['API_URL'] ?? '';
 
     // Cria novo socket com novo token
     _socket = IO.io(
-      uri,
+      apiUrl,
       IO.OptionBuilder()
           .setTransports(<String>['websocket', 'polling'])
           .disableAutoConnect()
+          .enableForceNew() // ✅ ESSENCIAL para reconectar com novo token
+          .setQuery({'connection_token': newConnectionToken})
           .setReconnectionAttempts(_maxReconnectAttempts)
           .setReconnectionDelay(_baseReconnectDelay)
           .setReconnectionDelayMax(_maxReconnectDelay)
@@ -1354,20 +1424,36 @@ class RealtimeRepository {
 
     // ✅ Reconfigura listeners essenciais
     _socket.on('connect', (_) {
-      AppLogger.debug('✅ Socket.IO: Reconectado com novo token com sucesso!');
+      AppLogger.d('✅ Socket.IO: Reconectado com novo token com sucesso!');
       _reconnectAttempts = 0;
+
+      // ✅ NOVO: Inicia monitoramento de heartbeat após reconexão
+      _heartbeatManager?.stop();
+      _heartbeatManager = HeartbeatManager(
+        socket: _socket,
+        onConnectionDead: () {
+          AppLogger.w(
+            '💀 [Realtime] Heartbeat detectou conexão morta após reconexão! Tentando novamente...',
+          );
+          _renewConnectionTokenAndReconnect();
+        },
+      );
+      _heartbeatManager?.start();
+
       if (!_reconnectionCompleter!.isCompleted) {
         _reconnectionCompleter!.complete();
       }
     });
 
     _socket.on('connect_error', (error) {
-      AppLogger.debug('❌ Socket.IO: Erro ao reconectar com novo token: $error');
+      AppLogger.d('❌ Socket.IO: Erro ao reconectar com novo token: $error');
       final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') || 
-          errorString.contains('expired') || 
+      if (errorString.contains('invalid') ||
+          errorString.contains('expired') ||
           errorString.contains('used connection token')) {
-        AppLogger.debug('🔄 Novo token também inválido. Aguardando e tentando novamente...');
+        AppLogger.d(
+          '🔄 Novo token também inválido. Aguardando e tentando novamente...',
+        );
         Future.delayed(const Duration(seconds: 3), () {
           if (!_socket.connected) {
             _renewConnectionTokenAndReconnect();
@@ -1378,10 +1464,12 @@ class RealtimeRepository {
 
     _socket.on('reconnect_error', (error) {
       final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') || 
-          errorString.contains('expired') || 
+      if (errorString.contains('invalid') ||
+          errorString.contains('expired') ||
           errorString.contains('used connection token')) {
-        AppLogger.debug('🔄 Token inválido durante reconexão. Renovando novamente...');
+        AppLogger.d(
+          '🔄 Token inválido durante reconexão. Renovando novamente...',
+        );
         _renewConnectionTokenAndReconnect();
       }
     });
@@ -1401,7 +1489,7 @@ class RealtimeRepository {
         },
       );
     } catch (e) {
-      AppLogger.debug('❌ Timeout ou erro ao reconectar: $e');
+      AppLogger.d('❌ Timeout ou erro ao reconectar: $e');
       // Retenta após delay
       Future.delayed(const Duration(seconds: 5), () {
         if (!_socket.connected) {
@@ -1415,32 +1503,33 @@ class RealtimeRepository {
   void _setupDataListeners() {
     // Reconecta listeners essenciais de dados
     _socket.on('initial_state_loaded', (data) {
-      AppLogger.debug('🎉 Estado inicial carregado recebido após reconexão!');
+      AppLogger.d('🎉 Estado inicial carregado recebido após reconexão!');
       // ✅ Reutiliza a mesma lógica do handler principal
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
-        final bool isNewMenuFormat = payload.containsKey('data') && 
-                                     payload['data'] is Map &&
-                                     (payload['data'] as Map).containsKey('menu');
+        final bool isNewMenuFormat =
+            payload.containsKey('data') &&
+            payload['data'] is Map &&
+            (payload['data'] as Map).containsKey('menu');
         if (isNewMenuFormat) {
           _processNewMenuFormat(payload);
         } else {
           _processOldMenuFormat(payload);
         }
       } catch (e, stackTrace) {
-        AppLogger.error('❌ Erro ao processar initial_state após reconexão: $e');
-        AppLogger.error('📍 StackTrace: $stackTrace');
+        AppLogger.e('❌ Erro ao processar initial_state após reconexão: $e');
+        AppLogger.e('📍 StackTrace: $stackTrace');
       }
     });
 
     _socket.on('store_details_updated', (data) {
-      AppLogger.debug('🏪 Dados da loja atualizados recebidos após reconexão');
-      _processStoreUpdate(data);
+      AppLogger.d('🏪 Dados da loja atualizados recebidos após reconexão');
+      _handleStoreUpdate(data);
     });
 
     // ✅ ADICIONADO: Listener para store_profile_updated (logo/banner) após reconexão
     _socket.on('store_profile_updated', (data) {
-      AppLogger.debug('👤 [TOTEM] store_profile_updated recebido (após reconexão)');
+      AppLogger.d('👤 [TOTEM] store_profile_updated recebido (após reconexão)');
       try {
         final Map<String, dynamic> payload = data as Map<String, dynamic>;
         final storeId = payload['store_id'] as int?;
@@ -1454,12 +1543,14 @@ class RealtimeRepository {
 
         ImageModel? updatedImage;
         ImageModel? updatedBanner;
-        
-        if (profile['image_path'] != null && (profile['image_path'] as String).isNotEmpty) {
+
+        if (profile['image_path'] != null &&
+            (profile['image_path'] as String).isNotEmpty) {
           updatedImage = ImageModel(url: profile['image_path'] as String);
         }
-        
-        if (profile['banner_path'] != null && (profile['banner_path'] as String).isNotEmpty) {
+
+        if (profile['banner_path'] != null &&
+            (profile['banner_path'] as String).isNotEmpty) {
           updatedBanner = ImageModel(url: profile['banner_path'] as String);
         }
 
@@ -1484,152 +1575,78 @@ class RealtimeRepository {
 
         storeController.add(updatedStore);
       } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar store_profile_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
+        AppLogger.d('❌ Erro ao processar store_profile_updated: $e');
+        AppLogger.d('📍 StackTrace: $stackTrace');
       }
     });
 
-    // ✅ CORREÇÃO: Escuta 'products_updated' (com 'd') que é o evento emitido pelo backend
-    _socket.on('products_updated', (data) {
-      AppLogger.debug('📦 Produtos atualizados recebidos (após reconexão)');
-      try {
-        if (data is Map && data.containsKey('products')) {
-          final List<dynamic> productsJson = data['products'] as List<dynamic>;
-          final List<Product> products = productsJson
-              .map((json) => Product.fromJson(json))
-              .where((product) {
-                // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-                final hasPrice = (product.price != null && product.price! > 0) ||
-                    product.variantLinks.any((link) => 
-                      link.variant.options.any((opt) => opt.resolvedPrice > 0));
-                return hasPrice;
-              })
-              .toList();
-          productsController.add(products);
-          
-          // ✅ Categorias são atualizadas via store_details_updated ou initial_state
-          if (data.containsKey('categories')) {
-            AppLogger.debug('✅ ${(data['categories'] as List).length} categorias recebidas');
-          }
-        } else if (data is List) {
-          final List<Product> products = (data as List)
-              .map((json) => Product.fromJson(json))
-              .where((product) {
-                // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-                final hasPrice = (product.price != null && product.price! > 0) ||
-                    product.variantLinks.any((link) => 
-                      link.variant.options.any((opt) => opt.resolvedPrice > 0));
-                return hasPrice;
-              })
-              .toList();
-          productsController.add(products);
-        }
-      } catch (e, stackTrace) {
-        AppLogger.debug('❌ Erro ao processar products_updated: $e');
-        AppLogger.debug('📍 StackTrace: $stackTrace');
-      }
-    });
+    // ✅ CORREÇÃO: Usa o handler unificado
+    _socket.on('products_updated', (data) => _handleProductsUpdated(data));
 
     _socket.on('order_update', (data) {
-      AppLogger.debug('🛒 Atualização de pedido recebida');
+      AppLogger.d('🛒 Atualização de pedido recebida');
       final Order order = Order.fromJson(data);
       orderController.add(order);
     });
   }
 
-  // ✅ NOVO: Processa estado inicial (extraído para evitar duplicação)
-  // ✅ NOVO: Processa formato antigo de menu (compatibilidade)
+  // ✅ Processa formato antigo de menu (compatibilidade com payload sem data.menu)
   void _processOldMenuFormat(Map<String, dynamic> payload) {
     // Processa a loja
-    if (payload['store'] != null) {
-      AppLogger.debug('🏪 Processando dados da loja...');
+    if (keyExists(payload, 'store')) {
+      AppLogger.d('🏪 Processando dados da loja...');
       final storeData = payload['store'] as Map<String, dynamic>;
-      AppLogger.debug('   ├─ Store raw data keys: ${storeData.keys.toList()}');
-      
-      // ✅ DEBUG: Verifica se payment_method_groups está presente
-      if (storeData.containsKey('payment_method_groups')) {
-        final groups = storeData['payment_method_groups'] as List?;
-        AppLogger.debug('   ├─ ✅ payment_method_groups encontrado: ${groups?.length ?? 0} grupos');
-        if (groups != null && groups.isNotEmpty) {
-          for (var group in groups.take(3)) {
-            final groupMap = group as Map<String, dynamic>;
-            final methods = groupMap['methods'] as List?;
-            AppLogger.debug('      └─ Grupo "${groupMap['name']}": ${methods?.length ?? 0} métodos');
-          }
-        }
-      } else {
-        AppLogger.debug('   ├─ ❌ payment_method_groups NÃO encontrado no JSON!');
+      AppLogger.d('   ├─ Store raw data keys: ${storeData.keys.toList()}');
+
+      Store store = Store.fromJson(storeData);
+
+      // ✅ CORREÇÃO: Se categorias vierem no top-level (comum no Admin refatorado), anexa à Store
+      if (keyExists(payload, 'categories')) {
+        final List<dynamic> categoriesJson =
+            payload['categories'] as List<dynamic>;
+        final List<models.Category> categories =
+            categoriesJson
+                .map(
+                  (json) =>
+                      models.Category.fromJson(json as Map<String, dynamic>),
+                )
+                .toList();
+
+        store = store.copyWith(categories: categories);
+        AppLogger.d(
+          '   ├─ ✅ Categorias anexadas do top-level: ${categories.length}',
+        );
       }
 
-      final Store store = Store.fromJson(storeData);
       storeController.add(store);
 
-      AppLogger.debug('✅ Loja processada:');
-      AppLogger.debug('   ├─ Nome: ${store.name}');
-      AppLogger.debug('   ├─ ID: ${store.id}');
-      AppLogger.debug('   ├─ Grupos de pagamento: ${store.paymentMethodGroups.length}');
-      AppLogger.debug('   └─ Categorias: ${store.categories.length}');
-      
-      // ✅ DEBUG: Verifica estratégia de preço de pizza
-      if (store.store_operation_config != null) {
-        AppLogger.debug('🍕 [PIZZA PRICING] Estratégia recebida: ${store.store_operation_config!.pizzaPricingStrategy}');
-      } else {
-        AppLogger.debug('⚠️ [PIZZA PRICING] store_operation_config é null');
-      }
-      
-      // ✅ DEBUG: Lista grupos de pagamento processados
-      for (var group in store.paymentMethodGroups) {
-        AppLogger.debug('      └─ Pagamento: ${group.name} (${group.methods.length} métodos)');
-      }
-
-      for (var cat in store.categories) {
-        AppLogger.debug('      └─ ${cat.name} (ID: ${cat.id}, priority: ${cat.priority})');
-      }
+      AppLogger.d('✅ Loja processada:');
+      AppLogger.d('   ├─ Nome: ${store.name}');
+      AppLogger.d('   ├─ ID: ${store.id}');
+      AppLogger.d('   └─ Categorias: ${store.categories.length}');
     }
 
     // Processa produtos
-    if (payload['products'] != null) {
-      AppLogger.debug('📦 Processando produtos...');
-      AppLogger.debug('   ├─ Tipo: ${payload['products'].runtimeType}');
-      AppLogger.debug('   ├─ Quantidade: ${(payload['products'] as List).length}');
-
-      final List<Product> products = (payload['products'] as List)
-          .map((json) {
-        AppLogger.debug('      ├─ Processando produto: ${json['name']} (ID: ${json['id']})');
-        return Product.fromJson(json);
-      })
-          .where((product) {
-        // ✅ FILTRO: Ignora produtos com preço zero (pausados)
-        final hasPrice = (product.price != null && product.price! > 0) ||
-            product.variantLinks.any((link) => 
-              link.variant.options.any((opt) => opt.resolvedPrice > 0));
-        if (!hasPrice) {
-          AppLogger.debug('      ⏸️ Produto ignorado (preço zero): ${product.name}');
-        }
-        return hasPrice;
-      })
-          .toList();
+    if (keyExists(payload, 'products')) {
+      AppLogger.d('📦 Processando produtos...');
+      final List<Product> products =
+          (payload['products'] as List).map((json) {
+            return Product.fromJson(json as Map<String, dynamic>);
+          }).toList();
 
       productsController.add(products);
-
-      AppLogger.debug('✅ Produtos processados:');
-      AppLogger.debug('   └─ Total: ${products.length}');
-
-      if (products.length > 3) {
-        AppLogger.debug('      └─ ... e mais ${products.length - 3} produtos');
-      }
-    } else {
-      AppLogger.debug('⚠️ payload["products"] é NULL!');
+      AppLogger.d('✅ Produtos processados: ${products.length}');
     }
 
     // Processa banners
-    if (payload['banners'] != null) {
-      AppLogger.debug('🎨 Processando ${(payload['banners'] as List).length} banners...');
-      final List<BannerModel> banners = (payload['banners'] as List)
-          .map((json) => BannerModel.fromJson(json))
-          .toList();
+    if (keyExists(payload, 'banners')) {
+      AppLogger.d('🎨 Processando banners...');
+      final List<BannerModel> banners =
+          (payload['banners'] as List)
+              .map((json) => BannerModel.fromJson(json as Map<String, dynamic>))
+              .toList();
       bannersController.add(banners);
-      AppLogger.debug('✅ Banners processados');
+      AppLogger.d('✅ Banners processados');
     }
   }
 
@@ -1641,14 +1658,14 @@ class RealtimeRepository {
       // Usa tipos dinâmicos para evitar conflito de alias
       dynamic menuCategories;
       dynamic menuProducts;
-      
+
       // Processa menu no novo formato PRIMEIRO
       if (payload.containsKey('data') && payload['data'] is Map) {
         final dataPayload = payload['data'] as Map<String, dynamic>;
-        
+
         if (dataPayload.containsKey('menu')) {
-          AppLogger.debug('📋 Processando menu no novo formato...');
-          
+          AppLogger.d('📋 Processando menu no novo formato...');
+
           // Cria MenuResponse do payload
           final menuResponseData = {
             'code': payload['code'] ?? '00',
@@ -1656,108 +1673,243 @@ class RealtimeRepository {
             'timestamp': payload['timestamp'],
             'data': dataPayload,
           };
-          
-          final MenuResponse menuResponse = MenuResponse.fromJson(menuResponseData);
-          AppLogger.debug('   ├─ Total de categorias no menu: ${menuResponse.data.menu.length}');
-          
+
+          final MenuResponse menuResponse = MenuResponse.fromJson(
+            menuResponseData,
+          );
+          AppLogger.d(
+            '   ├─ Total de categorias no menu: ${menuResponse.data.menu.length}',
+          );
+
           // Converte usando o adapter
           final adapterResult = MenuAdapter.convertMenuResponse(menuResponse);
-          
+
           menuCategories = adapterResult.categories;
           menuProducts = adapterResult.products;
-          
-          AppLogger.debug('═══════════════════════════════════════════════════════');
-          AppLogger.debug('✅ [MENU ADAPTER] Menu convertido:');
-          AppLogger.debug('   ├─ Categorias: ${adapterResult.categories.length}');
-          AppLogger.debug('   ├─ Produtos: ${adapterResult.products.length}');
-          
+
+          AppLogger.d(
+            '═══════════════════════════════════════════════════════',
+          );
+          AppLogger.d('✅ [MENU ADAPTER] Menu convertido:');
+          AppLogger.d('   ├─ Categorias: ${adapterResult.categories.length}');
+          AppLogger.d('   ├─ Produtos: ${adapterResult.products.length}');
+
           // ✅ DEBUG: Mostra categorias convertidas
           for (var cat in adapterResult.categories) {
-            AppLogger.debug('   📁 Categoria: "${cat.name}" (ID: ${cat.id}, type: ${cat.type})');
-            AppLogger.debug('      └─ productLinks: ${cat.productLinks.length}');
+            AppLogger.d(
+              '   📁 Categoria: "${cat.name}" (ID: ${cat.id}, type: ${cat.type})',
+            );
+            AppLogger.d('      └─ productLinks: ${cat.productLinks.length}');
             for (var link in cat.productLinks.take(3)) {
-              AppLogger.debug('         └─ Link: productId=${link.productId}, catId=${link.categoryId}');
+              AppLogger.d(
+                '         └─ Link: productId=${link.productId}, catId=${link.categoryId}',
+              );
             }
           }
-          
+
           // ✅ DEBUG: Mostra produtos convertidos
           for (var prod in adapterResult.products.take(5)) {
-            AppLogger.debug('   📦 Produto: "${prod.name}" (ID: ${prod.id}, primaryCatId: ${prod.primaryCategoryId})');
+            AppLogger.d(
+              '   📦 Produto: "${prod.name}" (ID: ${prod.id}, primaryCatId: ${prod.primaryCategoryId})',
+            );
             for (var link in prod.categoryLinks.take(2)) {
-              AppLogger.debug('      └─ categoryLink: catId=${link.categoryId}');
+              AppLogger.d('      └─ categoryLink: catId=${link.categoryId}');
             }
           }
-          AppLogger.debug('═══════════════════════════════════════════════════════');
+          AppLogger.d(
+            '═══════════════════════════════════════════════════════',
+          );
         }
       }
 
       // ✅ CORREÇÃO: Processa a loja COM as categorias corretas do menu
       if (payload['store'] != null) {
-        AppLogger.debug('🏪 Processando dados da loja...');
+        AppLogger.d('🏪 Processando dados da loja...');
         final storeData = payload['store'] as Map<String, dynamic>;
+
+        // Garante que as categorias não sejam perdidas se o backend mandou lista vazia no objeto store
         Store store = Store.fromJson(storeData);
-        
+        AppLogger.d(
+          '   ├─ Categorias no store JSON: ${store.categories.length}',
+        );
+
         // ✅ IMPORTANTE: Se temos categorias do menu, usa elas em vez das do store JSON
         // As categorias do menu já têm os productLinks corretos
-        if (menuCategories != null && (menuCategories as List).isNotEmpty) {
-          final categoriesList = menuCategories as List<models.Category>;
-          AppLogger.debug('🔄 Substituindo categorias do JSON pelas do MenuAdapter (${categoriesList.length} categorias)');
-          store = store.copyWith(categories: categoriesList);
+        if (menuCategories != null) {
+          try {
+            final List<models.Category> categoriesList = [];
+            if (menuCategories is List<models.Category>) {
+              categoriesList.addAll(menuCategories);
+            } else if (menuCategories is List) {
+              categoriesList.addAll(menuCategories.cast<models.Category>());
+            }
+
+            if (categoriesList.isNotEmpty) {
+              AppLogger.d(
+                '🔄 Substituindo categorias do JSON pelas do MenuAdapter (${categoriesList.length} categorias)',
+              );
+              store = store.copyWith(categories: categoriesList);
+            } else {
+              AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
+            }
+          } catch (e) {
+            AppLogger.e('❌ Erro ao converter categorias do adapter: $e');
+          }
         }
-        
+
         storeController.add(store);
-        AppLogger.debug('✅ Loja processada: ${store.name} com ${store.categories.length} categorias');
+        AppLogger.d(
+          '✅ Loja processada e enviada ao controller: ${store.name} com ${store.categories.length} categorias',
+        );
       }
-      
+
       // ✅ Adiciona produtos ao controller (usa os do menu se disponíveis)
       if (menuProducts != null && (menuProducts as List).isNotEmpty) {
         final productsList = menuProducts as List<Product>;
         productsController.add(productsList);
-        AppLogger.debug('✅ ${productsList.length} produtos do menu adicionados');
+        AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
       }
 
       // Processa banners (se presente)
       if (payload['banners'] != null) {
-        AppLogger.debug('🎨 Processando ${(payload['banners'] as List).length} banners...');
-        final List<BannerModel> banners = (payload['banners'] as List)
-            .map((json) => BannerModel.fromJson(json))
-            .toList();
+        AppLogger.d(
+          '🎨 Processando ${(payload['banners'] as List).length} banners...',
+        );
+        final List<BannerModel> banners =
+            (payload['banners'] as List)
+                .map((json) => BannerModel.fromJson(json))
+                .toList();
         bannersController.add(banners);
-        AppLogger.debug('✅ Banners processados');
+        AppLogger.d('✅ Banners processados');
       }
     } catch (e, stackTrace) {
-      AppLogger.error('❌ Erro ao processar novo formato de menu: $e');
-      AppLogger.error('📍 StackTrace: $stackTrace');
-      // ✅ Fallback: tenta processar como formato antigo
-      AppLogger.debug('🔄 Tentando processar como formato antigo...');
-      _processOldMenuFormat(payload);
+      AppLogger.e('❌ ERRO CRÍTICO no _processNewMenuFormat: $e');
+      AppLogger.e('📍 StackTrace: $stackTrace');
+
+      // ✅ Fallback inteligente: Só tenta o formato antigo se não conseguimos processar nada
+      if (!storeController.hasValue ||
+          storeController.value.categories.isEmpty) {
+        AppLogger.d(
+          '🔄 Fallback: Tentando processar como formato antigo pois o menu está vazio...',
+        );
+        _processOldMenuFormat(payload);
+      } else {
+        AppLogger.w(
+          '⚠️ Erro no processamento, mas mantendo dados atuais para evitar menu vazio.',
+        );
+      }
     }
   }
 
   // ✅ NOVO: Processa atualização da loja (extraído)
-  void _processStoreUpdate(dynamic data) {
+  void _handleStoreUpdate(dynamic data) {
     try {
       final Map<String, dynamic> payload = data as Map<String, dynamic>;
       if (payload['store'] != null) {
         final storeData = payload['store'] as Map<String, dynamic>;
-        final Store updatedStore = Store.fromJson(storeData);
-        storeController.add(updatedStore);
-        AppLogger.debug('✅ Loja atualizada');
+        final Store updatedStoreData = Store.fromJson(storeData);
+
+        // ✅ CORREÇÃO: Preserva categorias se não vierem no update (excluídas por performance no backend)
+        Store finalStore = updatedStoreData;
+        if (storeController.hasValue) {
+          final currentStore = storeController.value;
+          // Se o payload não contém a chave categories ou ela é null, mantém as anteriores
+          if (!storeData.containsKey('categories') ||
+              storeData['categories'] == null ||
+              (storeData['categories'] as List).isEmpty) {
+            finalStore = updatedStoreData.copyWith(
+              categories: currentStore.categories,
+            );
+            AppLogger.d(
+              '   ├─ Preservando ${currentStore.categories.length} categorias atuais (OMITIDAS NO PUSH)',
+            );
+          }
+        }
+
+        storeController.add(finalStore);
+        AppLogger.d('✅ Loja atualizada: ${finalStore.name}');
       }
     } catch (e, stackTrace) {
-      AppLogger.debug('❌ Erro ao processar store_details_updated: $e');
-      AppLogger.debug('📍 StackTrace: $stackTrace');
+      AppLogger.d('❌ Erro ao processar store_details_updated: $e');
+      AppLogger.d('📍 StackTrace: $stackTrace');
+    }
+  }
+
+  // ✅ NOVO: Handler unificado para atualização de catálogo
+  void _handleProductsUpdated(dynamic data) {
+    AppLogger.d('📦 [_handleProductsUpdated] Processando catálogo...');
+    try {
+      if (data is Map && data.containsKey('products')) {
+        final List<dynamic> productsJson = data['products'] as List<dynamic>;
+
+        // Atualiza Produtos
+        final List<Product> products =
+            productsJson
+                .map((json) {
+                  try {
+                    return Product.fromJson(json as Map<String, dynamic>);
+                  } catch (e) {
+                    return null;
+                  }
+                })
+                .whereType<Product>()
+                .toList();
+        productsController.add(products);
+        AppLogger.d('   ├─ ✅ ${products.length} produtos atualizados');
+
+        // Atualiza Categorias na Store
+        if (data.containsKey('categories')) {
+          final List<dynamic> categoriesJson =
+              data['categories'] as List<dynamic>;
+          final List<models.Category> categories =
+              categoriesJson
+                  .map((json) {
+                    try {
+                      return models.Category.fromJson(
+                        json as Map<String, dynamic>,
+                      );
+                    } catch (e) {
+                      return null;
+                    }
+                  })
+                  .whereType<models.Category>()
+                  .toList();
+
+          if (storeController.hasValue) {
+            final currentStore = storeController.value;
+            final updatedStore = currentStore.copyWith(categories: categories);
+            storeController.add(updatedStore);
+            AppLogger.d(
+              '   └─ ✅ ${categories.length} categorias atualizadas na Store',
+            );
+          } else {
+            AppLogger.w(
+              '   └─ ⚠️ Store não disponível para atualizar categorias',
+            );
+          }
+        }
+      } else if (data is List) {
+        // Compatibilidade legado
+        final List<Product> products =
+            data
+                .map((json) => Product.fromJson(json as Map<String, dynamic>))
+                .toList();
+        productsController.add(products);
+      }
+    } catch (e, stackTrace) {
+      AppLogger.e('❌ Erro ao processar catálogo: $e');
+      AppLogger.d('📍 StackTrace: $stackTrace');
     }
   }
 
   // ✅ NOVO: Método para reconectar manualmente
   Future<void> reconnect() async {
     if (_socket.connected) {
-      AppLogger.debug('✅ Socket.IO: Já está conectado');
+      AppLogger.d('✅ Socket.IO: Já está conectado');
       return;
     }
 
-    AppLogger.debug('🔡 Socket.IO: Tentando reconectar manualmente...');
+    AppLogger.d('🔡 Socket.IO: Tentando reconectar manualmente...');
     _reconnectAttempts = 0; // Reset ao reconectar manualmente
     _socket.connect();
 
@@ -1781,119 +1933,140 @@ class RealtimeRepository {
 
     // Adiciona uma verificação extra para garantir que o socket está conectado
     if (!_socket.connected) {
-      AppLogger.debug("❌ RealtimeRepository: Tentativa de vincular cliente com socket desconectado.");
+      AppLogger.d(
+        "❌ RealtimeRepository: Tentativa de vincular cliente com socket desconectado.",
+      );
       completer.completeError(Exception('Socket não está conectado.'));
       return completer.future;
     }
 
-    _socket.emitWithAck('link_customer_to_session', {'customer_id': customerId}, ack: (data) {
-      if (data != null && data['success'] == true) {
-        completer.complete();
-      } else {
-        completer.completeError(Exception(data?['error'] ?? 'Erro ao vincular cliente.'));
-      }
-    });
+    _socket.emitWithAck(
+      'link_customer_to_session',
+      {'customer_id': customerId},
+      ack: (data) {
+        if (data != null && data['success'] == true) {
+          completer.complete();
+        } else {
+          completer.completeError(
+            Exception(data?['error'] ?? 'Erro ao vincular cliente.'),
+          );
+        }
+      },
+    );
 
     return completer.future;
   }
-
-
-
-
-
-
 
   Future<Cart> getOrCreateCart() async {
     final completer = Completer<Cart>();
 
     // Usamos emitWithAck para esperar uma resposta do servidor.
-    _socket.emitWithAck('get_or_create_cart', {}, ack: (data) {
-      if (data['success'] == true && data['cart'] != null) {
-        // Se sucesso, converte o JSON para nosso modelo Dart.
-        final cart = Cart.fromJson(data['cart']);
-        completer.complete(cart);
-      } else {
-        // Se falhar, completa o Future com um erro.
-        completer.completeError(
-          Exception(data['error'] ?? 'Erro ao buscar carrinho.'),
-        );
-      }
-    });
+    _socket.emitWithAck(
+      'get_or_create_cart',
+      {},
+      ack: (data) {
+        if (data['success'] == true && data['cart'] != null) {
+          // Se sucesso, converte o JSON para nosso modelo Dart.
+          final cart = Cart.fromJson(data['cart']);
+          completer.complete(cart);
+        } else {
+          // Se falhar, completa o Future com um erro.
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao buscar carrinho.'),
+          );
+        }
+      },
+    );
 
     return completer.future;
   }
 
-
   Future<Cart> applyCoupon(String code) async {
     final completer = Completer<Cart>();
-    _socket.emitWithAck('apply_coupon_to_cart', {'coupon_code': code}, ack: (data) {
-      if (data['success'] == true && data['cart'] != null) {
-        completer.complete(Cart.fromJson(data['cart']));
-      } else {
-        completer.completeError(Exception(data['error'] ?? 'Erro ao aplicar cupom.'));
-      }
-    });
+    _socket.emitWithAck(
+      'apply_coupon_to_cart',
+      {'coupon_code': code},
+      ack: (data) {
+        if (data['success'] == true && data['cart'] != null) {
+          completer.complete(Cart.fromJson(data['cart']));
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao aplicar cupom.'),
+          );
+        }
+      },
+    );
     return completer.future;
   }
 
   Future<Cart> removeCoupon() async {
     final completer = Completer<Cart>();
-    _socket.emitWithAck('remove_coupon_from_cart', {}, ack: (data) {
-      if (data['success'] == true && data['cart'] != null) {
-        completer.complete(Cart.fromJson(data['cart']));
-      } else {
-        completer.completeError(Exception(data['error'] ?? 'Erro ao remover cupom.'));
-      }
-    });
+    _socket.emitWithAck(
+      'remove_coupon_from_cart',
+      {},
+      ack: (data) {
+        if (data['success'] == true && data['cart'] != null) {
+          completer.complete(Cart.fromJson(data['cart']));
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao remover cupom.'),
+          );
+        }
+      },
+    );
     return completer.future;
   }
-
 
   /// Adiciona, atualiza ou remove um item do carrinho.
   Future<Cart> updateCartItem(UpdateCartItemPayload payload) async {
     final completer = Completer<Cart>();
 
-    _socket.emitWithAck('update_cart_item', payload.toJson(), ack: (data) {
-      if (data['success'] == true && data['cart'] != null) {
-        final cart = Cart.fromJson(data['cart']);
-        completer.complete(cart);
-      } else {
-        completer.completeError(
-          Exception(data['error'] ?? 'Erro ao atualizar item no carrinho.'),
-        );
-      }
-    });
+    _socket.emitWithAck(
+      'update_cart_item',
+      payload.toJson(),
+      ack: (data) {
+        if (data['success'] == true && data['cart'] != null) {
+          final cart = Cart.fromJson(data['cart']);
+          completer.complete(cart);
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao atualizar item no carrinho.'),
+          );
+        }
+      },
+    );
 
     return completer.future;
   }
 
   /// ✅ NOVO: Atualiza item com resposta granular (economiza banda).
   /// Retorna um mapa com: action, item (ou removed_item_id), e totais do carrinho.
-  Future<CartGranularResponse> updateCartItemGranular(UpdateCartItemPayload payload) async {
+  Future<CartGranularResponse> updateCartItemGranular(
+    UpdateCartItemPayload payload,
+  ) async {
     final completer = Completer<CartGranularResponse>();
 
     // Adiciona flag granular ao payload
-    final granularPayload = {
-      ...payload.toJson(),
-      'granular': true,
-    };
+    final granularPayload = {...payload.toJson(), 'granular': true};
 
-    _socket.emitWithAck('update_cart_item', granularPayload, ack: (data) {
-      if (data['success'] == true && data['granular'] == true) {
-        final response = CartGranularResponse.fromJson(data);
-        completer.complete(response);
-      } else if (data['success'] == true && data['cart'] != null) {
-        // Fallback: backend não suporta granular (versão antiga)
-        final cart = Cart.fromJson(data['cart']);
-        completer.completeError(
-          CartGranularFallbackException(cart),
-        );
-      } else {
-        completer.completeError(
-          Exception(data['error'] ?? 'Erro ao atualizar item no carrinho.'),
-        );
-      }
-    });
+    _socket.emitWithAck(
+      'update_cart_item',
+      granularPayload,
+      ack: (data) {
+        if (data['success'] == true && data['granular'] == true) {
+          final response = CartGranularResponse.fromJson(data);
+          completer.complete(response);
+        } else if (data['success'] == true && data['cart'] != null) {
+          // Fallback: backend não suporta granular (versão antiga)
+          final cart = Cart.fromJson(data['cart']);
+          completer.completeError(CartGranularFallbackException(cart));
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao atualizar item no carrinho.'),
+          );
+        }
+      },
+    );
 
     return completer.future;
   }
@@ -1902,152 +2075,234 @@ class RealtimeRepository {
   Future<Cart> clearCart() async {
     final completer = Completer<Cart>();
 
-    _socket.emitWithAck('clear_cart', {}, ack: (data) {
-      if (data['success'] == true && data['cart'] != null) {
-        final cart = Cart.fromJson(data['cart']);
-        completer.complete(cart);
-      } else {
-        completer.completeError(
-          Exception(data['error'] ?? 'Erro ao limpar o carrinho.'),
-        );
-      }
-    });
+    _socket.emitWithAck(
+      'clear_cart',
+      {},
+      ack: (data) {
+        if (data['success'] == true && data['cart'] != null) {
+          final cart = Cart.fromJson(data['cart']);
+          completer.complete(cart);
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao limpar o carrinho.'),
+          );
+        }
+      },
+    );
 
     return completer.future;
   }
 
-
   Future<Order> sendOrder(CreateOrderPayload payload) async {
     // ✅ VALIDAÇÃO: Verifica se o socket está conectado
     if (!_socket.connected) {
-      AppLogger.error('❌ [ORDER] Socket não está conectado. Tentando reconectar...', tag: 'CHECKOUT');
-      throw Exception('Conexão perdida. Por favor, recarregue a página e tente novamente.');
+      AppLogger.e(
+        '❌ [ORDER] Socket não está conectado. Tentando reconectar...',
+        tag: 'CHECKOUT',
+      );
+      throw Exception(
+        'Conexão perdida. Por favor, recarregue a página e tente novamente.',
+      );
     }
 
     final completer = Completer<Order>();
     bool ackReceived = false;
     bool orderReceived = false;
 
-    AppLogger.debug('📤 [ORDER] Enviando pedido via Socket.IO...', tag: 'CHECKOUT');
-    AppLogger.debug('📤 [ORDER] Payload: ${payload.toJson()}', tag: 'CHECKOUT');
+    AppLogger.d('📤 [ORDER] Enviando pedido via Socket.IO...', tag: 'CHECKOUT');
+    AppLogger.d('📤 [ORDER] Payload: ${payload.toJson()}', tag: 'CHECKOUT');
 
     // ✅ LISTENER TEMPORÁRIO: Escuta evento order_created enquanto aguarda
     void Function(dynamic)? orderCreatedHandler;
     orderCreatedHandler = (data) {
-      AppLogger.debug('📥 [ORDER] Evento order_created recebido (raw): $data', tag: 'CHECKOUT');
-      
+      AppLogger.d(
+        '📥 [ORDER] Evento order_created recebido (raw): $data',
+        tag: 'CHECKOUT',
+      );
+
       if (orderReceived) {
-        AppLogger.warning('⚠️ [ORDER] order_created já foi processado, ignorando duplicata', tag: 'CHECKOUT');
+        AppLogger.w(
+          '⚠️ [ORDER] order_created já foi processado, ignorando duplicata',
+          tag: 'CHECKOUT',
+        );
         return; // Evita processar múltiplas vezes
       }
-      
-      AppLogger.debug('📥 [ORDER] Processando evento order_created...', tag: 'CHECKOUT');
-      
+
+      AppLogger.d(
+        '📥 [ORDER] Processando evento order_created...',
+        tag: 'CHECKOUT',
+      );
+
       try {
         if (data == null) {
-          AppLogger.error('❌ [ORDER] order_created recebido com data null', tag: 'CHECKOUT');
+          AppLogger.e(
+            '❌ [ORDER] order_created recebido com data null',
+            tag: 'CHECKOUT',
+          );
           return;
         }
-        
+
         // ✅ Tenta converter para Map se necessário
         Map<String, dynamic>? orderData;
         if (data is Map) {
           orderData = Map<String, dynamic>.from(data);
         } else {
-          AppLogger.error('❌ [ORDER] order_created não é um Map: ${data.runtimeType}', tag: 'CHECKOUT');
+          AppLogger.e(
+            '❌ [ORDER] order_created não é um Map: ${data.runtimeType}',
+            tag: 'CHECKOUT',
+          );
           return;
         }
-        
-        AppLogger.debug('📥 [ORDER] order_created parseado: success=${orderData['success']}, has_order=${orderData.containsKey('order')}', tag: 'CHECKOUT');
-        
+
+        AppLogger.d(
+          '📥 [ORDER] order_created parseado: success=${orderData['success']}, has_order=${orderData.containsKey('order')}',
+          tag: 'CHECKOUT',
+        );
+
         if (orderData['success'] == true && orderData['order'] != null) {
           final orderJson = orderData['order'] as Map<String, dynamic>;
           final order = Order.fromJson(orderJson);
-          AppLogger.success('✅ [ORDER] Pedido criado com sucesso: #${order.id}', tag: 'CHECKOUT');
+          AppLogger.i(
+            '✅ [ORDER] Pedido criado com sucesso: #${order.id}',
+            tag: 'CHECKOUT',
+          );
           orderReceived = true;
           _socket.off('order_created', orderCreatedHandler);
           completer.complete(order);
         } else {
-          AppLogger.warning('⚠️ [ORDER] order_created sem order válido: $orderData', tag: 'CHECKOUT');
+          AppLogger.w(
+            '⚠️ [ORDER] order_created sem order válido: $orderData',
+            tag: 'CHECKOUT',
+          );
         }
       } catch (e, stackTrace) {
-        AppLogger.error('❌ [ORDER] Erro ao processar order_created', error: e, stackTrace: stackTrace, tag: 'CHECKOUT');
+        AppLogger.e(
+          '❌ [ORDER] Erro ao processar order_created',
+          error: e,
+          stackTrace: stackTrace,
+          tag: 'CHECKOUT',
+        );
         if (!completer.isCompleted) {
           _socket.off('order_created', orderCreatedHandler);
-          completer.completeError(Exception('Erro ao processar pedido criado: $e'));
+          completer.completeError(
+            Exception('Erro ao processar pedido criado: $e'),
+          );
         }
       }
     };
-    
-    AppLogger.debug('👂 [ORDER] Registrando listener temporário para order_created', tag: 'CHECKOUT');
+
+    AppLogger.d(
+      '👂 [ORDER] Registrando listener temporário para order_created',
+      tag: 'CHECKOUT',
+    );
     _socket.on('order_created', orderCreatedHandler);
-    
+
     // ✅ CORREÇÃO BUG #3: Listener para erros de criação de pedido
     void Function(dynamic)? orderErrorHandler;
     orderErrorHandler = (data) {
-      AppLogger.warning('⚠️ [ORDER] Evento order_creation_error recebido: $data', tag: 'CHECKOUT');
-      
+      AppLogger.w(
+        '⚠️ [ORDER] Evento order_creation_error recebido: $data',
+        tag: 'CHECKOUT',
+      );
+
       if (orderReceived || completer.isCompleted) {
-        AppLogger.debug('⏭️ [ORDER] order_creation_error ignorado (pedido já processado)', tag: 'CHECKOUT');
+        AppLogger.d(
+          '⏭️ [ORDER] order_creation_error ignorado (pedido já processado)',
+          tag: 'CHECKOUT',
+        );
         return;
       }
-      
+
       try {
         final errorData = data is Map ? Map<String, dynamic>.from(data) : {};
-        final errorMessage = errorData['error'] ?? 'Erro desconhecido ao criar pedido';
-        
+        final errorMessage =
+            errorData['error'] ?? 'Erro desconhecido ao criar pedido';
+
         orderReceived = true;
         _socket.off('order_created', orderCreatedHandler);
         _socket.off('order_creation_error', orderErrorHandler);
         completer.completeError(Exception(errorMessage));
       } catch (e) {
-        AppLogger.error('❌ [ORDER] Erro ao processar order_creation_error: $e', tag: 'CHECKOUT');
+        AppLogger.e(
+          '❌ [ORDER] Erro ao processar order_creation_error: $e',
+          tag: 'CHECKOUT',
+        );
       }
     };
-    
-    AppLogger.debug('👂 [ORDER] Registrando listener temporário para order_creation_error', tag: 'CHECKOUT');
+
+    AppLogger.d(
+      '👂 [ORDER] Registrando listener temporário para order_creation_error',
+      tag: 'CHECKOUT',
+    );
     _socket.on('order_creation_error', orderErrorHandler);
 
     // Chama o NOVO evento do backend
-    _socket.emitWithAck('create_order_from_cart', payload.toJson(), ack: (data) {
-      ackReceived = true;
-      AppLogger.debug('📥 [ORDER] Resposta ACK recebida do backend: $data', tag: 'CHECKOUT');
-      
-      // ✅ Backend retorna {"success": true, "status": "processing", "job_id": ...}
-      // O pedido será enviado via evento order_created quando estiver pronto
-      if (data != null && data['success'] == true) {
-        if (data['order'] != null) {
-          // ✅ Se o pedido já vier no ACK (caso raro de processamento instantâneo)
-          try {
-            final order = Order.fromJson(data['order']);
-            AppLogger.success('✅ [ORDER] Pedido criado imediatamente: #${order.id}', tag: 'CHECKOUT');
+    _socket.emitWithAck(
+      'create_order_from_cart',
+      payload.toJson(),
+      ack: (data) {
+        ackReceived = true;
+        AppLogger.d(
+          '📥 [ORDER] Resposta ACK recebida do backend: $data',
+          tag: 'CHECKOUT',
+        );
+
+        // ✅ Backend retorna {"success": true, "status": "processing", "job_id": ...}
+        // O pedido será enviado via evento order_created quando estiver pronto
+        if (data != null && data['success'] == true) {
+          if (data['order'] != null) {
+            // ✅ Se o pedido já vier no ACK (caso raro de processamento instantâneo)
+            try {
+              final order = Order.fromJson(data['order']);
+              AppLogger.i(
+                '✅ [ORDER] Pedido criado imediatamente: #${order.id}',
+                tag: 'CHECKOUT',
+              );
+              orderReceived = true;
+              _socket.off('order_created', orderCreatedHandler);
+              completer.complete(order);
+            } catch (e, stackTrace) {
+              AppLogger.e(
+                '❌ [ORDER] Erro ao processar pedido do ACK',
+                error: e,
+                stackTrace: stackTrace,
+                tag: 'CHECKOUT',
+              );
+              // Continua aguardando order_created
+            }
+          } else if (data['status'] == 'processing') {
+            // ✅ Normal: pedido sendo processado em background, aguarda order_created
+            AppLogger.i(
+              '⏳ [ORDER] Pedido sendo processado. Aguardando order_created...',
+              tag: 'CHECKOUT',
+            );
+            // Não completa o completer aqui, aguarda order_created
+          } else {
+            // Resposta inesperada
+            final errorMsg =
+                data['error'] ??
+                data['message'] ??
+                'Resposta inesperada do servidor.';
+            AppLogger.e(
+              '❌ [ORDER] Erro do backend: $errorMsg',
+              tag: 'CHECKOUT',
+            );
             orderReceived = true;
             _socket.off('order_created', orderCreatedHandler);
-            completer.complete(order);
-          } catch (e, stackTrace) {
-            AppLogger.error('❌ [ORDER] Erro ao processar pedido do ACK', error: e, stackTrace: stackTrace, tag: 'CHECKOUT');
-            // Continua aguardando order_created
+            completer.completeError(Exception(errorMsg));
           }
-        } else if (data['status'] == 'processing') {
-          // ✅ Normal: pedido sendo processado em background, aguarda order_created
-          AppLogger.info('⏳ [ORDER] Pedido sendo processado. Aguardando order_created...', tag: 'CHECKOUT');
-          // Não completa o completer aqui, aguarda order_created
         } else {
-          // Resposta inesperada
-          final errorMsg = data['error'] ?? data['message'] ?? 'Resposta inesperada do servidor.';
-          AppLogger.error('❌ [ORDER] Erro do backend: $errorMsg', tag: 'CHECKOUT');
+          final errorMsg =
+              data?['error'] ??
+              data?['message'] ??
+              'Ocorreu um erro desconhecido ao finalizar o pedido.';
+          AppLogger.e('❌ [ORDER] Erro do backend: $errorMsg', tag: 'CHECKOUT');
           orderReceived = true;
           _socket.off('order_created', orderCreatedHandler);
           completer.completeError(Exception(errorMsg));
         }
-      } else {
-        final errorMsg = data?['error'] ?? data?['message'] ?? 'Ocorreu um erro desconhecido ao finalizar o pedido.';
-        AppLogger.error('❌ [ORDER] Erro do backend: $errorMsg', tag: 'CHECKOUT');
-        orderReceived = true;
-        _socket.off('order_created', orderCreatedHandler);
-        completer.completeError(Exception(errorMsg));
-      }
-    });
+      },
+    );
 
     // ✅ TIMEOUT: Se não receber resposta em 60 segundos, retorna erro
     return completer.future.timeout(
@@ -2056,36 +2311,44 @@ class RealtimeRepository {
         // ✅ CORREÇÃO: Remove ambos os listeners no timeout
         _socket.off('order_created', orderCreatedHandler);
         _socket.off('order_creation_error', orderErrorHandler);
-        
+
         if (!ackReceived) {
-          AppLogger.error('❌ [ORDER] Timeout ao aguardar ACK do servidor (60s)', tag: 'CHECKOUT');
-          throw TimeoutException('O servidor não respondeu a tempo. Por favor, tente novamente.');
+          AppLogger.e(
+            '❌ [ORDER] Timeout ao aguardar ACK do servidor (60s)',
+            tag: 'CHECKOUT',
+          );
+          throw TimeoutException(
+            'O servidor não respondeu a tempo. Por favor, tente novamente.',
+          );
         }
         if (!orderReceived) {
-          AppLogger.error('❌ [ORDER] Timeout ao aguardar order_created (60s)', tag: 'CHECKOUT');
-          throw TimeoutException('O pedido está sendo processado, mas demorou mais que o esperado. Verifique seus pedidos.');
+          AppLogger.e(
+            '❌ [ORDER] Timeout ao aguardar order_created (60s)',
+            tag: 'CHECKOUT',
+          );
+          throw TimeoutException(
+            'O pedido está sendo processado, mas demorou mais que o esperado. Verifique seus pedidos.',
+          );
         }
         throw TimeoutException('Timeout ao processar pedido.');
       },
     );
   }
 
-
-
   // Future<Either<String, Order>> sendOrder(NewOrder order) async {
   //   try {
   //     final result = await _socket.emitWithAckAsync('send_order', order.toJson());
-  //     AppLogger.debug('[SOCKET] Resposta recebida: $result');
+  //     AppLogger.d('[SOCKET] Resposta recebida: $result');
   //
   //     if (result == null || result['success'] != true) {
   //       final errorMsg = result?['error'] ?? 'Erro desconhecido';
-  //       AppLogger.debug('[SOCKET] Erro ao enviar pedido: $errorMsg');
+  //       AppLogger.d('[SOCKET] Erro ao enviar pedido: $errorMsg');
   //       return Left(errorMsg);
   //     }
   //
   //     return Right(Order.fromJson(result['order']));
   //   } catch (e, s) {
-  //     AppLogger.debug('Error sending order: $e\n$s');
+  //     AppLogger.d('Error sending order: $e\n$s');
   //     return Left('Erro ao enviar pedido');
   //   }
   // }
@@ -2094,20 +2357,29 @@ class RealtimeRepository {
   Future<List<Coupon>> listCoupons() async {
     final completer = Completer<List<Coupon>>();
 
-    _socket.emitWithAck('list_coupons', {}, ack: (data) {
-      if (data['error'] == null && data['coupons'] != null) {
-        try {
-          final coupons = (data['coupons'] as List)
-              .map((json) => Coupon.fromJson(json))
-              .toList();
-          completer.complete(coupons);
-        } catch (e) {
-          completer.completeError(Exception('Erro ao processar a lista de cupons.'));
+    _socket.emitWithAck(
+      'list_coupons',
+      {},
+      ack: (data) {
+        if (data['error'] == null && data['coupons'] != null) {
+          try {
+            final coupons =
+                (data['coupons'] as List)
+                    .map((json) => Coupon.fromJson(json))
+                    .toList();
+            completer.complete(coupons);
+          } catch (e) {
+            completer.completeError(
+              Exception('Erro ao processar a lista de cupons.'),
+            );
+          }
+        } else {
+          completer.completeError(
+            Exception(data['error'] ?? 'Erro ao buscar cupons.'),
+          );
         }
-      } else {
-        completer.completeError(Exception(data['error'] ?? 'Erro ao buscar cupons.'));
-      }
-    });
+      },
+    );
 
     return completer.future;
   }
@@ -2121,48 +2393,47 @@ class RealtimeRepository {
     int subtotal = 0,
   }) async {
     final completer = Completer<Map<String, dynamic>>();
-    
-    AppLogger.debug('🚚 [DELIVERY_FEE] Calculando frete via WebSocket...');
-    AppLogger.debug('   └─ Latitude: $latitude');
-    AppLogger.debug('   └─ Longitude: $longitude');
-    AppLogger.debug('   └─ AddressId: $addressId');
-    AppLogger.debug('   └─ Subtotal: $subtotal');
-    
-    _socket.emitWithAck('calculate_delivery_fee', {
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
-      if (addressId != null) 'address_id': addressId,
-      'subtotal': subtotal,
-    }, ack: (data) {
-      AppLogger.debug('🚚 [DELIVERY_FEE] Resposta recebida: $data');
-      
-      if (data != null && data is Map) {
-        final result = Map<String, dynamic>.from(data);
-        
-        if (result.containsKey('error') && result['error'] != null) {
-          AppLogger.warning('⚠️ [DELIVERY_FEE] Erro: ${result['error']}');
+
+    AppLogger.d('🚚 [DELIVERY_FEE] Calculando frete via WebSocket...');
+    AppLogger.d('   └─ Latitude: $latitude');
+    AppLogger.d('   └─ Longitude: $longitude');
+    AppLogger.d('   └─ AddressId: $addressId');
+    AppLogger.d('   └─ Subtotal: $subtotal');
+
+    _socket.emitWithAck(
+      'calculate_delivery_fee',
+      {
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (addressId != null) 'address_id': addressId,
+        'subtotal': subtotal,
+      },
+      ack: (data) {
+        AppLogger.d('🚚 [DELIVERY_FEE] Resposta recebida: $data');
+
+        if (data != null && data is Map) {
+          final result = Map<String, dynamic>.from(data);
+
+          if (result.containsKey('error') && result['error'] != null) {
+            AppLogger.w('⚠️ [DELIVERY_FEE] Erro: ${result['error']}');
+          } else {
+            AppLogger.d('✅ [DELIVERY_FEE] Frete: ${result['fee']} centavos');
+            AppLogger.d('   └─ Distância: ${result['distance_km']} km');
+            AppLogger.d('   └─ Regra: ${result['rule_type']}');
+          }
+
+          completer.complete(result);
         } else {
-          AppLogger.debug('✅ [DELIVERY_FEE] Frete: ${result['fee']} centavos');
-          AppLogger.debug('   └─ Distância: ${result['distance_km']} km');
-          AppLogger.debug('   └─ Regra: ${result['rule_type']}');
+          completer.complete({
+            'error': 'Resposta inválida do servidor',
+            'fee': 0,
+          });
         }
-        
-        completer.complete(result);
-      } else {
-        completer.complete({
-          'error': 'Resposta inválida do servidor',
-          'fee': 0,
-        });
-      }
-    });
-    
+      },
+    );
+
     return completer.future;
   }
-
-
-
-
-
 
   // ... (código existente)
 
@@ -2173,27 +2444,35 @@ class RealtimeRepository {
     if (!storeController.hasValue) {
       throw Exception('Loja não carregada');
     }
-    
+
     final storeId = storeController.value.id;
     // Remove /socket.io se estiver na URL base
     String baseUrl = dotenv.env['API_URL'] ?? 'http://localhost:8000';
     baseUrl = baseUrl.replaceAll('/socket.io', '').replaceAll('/ws', '');
-    if (baseUrl.endsWith('/')) baseUrl = baseUrl.substring(0, baseUrl.length - 1);
-    
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+    }
+
     final dio = Dio(BaseOptions(baseUrl: baseUrl));
-    
+
     try {
-      AppLogger.info('🚀 Calculando promoções: subtotal=$subtotal, fee=$deliveryFee', tag: 'PROMO');
-      
-      final response = await dio.post('/app/promotions/apply', data: {
-        'store_id': storeId,
-        'subtotal': subtotal,
-        'delivery_fee': deliveryFee,
-      });
-      
+      AppLogger.i(
+        '🚀 Calculando promoções: subtotal=$subtotal, fee=$deliveryFee',
+        tag: 'PROMO',
+      );
+
+      final response = await dio.post(
+        '/app/promotions/apply',
+        data: {
+          'store_id': storeId,
+          'subtotal': subtotal,
+          'delivery_fee': deliveryFee,
+        },
+      );
+
       return response.data;
     } catch (e) {
-      AppLogger.error('❌ Erro ao calcular promoções: $e', tag: 'PROMO');
+      AppLogger.e('❌ Erro ao calcular promoções: $e', tag: 'PROMO');
       // Retorna objeto vazio em caso de erro para não bloquear o fluxo
       return {
         'total_order_discount': 0,
@@ -2205,5 +2484,46 @@ class RealtimeRepository {
         'message': null,
       };
     }
+  }
+
+  // ✅ NOVO: Inicializa MenuVisitService
+  void _initializeMenuVisitService() {
+    try {
+      MenuVisitService().initialize(_socket);
+      AppLogger.d('✅ [Realtime] MenuVisitService inicializado');
+    } catch (e) {
+      AppLogger.e('❌ [Realtime] Erro ao inicializar MenuVisitService: $e');
+    }
+  }
+
+  // ✅ NOVO: Método público para registrar visita ao menu
+  Future<bool> recordMenuVisit({
+    String? customSource,
+    String? referrer,
+    Map<String, dynamic>? utmParameters,
+  }) async {
+    try {
+      return await MenuVisitService().recordMenuVisit(
+        customSource: customSource,
+        referrer: referrer,
+        utmParameters: utmParameters,
+      );
+    } catch (e) {
+      AppLogger.e('❌ [Realtime] Erro ao registrar visita: $e');
+      return false;
+    }
+  }
+
+  // ✅ NOVO: Método público para obter informações da sessão
+  Map<String, String?> getMenuVisitSessionInfo() {
+    return MenuVisitService().getSessionInfo();
+  }
+
+  // ✅ Utilitário para verificar chave em payload
+  bool keyExists(dynamic data, String key) {
+    if (data is Map && data.containsKey(key) && data[key] != null) {
+      return true;
+    }
+    return false;
   }
 } // Fim da classe

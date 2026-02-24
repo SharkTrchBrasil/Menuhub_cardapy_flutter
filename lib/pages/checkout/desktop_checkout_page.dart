@@ -108,7 +108,7 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
             // ✅ VALIDAÇÃO: Verifica se finalOrder não é null antes de navegar
             if (state.finalOrder != null) {
               context.read<CartCubit>().clearCart().then((_) {
-                context.go('/order/success', extra: {
+                context.go('/success', extra: {
                   'order': state.finalOrder!,
                   'paymentMethod': state.selectedPaymentMethod,
                 });
@@ -265,25 +265,24 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
             onChanged: (text) => context.read<CheckoutCubit>().setObservation(text),
           ),
 
-          const SizedBox(height: 20),
-
           // CPF/CNPJ na nota
-          TextField(
-            controller: _cpfController,
-            decoration: InputDecoration(
-              labelText: 'CPF/CNPJ na nota (opcional)',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+          if (store.fiscalActive) ...[
+            TextField(
+              controller: _cpfController,
+              decoration: InputDecoration(
+                labelText: 'CPF/CNPJ na nota (opcional)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
               ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                CpfOuCnpjFormatter(),
+              ],
             ),
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              CpfOuCnpjFormatter(),
-            ],
-          ),
-
-          const SizedBox(height: 30),
+            const SizedBox(height: 30),
+          ],
 
           // Botão Fazer Pedido
           _buildSubmitButton(context, primaryColor),
@@ -1085,9 +1084,11 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
     
     if (needsPhone) {
       // ✅ CORREÇÃO: Usa showPhoneCollectionDialog que detecta desktop/mobile automaticamente
+      AppLogger.info('📞 [CHECKOUT] Coletando telefone do cliente...', tag: 'CHECKOUT');
       final phone = await showPhoneCollectionDialog(context, initialPhone: customer?.phone);
 
       if (phone == null || phone.isEmpty) {
+        AppLogger.warning('📞 [CHECKOUT] Telefone não informado - pedido cancelado', tag: 'CHECKOUT');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1099,29 +1100,46 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
         return;
       }
 
-      // Atualiza telefone se tiver customer
-      if (customer != null) {
-        final customerId = customer.id;
-        final customerName = customer.name ?? '';
-        final customerEmail = customer.email;
-        
-        if (customerId != null) {
-          try {
-            final customerRepo = getIt<CustomerRepository>();
-            final result = await customerRepo.updateCustomerInfo(
-              customerId,
-              customerName,
-              phone,
-              email: customerEmail,
-            );
+      // ✅ Salva telefone no backend
+      if (customer != null && customer.id != null) {
+        AppLogger.info('💾 [CHECKOUT] Salvando telefone no backend: $phone', tag: 'CHECKOUT');
+        try {
+          final customerRepo = getIt<CustomerRepository>();
+          final result = await customerRepo.updateCustomerInfo(
+            customer.id!,
+            customer.name ?? '',
+            phone,
+            email: customer.email,
+          );
 
-            if (result.isRight && context.mounted) {
-              context.read<AuthCubit>().updateCustomer(result.right);
-            }
-          } catch (e) {
-            // Ignora erro, tenta continuar
+          if (result.isRight && context.mounted) {
+            final updatedCustomer = result.right;
+            context.read<AuthCubit>().updateCustomer(updatedCustomer);
+            AppLogger.success('✅ [CHECKOUT] Telefone salvo com sucesso: ${updatedCustomer.phone}', tag: 'CHECKOUT');
+          } else if (context.mounted) {
+            AppLogger.error('❌ [CHECKOUT] Erro ao salvar telefone: ${result.left}', tag: 'CHECKOUT');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erro ao salvar telefone: ${result.left ?? "Erro desconhecido"}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
           }
+        } catch (e) {
+          AppLogger.error('❌ [CHECKOUT] Erro inesperado ao salvar telefone: $e', tag: 'CHECKOUT');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Erro ao salvar telefone. Tente novamente.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
+      } else {
+        AppLogger.warning('⚠️ [CHECKOUT] Cliente não encontrado - não foi possível salvar telefone', tag: 'CHECKOUT');
       }
     }
 

@@ -1,5 +1,5 @@
 // lib/widgets/store_closed_widgets.dart
-// ✅ Widgets de validação para loja fechada - estilo iFood
+// ✅ Widgets de validação para loja fechada - estilo Menuhub
 
 import 'package:flutter/material.dart';
 
@@ -82,7 +82,7 @@ class StoreClosedProductModal extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onDismiss ?? () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE4002B), // Vermelho iFood
+                backgroundColor: const Color(0xFFE4002B), // Vermelho Menuhub
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -261,7 +261,7 @@ class _StoreClosedCartModalState extends State<StoreClosedCartModal> {
             child: ElevatedButton(
               onPressed: widget.onSeeOtherOptions ?? widget.onDismiss,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE4002B), // Vermelho iFood
+                backgroundColor: const Color(0xFFE4002B), // Vermelho Menuhub
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(

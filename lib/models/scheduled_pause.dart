@@ -19,8 +19,8 @@ class ScheduledPause {
     return ScheduledPause(
       id: json['id'] as int,
       reason: json['reason'] as String?,
-      startTime: DateTime.parse(json['start_time'] as String),
-      endTime: DateTime.parse(json['end_time'] as String),
+      startTime: DateTime.parse(json['start_time'].toString()),
+      endTime: DateTime.parse(json['end_time'].toString()),
       isActive: json['is_active'] as bool? ?? true,
     );
   }
@@ -35,4 +35,3 @@ class ScheduledPause {
     };
   }
 }
-

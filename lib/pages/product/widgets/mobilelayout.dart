@@ -5,9 +5,9 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:dio/dio.dart';  // ✅ NOVO: Para chamar API de compartilhamento
-import 'package:share_plus/share_plus.dart';  // ✅ NOVO: Compartilhamento
-import 'package:totem/core/di.dart';  // ✅ NOVO: Para obter Dio
+import 'package:dio/dio.dart'; // ✅ NOVO: Para chamar API de compartilhamento
+import 'package:share_plus/share_plus.dart'; // ✅ NOVO: Compartilhamento
+import 'package:totem/core/di.dart'; // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/models/cart_variant.dart';
@@ -16,7 +16,7 @@ import 'package:totem/pages/product/product_page_cubit.dart';
 import 'package:totem/pages/product/widgets/variant_header_widget.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/themes/ds_theme.dart';
-import 'package:totem/cubit/store_cubit.dart';  // ✅ NOVO: Para obter store
+import 'package:totem/cubit/store_cubit.dart'; // ✅ NOVO: Para obter store
 
 // ✅ NOVOS IMPORTS
 import 'package:totem/core/enums/foodtags.dart';
@@ -57,7 +57,8 @@ class _MobileProductPageState extends State<MobileProductPage> {
     // ✅ CORREÇÃO: Acessa o produto através do 'productState'
     // O '!' é seguro pois este widget só é construído quando o estado é de sucesso.
     if (widget.productState.product != null) {
-      for (final variant in widget.productState.product!.selectedVariants) { //
+      for (final variant in widget.productState.product!.selectedVariants) {
+        //
         _variantKeys[variant.id] = GlobalKey(); //
       }
     }
@@ -107,14 +108,16 @@ class _MobileProductPageState extends State<MobileProductPage> {
         currentOffset + kToolbarHeight + (MediaQuery.of(context).padding.top);
     CartVariant? newStickyVariant;
 
-    for (final variant in product.selectedVariants) { //
+    for (final variant in product.selectedVariants) {
+      //
       final offset = _variantOffsets[variant.id]; //
       if (offset != null && selectionPoint >= offset) {
         newStickyVariant = variant;
       }
     }
 
-    if (newStickyVariant?.id != _currentStickyVariant?.id) { //
+    if (newStickyVariant?.id != _currentStickyVariant?.id) {
+      //
       setState(() => _currentStickyVariant = newStickyVariant);
     }
   }
@@ -125,12 +128,12 @@ class _MobileProductPageState extends State<MobileProductPage> {
     if (!mounted) return;
     final product = widget.productState.product;
     if (product == null) return;
-    
+
     // ✅ CORREÇÃO: Itera por TODOS os grupos, não apenas a partir do atual
     // Isso garante que pizzas com 3 sabores rolem por todos os grupos
     for (int i = 0; i < product.selectedVariants.length; i++) {
       final variant = product.selectedVariants[i];
-      
+
       // ✅ Verifica se é obrigatório E ainda não foi completado
       if (variant.isRequired && !variant.isValid) {
         // Verifica se a key existe e tem contexto válido
@@ -140,12 +143,13 @@ class _MobileProductPageState extends State<MobileProductPage> {
           Future.delayed(const Duration(milliseconds: 100), () {
             if (!mounted) return;
             if (key.currentContext == null) return;
-            
+
             Scrollable.ensureVisible(
               key.currentContext!,
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeInOut,
-              alignment: 0.15, // ✅ Rola até mostrar 15% do topo (melhor visibilidade)
+              alignment:
+                  0.15, // ✅ Rola até mostrar 15% do topo (melhor visibilidade)
             );
           });
           return; // Para no primeiro grupo não completado
@@ -158,7 +162,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
     final topPadding = MediaQuery.of(context).padding.top;
-    final imageHeight = media.width * 0.7; // Proporção igual ao iFood
+    final imageHeight = media.width * 0.7; // Proporção igual ao Menuhub
     final contentOverlapPosition = imageHeight - 24; // Overlap suave
 
     final product = widget.productState.product!;
@@ -167,32 +171,36 @@ class _MobileProductPageState extends State<MobileProductPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.white,
-      appBar: _showTitleInAppBar
-          ? AppBar(
-              backgroundColor: Colors.white,
-              elevation: 0.5,
-              shadowColor: Colors.grey.shade300,
-              title: Text(
-                product.product.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+      appBar:
+          _showTitleInAppBar
+              ? AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0.5,
+                shadowColor: Colors.grey.shade300,
+                title: Text(
+                  product.product.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
-              ),
-              centerTitle: true,
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back, color: widget.theme.primaryColor),
-                onPressed: () => context.go('/'),
-              ),
-              actions: [
-                IconButton(
-                  icon: Icon(Icons.share, color: widget.theme.primaryColor),
-                  onPressed: () => _shareProduct(context, product),
+                centerTitle: true,
+                leading: IconButton(
+                  icon: Icon(
+                    Icons.arrow_back,
+                    color: widget.theme.primaryColor,
+                  ),
+                  onPressed: () => context.go('/'),
                 ),
-              ],
-            )
-          : null,
+                actions: [
+                  IconButton(
+                    icon: Icon(Icons.share, color: widget.theme.primaryColor),
+                    onPressed: () => _shareProduct(context, product),
+                  ),
+                ],
+              )
+              : null,
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -200,7 +208,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ IFOOD STYLE: Imagem clicável (abre fullscreen)
+                // ✅ MENUHUB STYLE: Imagem clicável (abre fullscreen)
                 GestureDetector(
                   onTap: () => _openImageFullscreen(context, product),
                   child: SizedBox(
@@ -215,21 +223,29 @@ class _MobileProductPageState extends State<MobileProductPage> {
                           child: CachedNetworkImage(
                             imageUrl: product.product.imageUrl ?? '',
                             fit: BoxFit.cover,
-                            placeholder: (context, url) =>
-                                Container(color: Colors.grey.shade200),
-                            errorWidget: (context, url, error) => Container(
-                              color: Colors.grey.shade200,
-                              child: const Icon(Icons.image_not_supported, size: 48),
-                            ),
+                            placeholder:
+                                (context, url) =>
+                                    Container(color: Colors.grey.shade200),
+                            errorWidget:
+                                (context, url, error) => Container(
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    size: 48,
+                                  ),
+                                ),
                           ),
                         ),
-                        // ✅ IFOOD STYLE: Card flutuante com info da loja
+                        // ✅ MENUHUB STYLE: Card flutuante com info da loja
                         if (store != null)
                           Positioned(
                             bottom: 32,
                             left: 16,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
@@ -252,27 +268,31 @@ class _MobileProductPageState extends State<MobileProductPage> {
                                       width: 28,
                                       height: 28,
                                       fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(
-                                        width: 28,
-                                        height: 28,
-                                        color: Colors.grey.shade200,
-                                      ),
-                                      errorWidget: (context, url, error) => Container(
-                                        width: 28,
-                                        height: 28,
-                                        color: widget.theme.primaryColor.withOpacity(0.1),
-                                        child: Icon(
-                                          Icons.store,
-                                          size: 16,
-                                          color: widget.theme.primaryColor,
-                                        ),
-                                      ),
+                                      placeholder:
+                                          (context, url) => Container(
+                                            width: 28,
+                                            height: 28,
+                                            color: Colors.grey.shade200,
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) => Container(
+                                            width: 28,
+                                            height: 28,
+                                            color: widget.theme.primaryColor
+                                                .withOpacity(0.1),
+                                            child: Icon(
+                                              Icons.store,
+                                              size: 16,
+                                              color: widget.theme.primaryColor,
+                                            ),
+                                          ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   // Nome da loja + tempo + frete
                                   Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Row(
@@ -314,9 +334,13 @@ class _MobileProductPageState extends State<MobileProductPage> {
                                             style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w500,
-                                              color: store.store_operation_config?.freeDeliveryThreshold != null
-                                                  ? Colors.green.shade600
-                                                  : Colors.grey.shade600,
+                                              color:
+                                                  store
+                                                              .store_operation_config
+                                                              ?.freeDeliveryThreshold !=
+                                                          null
+                                                      ? Colors.green.shade600
+                                                      : Colors.grey.shade600,
                                             ),
                                           ),
                                         ],
@@ -331,7 +355,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
                     ),
                   ),
                 ),
-                // ✅ Conteúdo principal (sem overlap/bordas arredondadas como no iFood)
+                // ✅ Conteúdo principal (sem overlap/bordas arredondadas como no Menuhub)
                 Container(
                   width: media.width,
                   color: Colors.white,
@@ -341,7 +365,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
               ],
             ),
           ),
-          // ✅ IFOOD STYLE: Botão voltar rosa/vermelho
+          // ✅ MENUHUB STYLE: Botão voltar rosa/vermelho
           if (!_showTitleInAppBar)
             Positioned(
               top: topPadding + 12,
@@ -356,12 +380,16 @@ class _MobileProductPageState extends State<MobileProductPage> {
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(10),
-                    child: Icon(Icons.arrow_back, size: 22, color: Colors.white),
+                    child: Icon(
+                      Icons.arrow_back,
+                      size: 22,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
             ),
-          // ✅ Botão de compartilhamento (canto superior direito) - removido para ficar igual iFood
+          // ✅ Botão de compartilhamento (canto superior direito) - removido para ficar igual Menuhub
           if (_showTitleInAppBar && _currentStickyVariant != null)
             Positioned(
               top: kToolbarHeight + topPadding,
@@ -374,13 +402,13 @@ class _MobileProductPageState extends State<MobileProductPage> {
                   variant: _currentStickyVariant!,
                 ),
               ),
-            )
+            ),
         ],
       ),
     );
   }
 
-  // ✅ NOVO: Abre imagem em fullscreen (igual iFood imagem 2)
+  // ✅ NOVO: Abre imagem em fullscreen (igual Menuhub imagem 2)
   void _openImageFullscreen(BuildContext context, CartProduct product) {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -405,16 +433,17 @@ class _MobileProductPageState extends State<MobileProductPage> {
   String _getDeliveryFeeText(store) {
     final config = store.store_operation_config;
     if (config == null) return 'Grátis';
-    
-    if (config.freeDeliveryThreshold != null && config.freeDeliveryThreshold > 0) {
+
+    if (config.freeDeliveryThreshold != null &&
+        config.freeDeliveryThreshold > 0) {
       return 'Grátis';
     }
-    
+
     final fee = config.deliveryFee;
     if (fee != null && fee > 0) {
       return 'R\$ ${fee.toStringAsFixed(2).replaceAll('.', ',')}';
     }
-    
+
     return 'Grátis';
   }
 
@@ -429,15 +458,17 @@ class _MobileProductPageState extends State<MobileProductPage> {
       final response = await dio.post(
         '/products/${store.urlSlug}/${product.product.id}/share',
         data: {
-          'share_type': 'app',  // Tipo de compartilhamento (app, web, etc.)
-          'share_source': 'mobile',  // Origem do compartilhamento (mobile, desktop, etc.)
-          'utm_source': 'totem_app',  // UTM source para rastreamento
-          'utm_medium': 'share',  // UTM medium para rastreamento
+          'share_type': 'app', // Tipo de compartilhamento (app, web, etc.)
+          'share_source':
+              'mobile', // Origem do compartilhamento (mobile, desktop, etc.)
+          'utm_source': 'totem_app', // UTM source para rastreamento
+          'utm_medium': 'share', // UTM medium para rastreamento
         },
       );
 
       final shareUrl = response.data['share_url'] as String;
-      final shareMessage = 'Confira este produto: ${product.product.name}\n$shareUrl';
+      final shareMessage =
+          'Confira este produto: ${product.product.name}\n$shareUrl';
 
       // Usa o Share do Flutter
       final shareResult = await Share.share(
@@ -468,14 +499,16 @@ class _MobileProductPageState extends State<MobileProductPage> {
         // Fallback: usa URL básica sem token
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
         // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
-        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
-        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
-        final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
+        final productSlug = product.product.name
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl =
+            '$baseUrl/product/$productSlug/${product.product.id}';
+        final shareMessage =
+            'Confira este produto: ${product.product.name}\n$productUrl';
 
-        await Share.share(
-          shareMessage,
-          subject: product.product.name,
-        );
+        await Share.share(shareMessage, subject: product.product.name);
       } catch (e2) {
         // ✅ CORREÇÃO: Não bloqueia se houver erro ao compartilhar
         print('⚠️ Erro ao compartilhar produto: $e2');
@@ -494,14 +527,16 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
   Widget _buildContentColumn(CartProduct product) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculateOffsets());
-    
+
     // ✅ Verifica disponibilidade
-    final isAvailable = AvailabilityService.isProductAvailableNow(product.product);
+    final isAvailable = AvailabilityService.isProductAvailableNow(
+      product.product,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ✅ IFOOD STYLE: Título grande (22px, bold)
+        // ✅ MENUHUB STYLE: Título grande (22px, bold)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
@@ -514,8 +549,8 @@ class _MobileProductPageState extends State<MobileProductPage> {
             ),
           ),
         ),
-        
-        // ✅ IFOOD STYLE: Descrição (14px, cinza, line-height 1.4)
+
+        // ✅ MENUHUB STYLE: Descrição (14px, cinza, line-height 1.4)
         if (product.product.description != null &&
             product.product.description!.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -531,11 +566,14 @@ class _MobileProductPageState extends State<MobileProductPage> {
             ),
           ),
         ],
-        
+
         // ✅ AVISO DE INDISPONIBILIDADE
         if (!isAvailable)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 12.0,
+            ),
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -558,7 +596,8 @@ class _MobileProductPageState extends State<MobileProductPage> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (product.product.availabilityType == AvailabilityType.scheduled)
+                        if (product.product.availabilityType ==
+                            AvailabilityType.scheduled)
                           const Text(
                             'Verifique os horários de funcionamento.',
                             style: TextStyle(color: Colors.red, fontSize: 12),
@@ -571,28 +610,109 @@ class _MobileProductPageState extends State<MobileProductPage> {
             ),
           ),
 
-        // ✅ IFOOD STYLE: Preço BASE FIXO (não muda ao selecionar sabores)
+        // ✅ MENUHUB STYLE: Preço BASE FIXO (não muda ao selecionar sabores)
         // Para pizzas: mostra o preço do tamanho selecionado (startingPrice)
         // O preço total com opções extras aparece apenas no botão "Adicionar"
         const SizedBox(height: 12),
+        // ✅ MENUHUB STYLE: Preço com Promoção
+        const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            // ✅ Para pizzas: usa startingPrice (preço do tamanho escolhido)
-            // ✅ Para outros: usa basePrice normal
-            product.category.isCustomizable
-                ? product.startingPrice.toCurrency
-                : product.basePrice.toCurrency,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          child: Builder(
+            builder: (context) {
+              // Encontra o link da categoria correta para verificar promoção
+              final link = product.product.categoryLinks.firstWhereOrNull(
+                (l) => l.categoryId == product.category.id,
+              );
+
+              final bool hasPromo = link?.hasPromotion ?? false;
+              final int originalPriceInt = link?.price ?? 0;
+
+              // Preço principal a ser exibido
+              final int displayPriceInt =
+                  product.category.isCustomizable
+                      ? product.startingPrice
+                      : product.basePrice;
+
+              // Se tiver promoção e NÃO for customizável (pizzas têm lógica própria de "A partir de")
+              // Ou se for customizável mas queremos mostrar promoção no "A partir de"
+              if (hasPromo) {
+                final double originalPrice = originalPriceInt / 100.0;
+                final double displayPrice = displayPriceInt / 100.0;
+
+                // Calcula % desconto
+                int discountPercent = 0;
+                if (originalPrice > 0) {
+                  discountPercent =
+                      (((originalPrice - displayPrice) / originalPrice) * 100)
+                          .round();
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Preço Atual (Promocional)
+                    Text(
+                      displayPriceInt.toCurrency,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // Preço Original Riscado
+                    Text(
+                      originalPriceInt.toCurrency,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade500,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // Badge de Desconto
+                    if (discountPercent > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade600,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '-$discountPercent%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              }
+
+              // Preço Normal
+              return Text(
+                displayPriceInt.toCurrency,
+                style: const TextStyle(
+                  fontSize: 22, // Aumentei um pouco para destaque
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              );
+            },
           ),
         ),
 
         // ✅ TAGS ALIMENTARES E DE BEBIDAS
-        if (product.product.dietaryTags.isNotEmpty || product.product.beverageTags.isNotEmpty) ...[
+        if (product.product.dietaryTags.isNotEmpty ||
+            product.product.beverageTags.isNotEmpty) ...[
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -600,22 +720,32 @@ class _MobileProductPageState extends State<MobileProductPage> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                ...product.product.dietaryTags.map((tag) => Chip(
-                  label: Text(foodTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
-                  backgroundColor: Colors.green.shade50,
-                  labelStyle: TextStyle(color: Colors.green.shade800),
-                  side: BorderSide.none,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                )),
-                ...product.product.beverageTags.map((tag) => Chip(
-                  label: Text(beverageTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
-                  backgroundColor: Colors.blue.shade50,
-                  labelStyle: TextStyle(color: Colors.blue.shade800),
-                  side: BorderSide.none,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                )),
+                ...product.product.dietaryTags.map(
+                  (tag) => Chip(
+                    label: Text(
+                      foodTagNames[tag] ?? '',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Colors.green.shade50,
+                    labelStyle: TextStyle(color: Colors.green.shade800),
+                    side: BorderSide.none,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+                ...product.product.beverageTags.map(
+                  (tag) => Chip(
+                    label: Text(
+                      beverageTagNames[tag] ?? '',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Colors.blue.shade50,
+                    labelStyle: TextStyle(color: Colors.blue.shade800),
+                    side: BorderSide.none,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
               ],
             ),
           ),
@@ -623,7 +753,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
         // ✅ Espaçamento antes dos grupos de opções
         const SizedBox(height: 20),
-        
+
         // ✅ REMOVIDO: Texto "Tamanho" redundante (já aparece no nome do produto)
         // O tamanho já é selecionado antes de abrir esta tela
         if (product.selectedVariants.isNotEmpty) //
@@ -638,8 +768,8 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 key: _variantKeys[variant.id], //
                 onOptionUpdated: (v, o, nq) {
                   context.read<ProductPageCubit>().updateOption(
-                    v, 
-                    o, 
+                    v,
+                    o,
                     nq,
                     onUpdateComplete: _scrollToNextRequiredVariant,
                   );
@@ -650,12 +780,11 @@ class _MobileProductPageState extends State<MobileProductPage> {
             },
           ),
         const SizedBox(height: 24),
-        // ✅ IFOOD STYLE: Campo de observação
+        // ✅ MENUHUB STYLE: Campo de observação
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
             children: [
-
               const Text(
                 'Alguma observação?',
                 style: TextStyle(
@@ -671,10 +800,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 builder: (context, value, child) {
                   return Text(
                     '${value.text.length}/140',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
                   );
                 },
               ),
@@ -692,10 +818,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
             style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Ex: tirar a cebola, maionese à parte etc.',
-              hintStyle: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 14,
-              ),
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               counterText: '', // Esconde o contador padrão (já temos o nosso)
               filled: true,
               fillColor: Colors.grey.shade50,
@@ -711,7 +834,10 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: Colors.grey.shade400),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
         ),
@@ -720,7 +846,7 @@ class _MobileProductPageState extends State<MobileProductPage> {
   }
 }
 
-/// ✅ IFOOD STYLE: Visualizador de imagem em fullscreen
+/// ✅ MENUHUB STYLE: Visualizador de imagem em fullscreen
 /// Fundo preto, imagem centralizada, X no canto, nome/descrição embaixo
 class _FullscreenImageViewer extends StatelessWidget {
   final String imageUrl;
@@ -754,19 +880,21 @@ class _FullscreenImageViewer extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: imageUrl,
                   fit: BoxFit.contain,
-                  placeholder: (context, url) => const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
-                  errorWidget: (context, url, error) => const Icon(
-                    Icons.image_not_supported,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
+                  placeholder:
+                      (context, url) => const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                  errorWidget:
+                      (context, url, error) => const Icon(
+                        Icons.image_not_supported,
+                        size: 64,
+                        color: Colors.grey,
+                      ),
                 ),
               ),
             ),
           ),
-          
+
           // Botão X para fechar (canto superior direito)
           Positioned(
             top: topPadding + 16,
@@ -778,16 +906,12 @@ class _FullscreenImageViewer extends StatelessWidget {
                 customBorder: const CircleBorder(),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  child: const Icon(
-                    Icons.close,
-                    size: 28,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.close, size: 28, color: Colors.white),
                 ),
               ),
             ),
           ),
-          
+
           // Nome e descrição na parte inferior
           Positioned(
             bottom: bottomPadding + 24,
@@ -805,7 +929,8 @@ class _FullscreenImageViewer extends StatelessWidget {
                     color: Colors.white,
                   ),
                 ),
-                if (productDescription != null && productDescription!.isNotEmpty) ...[
+                if (productDescription != null &&
+                    productDescription!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     productDescription!,

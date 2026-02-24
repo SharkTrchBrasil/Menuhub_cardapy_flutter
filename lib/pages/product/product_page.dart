@@ -238,7 +238,7 @@ class _ProductPageState extends State<ProductPage> {
     // Usuários podem adicionar/editar produtos livremente, mesmo com loja fechada
     // A validação acontece apenas ao tentar finalizar o pedido
 
-    // ✅ LÓGICA DE PRODUCT ID PARA PIZZAS (igual ao iFood):
+    // ✅ LÓGICA DE PRODUCT ID PARA PIZZAS (igual ao Menuhub):
     // Se é uma pizza e tem tamanho selecionado, usa o linkedProductId do tamanho
     // Se não tem linkedProductId (dados antigos), usa o ID do OptionItem como fallback
     int productIdToSend;

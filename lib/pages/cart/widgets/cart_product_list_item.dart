@@ -159,19 +159,62 @@ class CartItemListItem extends StatelessWidget {
   }
 
   Widget _buildPriceSection(BuildContext context, CartItem item, DsTheme theme) {
+    // ✅ CORREÇÃO: Usa getter hasPromotion para detecção robusta de promoção
     final firstCategoryLink = item.product.categoryLinks.firstOrNull;
-    if (firstCategoryLink != null && firstCategoryLink.isOnPromotion && firstCategoryLink.promotionalPrice != null) {
-      final originalTotalPrice = firstCategoryLink.price * item.quantity;
+    
+    // Verifica promoção no link
+    final bool hasPromo = firstCategoryLink?.hasPromotion ?? false;
+    
+    if (hasPromo) {
+      final originalUnitButton = firstCategoryLink!.price;
+      
+      // ✅ Calcula total de complementos/variantes para somar ao preço original
+      int variantsTotal = 0;
+      for (final variant in item.variants) {
+        for (final option in variant.options) {
+            variantsTotal += option.price * option.quantity;
+        }
+      }
+      
+      // O preço original deve incluir os complementos, pois o preço final (item.totalPrice) também inclui
+      final originalTotalPrice = (originalUnitButton + variantsTotal) * item.quantity;
+      
       return Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(item.totalPrice.toCurrency, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: theme.productTextColor)),
+          // ✅ Preço Promocional em VERDE
+          Text(
+            item.totalPrice.toCurrency, 
+            style: TextStyle(
+              fontWeight: FontWeight.w600, 
+              fontSize: 16, 
+              color: Colors.green.shade700 // Verde escuro para destaque
+            )
+          ),
           const SizedBox(width: 8),
-          Text(originalTotalPrice.toCurrency, style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)),
+          // ✅ Preço Original Riscado em CINZA
+          Text(
+            originalTotalPrice.toCurrency, 
+            style: TextStyle(
+              fontSize: 13, // Levemente menor
+              color: Colors.grey.shade400, // Cinza claro
+              decoration: TextDecoration.lineThrough,
+              decorationColor: Colors.grey.shade400,
+            )
+          ),
         ],
       );
     }
-    return Text(item.formattedTotalPrice, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: theme.productTextColor));
+    
+    // Preço Normal
+    return Text(
+      item.formattedTotalPrice, 
+      style: TextStyle(
+        fontWeight: FontWeight.w600, 
+        fontSize: 16, 
+        color: theme.productTextColor
+      )
+    );
   }
 
   Widget _buildVariantsSection(BuildContext context, DsTheme theme) {

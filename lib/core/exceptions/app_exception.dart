@@ -332,9 +332,9 @@ class DeliveryException extends AppException {
     super.stackTrace,
   });
   
-  /// Endereço fora da área de entrega
+  /// O restaurante não entrega neste endereço
   factory DeliveryException.outOfRange() => const DeliveryException(
-    'Endereço fora da área de entrega.',
+    'O restaurante não realiza entregas nesta região.',
     code: 'DELIVERY_OUT_OF_RANGE',
   );
   

@@ -11,17 +11,22 @@ import 'package:totem/core/enums/available_type.dart';
 import 'package:totem/helpers/enums/product_status.dart';
 import 'package:totem/helpers/enums/product_type.dart';
 import 'package:totem/models/product_category_link.dart';
+import 'package:totem/core/helpers/money_amount_helper.dart';
 
 /// Enum para unidade de medida do produto
 enum ProductUnit {
   /// Unidade padrão (quantidade inteira)
   UNIT,
+
   /// Quilograma (peso decimal)
   KG,
+
   /// Litro (volume decimal)
   L,
+
   /// Grama
   G,
+
   /// Mililitro
   ML;
 
@@ -70,17 +75,17 @@ class Product extends Equatable {
   final String name;
   final String? description;
   final ProductStatus status;
-  
+
   // Identificadores externos
   final String? ean;
   final String? externalCode;
-  
+
   // Estoque
   final int stockQuantity;
   final bool controlStock;
   final int minStock;
   final int maxStock;
-  
+
   // Atributos
   final ProductUnit unit;
   final int priority;
@@ -89,11 +94,11 @@ class Product extends Equatable {
   final int? servesUpTo;
   final int? weight;
   final int soldCount;
-  
+
   // Vínculos
   final List<ProductVariantLink> variantLinks;
   final List<ProductCategoryLink> categoryLinks;
-  
+
   // Preços
   final int? price;
   final int? costPrice;
@@ -101,32 +106,32 @@ class Product extends Equatable {
   final int? promotionalPrice;
   final int? primaryCategoryId;
   final bool hasMultiplePrices;
-  
+
   // Tipo do produto
   final ProductType productType;
-  
+
   // Tags dietéticas
   final List<String> dietaryTags;
   final List<String> beverageTags;
-  
+
   // Preços por tamanho (para sabores de pizza)
   final List<FlavorPrice> prices;
-  
+
   // Imagens
   final List<ImageModel> images;
   final String? videoUrl;
-  
+
   // Disponibilidade
   final AvailabilityType availabilityType;
   final List<ScheduleRule> schedules;
-  
+
   // Campos de mercado/farmácia
   final String? packaging;
   final int? quantity;
   final int? sellingMinimum;
   final int? sellingIncremental;
   final int? averageUnit;
-  
+
   // Campos adicionais
   final bool isIndustrialized;
   final String? externalItemId;
@@ -139,24 +144,25 @@ class Product extends Equatable {
   final int sellingRank;
   final List<String> promotionTags;
   final List<String> classification;
-  
+
   // ✅ CAMPOS ADICIONAIS DO CATÁLOGO (alinhados com estrutura completa)
-  final String? availability;       // ALWAYS, SCHEDULED, etc
+  final String? availability; // ALWAYS, SCHEDULED, etc
   final Map<String, dynamic>? problems; // Problemas do produto
-  final String? productEan;          // Código EAN do produto (alias de ean)
-  final int sequence;                // Ordem de exibição (alias de priority)
+  final String? productEan; // Código EAN do produto (alias de ean)
+  final int sequence; // Ordem de exibição (alias de priority)
   final Map<String, dynamic>? violation; // Detalhes da violação
   final List<Map<String, dynamic>> extensions; // Extensões do produto
-  final bool suggestedCombo;         // Se é um combo sugerido
+  final bool suggestedCombo; // Se é um combo sugerido
   final Map<String, dynamic>? itemPrice; // Preço do item
-  final bool available;              // Se o produto está disponível
+  final bool available; // Se o produto está disponível
   final List<Map<String, dynamic>>? statusByCatalog; // Status por catálogo
-  final List<Map<String, dynamic>>? externalCodes; // Códigos externos por catálogo
-  
+  final List<Map<String, dynamic>>?
+  externalCodes; // Códigos externos por catálogo
+
   // Cashback
   final String? cashbackType;
   final int cashbackValue;
-  
+
   // Master product (para produtos variantes)
   final int? masterProductId;
 
@@ -232,74 +238,74 @@ class Product extends Equatable {
 
   /// Construtor para instância vazia
   const Product.empty()
-      : id = null,
-        name = '',
-        description = null,
-        status = ProductStatus.ACTIVE,
-        ean = null,
-        externalCode = null,
-        stockQuantity = 0,
-        controlStock = false,
-        minStock = 0,
-        maxStock = 0,
-        unit = ProductUnit.UNIT,
-        priority = 0,
-        featured = false,
-        storeId = 0,
-        servesUpTo = null,
-        weight = null,
-        soldCount = 0,
-        variantLinks = const [],
-        categoryLinks = const [],
-        price = null,
-        costPrice = null,
-        isOnPromotion = false,
-        promotionalPrice = null,
-        primaryCategoryId = null,
-        hasMultiplePrices = false,
-        productType = ProductType.INDIVIDUAL,
-        dietaryTags = const [],
-        beverageTags = const [],
-        prices = const [],
-        images = const [],
-        videoUrl = null,
-        availabilityType = AvailabilityType.always,
-        schedules = const [],
-        packaging = null,
-        quantity = null,
-        sellingMinimum = null,
-        sellingIncremental = null,
-        averageUnit = null,
-        isIndustrialized = false,
-        externalItemId = null,
-        externalProductId = null,
-        availabilityStatus = null,
-        stockStatus = null,
-        hasViolation = false,
-        canEdit = true,
-        violationCheckState = null,
-        sellingRank = 0,
-        promotionTags = const [],
-        classification = const [],
-        availability = null,
-        problems = null,
-        productEan = null,
-        sequence = 0,
-        violation = null,
-        extensions = const [],
-        suggestedCombo = false,
-        itemPrice = null,
-        available = true,
-        statusByCatalog = null,
-        externalCodes = null,
-        cashbackType = null,
-        cashbackValue = 0,
-        masterProductId = null,
-        linkedProductId = null;
+    : id = null,
+      name = '',
+      description = null,
+      status = ProductStatus.ACTIVE,
+      ean = null,
+      externalCode = null,
+      stockQuantity = 0,
+      controlStock = false,
+      minStock = 0,
+      maxStock = 0,
+      unit = ProductUnit.UNIT,
+      priority = 0,
+      featured = false,
+      storeId = 0,
+      servesUpTo = null,
+      weight = null,
+      soldCount = 0,
+      variantLinks = const [],
+      categoryLinks = const [],
+      price = null,
+      costPrice = null,
+      isOnPromotion = false,
+      promotionalPrice = null,
+      primaryCategoryId = null,
+      hasMultiplePrices = false,
+      productType = ProductType.INDIVIDUAL,
+      dietaryTags = const [],
+      beverageTags = const [],
+      prices = const [],
+      images = const [],
+      videoUrl = null,
+      availabilityType = AvailabilityType.always,
+      schedules = const [],
+      packaging = null,
+      quantity = null,
+      sellingMinimum = null,
+      sellingIncremental = null,
+      averageUnit = null,
+      isIndustrialized = false,
+      externalItemId = null,
+      externalProductId = null,
+      availabilityStatus = null,
+      stockStatus = null,
+      hasViolation = false,
+      canEdit = true,
+      violationCheckState = null,
+      sellingRank = 0,
+      promotionTags = const [],
+      classification = const [],
+      availability = null,
+      problems = null,
+      productEan = null,
+      sequence = 0,
+      violation = null,
+      extensions = const [],
+      suggestedCombo = false,
+      itemPrice = null,
+      available = true,
+      statusByCatalog = null,
+      externalCodes = null,
+      cashbackType = null,
+      cashbackValue = 0,
+      masterProductId = null,
+      linkedProductId = null;
 
   /// Getter para primeira imagem (imagem principal)
   ImageModel? get primaryImage => images.isNotEmpty ? images.first : null;
-  
+
   /// Getter para URL da imagem principal
   String? get imageUrl => primaryImage?.url;
 
@@ -312,10 +318,66 @@ class Product extends Equatable {
 
   /// Retorna o preço efetivo (promocional ou normal)
   int get effectivePrice {
-    if (isOnPromotion && promotionalPrice != null) {
-      return promotionalPrice!;
-    }
     return price ?? 0;
+  }
+
+  static int _parsePrice(dynamic value, [String? fieldName]) {
+    // Usa helper global que já trata centavos (int), reais (double), mapas e strings
+    return parseMoneyAmount(value) ?? 0;
+  }
+
+  /// ✅ Busca preço do produto, usando category_links como fallback
+  static int _getPriceWithFallback(Map<String, dynamic> json) {
+    // Primeiro tenta o preço direto do produto
+    if (json['price'] != null) {
+      final directPrice = _parsePrice(json['price'], 'price');
+      if (directPrice > 0) return directPrice;
+    }
+
+    // Fallback: busca do primeiro category_link
+    final categoryLinks = json['category_links'] as List<dynamic>?;
+    if (categoryLinks != null && categoryLinks.isNotEmpty) {
+      final firstLink = categoryLinks.first as Map<String, dynamic>;
+      final linkPrice = _parsePrice(firstLink['price'], 'category_link.price');
+      if (linkPrice > 0) return linkPrice;
+    }
+
+    return 0;
+  }
+
+  /// ✅ Busca flag de promoção, usando category_links como fallback
+  static bool _getPromotionWithFallback(Map<String, dynamic> json) {
+    if (json['is_on_promotion'] == true) return true;
+
+    final categoryLinks = json['category_links'] as List<dynamic>?;
+    if (categoryLinks != null && categoryLinks.isNotEmpty) {
+      final firstLink = categoryLinks.first as Map<String, dynamic>;
+      return firstLink['is_on_promotion'] == true;
+    }
+
+    return false;
+  }
+
+  /// ✅ Busca preço promocional, usando category_links como fallback
+  static int? _getPromotionalPriceWithFallback(Map<String, dynamic> json) {
+    if (json['promotional_price'] != null) {
+      final price = _parsePrice(json['promotional_price'], 'promotional_price');
+      if (price > 0) return price;
+    }
+
+    final categoryLinks = json['category_links'] as List<dynamic>?;
+    if (categoryLinks != null && categoryLinks.isNotEmpty) {
+      final firstLink = categoryLinks.first as Map<String, dynamic>;
+      if (firstLink['promotional_price'] != null) {
+        final price = _parsePrice(
+          firstLink['promotional_price'],
+          'category_link.promotional_price',
+        );
+        if (price > 0) return price;
+      }
+    }
+
+    return null;
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -338,53 +400,67 @@ class Product extends Equatable {
       weight: json['weight'],
       soldCount: json['sold_count'] ?? 0,
       productType: ProductType.fromString(json['product_type']),
-      price: json['price'],
-      costPrice: json['cost_price'],
-      isOnPromotion: json['is_on_promotion'] ?? false,
-      promotionalPrice: json['promotional_price'],
+
+      // Parse de category_links PRIMEIRO (para usar como fallback de preço)
+      categoryLinks:
+          (json['category_links'] as List<dynamic>? ?? [])
+              .map((link) => ProductCategoryLink.fromJson(link))
+              .toList(),
+
+      // ✅ CORREÇÃO: Se price é null, usa o preço do primeiro category_link
+      price: _getPriceWithFallback(json),
+      costPrice:
+          json['cost_price'] != null ? _parsePrice(json['cost_price']) : null,
+      isOnPromotion: _getPromotionWithFallback(json),
+      promotionalPrice: _getPromotionalPriceWithFallback(json),
       primaryCategoryId: json['primary_category_id'],
       hasMultiplePrices: json['has_multiple_prices'] ?? false,
-      
+
       // Parse de listas
-      variantLinks: (json['variant_links'] as List<dynamic>? ?? [])
-          .map((link) => ProductVariantLink.fromJson(link))
-          .toList(),
-      categoryLinks: (json['category_links'] as List<dynamic>? ?? [])
-          .map((link) => ProductCategoryLink.fromJson(link))
-          .toList(),
-      prices: (json['prices'] as List<dynamic>? ?? [])
-          .map((p) => FlavorPrice.fromJson(p))
-          .toList(),
-      images: (json['gallery_images'] as List<dynamic>? ?? [])
-          .map((imgJson) => ImageModel.fromJson(imgJson))
-          .toList(),
-      
+      variantLinks:
+          (json['variant_links'] as List<dynamic>? ?? [])
+              .map((link) => ProductVariantLink.fromJson(link))
+              .toList(),
+      // categoryLinks já foi parseado acima
+      prices:
+          (json['prices'] as List<dynamic>? ?? [])
+              .map((p) => FlavorPrice.fromJson(p))
+              .toList(),
+      images:
+          (json['gallery_images'] as List<dynamic>? ?? [])
+              .map((imgJson) => ImageModel.fromJson(imgJson))
+              .toList(),
+
       // Tags
-      dietaryTags: (json['dietary_tags'] as List<dynamic>? ?? [])
-          .map((tag) => tag.toString())
-          .toList(),
-      beverageTags: (json['beverage_tags'] as List<dynamic>? ?? [])
-          .map((tag) => tag.toString())
-          .toList(),
-      
+      dietaryTags:
+          (json['dietary_tags'] as List<dynamic>? ?? [])
+              .map((tag) => tag.toString())
+              .toList(),
+      beverageTags:
+          (json['beverage_tags'] as List<dynamic>? ?? [])
+              .map((tag) => tag.toString())
+              .toList(),
+
       // Vídeo
       videoUrl: json['video_url'],
-      
+
       // Disponibilidade
-      availabilityType: json['availability_type'] == 'SCHEDULED'
-          ? AvailabilityType.scheduled
-          : AvailabilityType.always,
-      schedules: (json['schedules'] as List<dynamic>? ?? [])
-          .map((s) => ScheduleRule.fromJson(s))
-          .toList(),
-      
+      availabilityType:
+          json['availability_type'] == 'SCHEDULED'
+              ? AvailabilityType.scheduled
+              : AvailabilityType.always,
+      schedules:
+          (json['schedules'] as List<dynamic>? ?? [])
+              .map((s) => ScheduleRule.fromJson(s))
+              .toList(),
+
       // Mercado/Farmácia
       packaging: json['packaging'],
       quantity: json['quantity'],
       sellingMinimum: json['selling_minimum'],
       sellingIncremental: json['selling_incremental'],
       averageUnit: json['average_unit'],
-      
+
       // Campos adicionais
       isIndustrialized: json['is_industrialized'] ?? false,
       externalItemId: json['external_item_id'],
@@ -395,38 +471,58 @@ class Product extends Equatable {
       canEdit: json['can_edit'] ?? true,
       violationCheckState: json['violation_check_state'],
       sellingRank: json['selling_rank'] ?? 0,
-      promotionTags: (json['promotion_tags'] as List<dynamic>?)
-          ?.map((tag) => tag.toString())
-          .toList() ?? const [],
-      classification: (json['classification'] as List<dynamic>?)
-          ?.map((c) => c.toString())
-          .toList() ?? const [],
+      promotionTags:
+          (json['promotion_tags'] as List<dynamic>?)
+              ?.map((tag) => tag.toString())
+              .toList() ??
+          const [],
+      classification:
+          (json['classification'] as List<dynamic>?)
+              ?.map((c) => c.toString())
+              .toList() ??
+          const [],
       // ✅ CAMPOS ADICIONAIS DO CATÁLOGO
       availability: json['availability'],
-      problems: json['problems'] != null ? Map<String, dynamic>.from(json['problems']) : null,
+      problems:
+          json['problems'] != null
+              ? Map<String, dynamic>.from(json['problems'])
+              : null,
       productEan: json['product_ean'] ?? json['ean'], // Fallback para ean
-      sequence: json['sequence'] ?? json['priority'] ?? 0, // Fallback para priority
-      violation: json['violation'] != null ? Map<String, dynamic>.from(json['violation']) : null,
-      extensions: (json['extensions'] as List<dynamic>? ?? [])
-          .map((ext) => Map<String, dynamic>.from(ext))
-          .toList(),
+      sequence:
+          json['sequence'] ?? json['priority'] ?? 0, // Fallback para priority
+      violation:
+          json['violation'] != null
+              ? Map<String, dynamic>.from(json['violation'])
+              : null,
+      extensions:
+          (json['extensions'] as List<dynamic>? ?? [])
+              .map((ext) => Map<String, dynamic>.from(ext))
+              .toList(),
       suggestedCombo: json['suggested_combo'] ?? false,
-      itemPrice: json['item_price'] != null ? Map<String, dynamic>.from(json['item_price']) : null,
-      available: json['available'] ?? (json['status'] == 'ACTIVE' || json['status'] == 'AVAILABLE'),
-      statusByCatalog: json['status_by_catalog'] != null 
-          ? (json['status_by_catalog'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
-      externalCodes: json['external_codes'] != null
-          ? (json['external_codes'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
+      itemPrice:
+          json['item_price'] != null
+              ? Map<String, dynamic>.from(json['item_price'])
+              : null,
+      available:
+          json['available'] ??
+          (json['status'] == 'ACTIVE' || json['status'] == 'AVAILABLE'),
+      statusByCatalog:
+          json['status_by_catalog'] != null
+              ? (json['status_by_catalog'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
+      externalCodes:
+          json['external_codes'] != null
+              ? (json['external_codes'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
       cashbackType: json['cashback_type'],
       cashbackValue: json['cashback_value'] ?? 0,
       masterProductId: json['master_product_id'],
-      linkedProductId: json['linked_product_id'], // ✅ Leitura do linked_product_id
+      linkedProductId:
+          json['linked_product_id'], // ✅ Leitura do linked_product_id
     );
   }
 
@@ -463,7 +559,10 @@ class Product extends Equatable {
       'dietary_tags': dietaryTags,
       'beverage_tags': beverageTags,
       'video_url': videoUrl,
-      'availability_type': availabilityType == AvailabilityType.scheduled ? 'SCHEDULED' : 'ALWAYS',
+      'availability_type':
+          availabilityType == AvailabilityType.scheduled
+              ? 'SCHEDULED'
+              : 'ALWAYS',
       'schedules': schedules.map((s) => s.toJson()).toList(),
       'packaging': packaging,
       'quantity': quantity,
@@ -619,7 +718,8 @@ class Product extends Equatable {
       cashbackType: cashbackType ?? this.cashbackType,
       cashbackValue: cashbackValue ?? this.cashbackValue,
       masterProductId: masterProductId ?? this.masterProductId,
-      linkedProductId: linkedProductId ?? this.linkedProductId, // ✅ Copiar novo valor
+      linkedProductId:
+          linkedProductId ?? this.linkedProductId, // ✅ Copiar novo valor
     );
   }
 

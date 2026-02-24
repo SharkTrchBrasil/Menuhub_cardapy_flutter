@@ -6,7 +6,7 @@ import 'package:totem/pages/profile/profile_cubit.dart';
 import 'package:totem/pages/profile/widgets/not_logged_in_view.dart';
 import 'package:totem/pages/profile/widgets/profile_menu_item.dart';
 
-/// Mobile Profile Page - Estilo iFood
+/// Mobile Profile Page - Estilo Menuhub
 /// Implementação específica para dispositivos móveis
 class MobileProfile extends StatelessWidget {
   const MobileProfile({super.key});
@@ -14,7 +14,7 @@ class MobileProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ✅ Remove AppBar para ficar no estilo iFood (sem barra de título)
+      // ✅ Remove AppBar para ficar no estilo Menuhub (sem barra de título)
       body: SafeArea(
         child: BlocBuilder<AuthCubit, AuthState>(
           buildWhen: (previous, current) => previous.customer != current.customer,
@@ -78,7 +78,7 @@ class MobileProfile extends StatelessWidget {
                 ProfileMenuItem(
                   icon: Icons.location_on_outlined,
                   title: 'Meus endereços',
-                  onTap: () => context.push('/select-address'),
+                  onTap: () => context.push('/select-address', extra: true),
                 ),
                 ProfileMenuItem(
                   icon: Icons.local_offer_outlined,

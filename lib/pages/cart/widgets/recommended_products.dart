@@ -90,78 +90,7 @@ class RecommendedProductTile extends StatefulWidget {
 }
 
 class _RecommendedProductTileState extends State<RecommendedProductTile> {
-  // ✅ 4. ESTADO DE LOADING MOVIDO PARA A CLASSE DE ESTADO
   bool _isLoading = false;
-
-  // ✅ 5. FUNÇÃO DE PREÇO CORRIGIDA - Agora verifica se é pizza
-  // ✅ 5. FUNÇÃO DE PREÇO CORRIGIDA E UNIFICADA
-  String _getDisplayPrice() {
-    // 1. Prioridade: Se for customizável (Pizzas etc)
-    if (widget.category?.isCustomizable == true && widget.product.prices.isNotEmpty) {
-      final validPrices = widget.product.prices.where((p) => p.price > 0).map((p) => p.price);
-      if (validPrices.isNotEmpty) {
-        final minPrice = validPrices.reduce(min);
-        return '${minPrice.toCurrency}';
-      }
-    }
-    
-    // 2. Se tiver preços explícitos (ex: açaí por tamanho), pega o menor > 0
-    if (widget.product.prices.isNotEmpty) {
-      final validPrices = widget.product.prices.where((p) => p.price > 0).map((p) => p.price);
-      if (validPrices.isNotEmpty) {
-        final minPrice = validPrices.reduce(min);
-        // Se parece ter variações, também usa "A partir de"
-        if (validPrices.length > 1) {
-             return '${minPrice.toCurrency}';
-        }
-        return minPrice.toCurrency;
-      }
-    }
-
-    // 3. Produto geral (via categoryLinks)
-    if (widget.product.categoryLinks.isNotEmpty) {
-      final validPrices = widget.product.categoryLinks
-        .map((link) => link.isOnPromotion && link.promotionalPrice != null 
-            ? link.promotionalPrice! 
-            : link.price)
-        .where((p) => p > 0);
-        
-      if (validPrices.isNotEmpty) {
-        final minPrice = validPrices.reduce(min);
-        return minPrice.toCurrency;
-      }
-    }
-    
-    // 4. ✅ NOVO: Fallback para Pizza (preço nos tamanhos da categoria)
-    if (widget.category?.isCustomizable == true) {
-      final sizeGroup = widget.category!.optionGroups.firstWhereOrNull(
-        (g) => g.groupType == OptionGroupType.size,
-      );
-      
-      if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
-        // Encontra o menor preço entre os tamanhos ativos
-        final validPrices = sizeGroup.items
-            .where((item) => item.isActive && item.price > 0)
-            .map((item) => item.price);
-            
-        if (validPrices.isNotEmpty) {
-           final minPrice = validPrices.reduce(min);
-           return '${minPrice.toCurrency}';
-        }
-      }
-    }
-
-    // LOG DE DEBUG PARA INVESTIGAR O PROBLEMA DO PREÇO
-    print('[DEBUG] Produto sem preço: ${widget.product.name}');
-    print('  - Categoria customizável? ${widget.category?.isCustomizable}');
-    print('  - Prices count: ${widget.product.prices.length}');
-    if (widget.product.prices.isNotEmpty) {
-      widget.product.prices.forEach((p) => print('    - Price: ${p.price}, SizeId: ${p.sizeOptionId}'));
-    }
-    print('  - CategoryLinks count: ${widget.product.categoryLinks.length}');
-    
-    return ''; // Retorna vazio se não tiver preço
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +102,7 @@ class _RecommendedProductTileState extends State<RecommendedProductTile> {
     // ✅ Layout Unificado para todos os produtos
     return SizedBox(
       width: 120,
-      height: 192,
+      height: 200, // Aumentei um pouco a altura para caber o preço promocional
       child: GestureDetector(
         onTap: _isLoading ? null : widget.onTap,
         child: Column(
@@ -230,22 +159,129 @@ class _RecommendedProductTileState extends State<RecommendedProductTile> {
             ),
             const SizedBox(height: 8),
 
-            Text(
-              _getDisplayPrice(),
-              style: TextStyle(fontWeight: FontWeight.w600, color: theme.productTextColor),
-            ),
+            // ✅ Seção de Preço Atualizada com Promoção
+            _buildPriceSection(theme),
 
             const SizedBox(height: 4),
             Expanded(
               child: Text(
                 widget.product.name,
-                style: TextStyle(color: theme.cartTextColor),
+                style: TextStyle(
+                  color: theme.cartTextColor,
+                  fontSize: 13,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPriceSection(DsTheme theme) {
+    int? currentPrice;
+    int? originalPrice;
+
+    // 1. Tenta pegar de CategoryLink
+    var link = widget.product.categoryLinks.firstWhereOrNull((l) => l.categoryId == widget.category?.id) 
+               ?? widget.product.categoryLinks.firstOrNull;
+
+    if (link != null) {
+        if (link.isOnPromotion && (link.promotionalPrice ?? 0) > 0) {
+            currentPrice = link.promotionalPrice!;
+            originalPrice = link.price;
+        } else if (link.price > 0) {
+            currentPrice = link.price;
+        }
+    }
+
+    // 2. Se não achou em links, ou é pizza/customizável
+    if (currentPrice == null) {
+         if (widget.category?.isCustomizable == true && widget.product.prices.isNotEmpty) {
+             final validPrices = widget.product.prices.where((p) => p.price > 0).map((p) => p.price.toInt()); // Força int se for num
+             if (validPrices.isNotEmpty) {
+                 currentPrice = validPrices.reduce(min);
+             }
+         } else if (widget.product.prices.isNotEmpty) {
+             final validPrices = widget.product.prices.where((p) => p.price > 0).map((p) => p.price.toInt());
+             if (validPrices.isNotEmpty) {
+                 currentPrice = validPrices.reduce(min);
+             }
+         }
+    }
+
+    // fallback OptionGroup
+    if (currentPrice == null && widget.category?.isCustomizable == true) {
+        final sizeGroup = widget.category!.optionGroups.firstWhereOrNull((g) => g.groupType == OptionGroupType.size);
+        if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+             final validPrices = sizeGroup.items.where((i) => i.isActive && i.price > 0).map((i) => i.price.toInt());
+             if (validPrices.isNotEmpty) {
+                 currentPrice = validPrices.reduce(min);
+             }
+        }
+    }
+
+    if (currentPrice == null) return const SizedBox.shrink();
+
+    // ✅ Renderiza Layout de Promoção ou Normal
+    // Extension IntX toCurrency handle / 100 automatically
+    if (originalPrice != null && originalPrice > currentPrice) {
+        final discountPercent = (((originalPrice - currentPrice) / originalPrice) * 100).round();
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              currentPrice.toCurrency, // Getter (int extension)
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF168F48),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Text(
+                  originalPrice.toCurrency, // Getter
+                  style: TextStyle(
+                    decoration: TextDecoration.lineThrough,
+                    color: Colors.grey.shade500,
+                    fontSize: 11,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF168F48),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '-$discountPercent%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+
+    // Layout Normal
+    return Text(
+      currentPrice.toCurrency, // Getter
+      style: TextStyle(
+        fontWeight: FontWeight.w600,
+        color: theme.productTextColor,
+        fontSize: 14,
       ),
     );
   }

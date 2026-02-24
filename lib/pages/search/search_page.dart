@@ -11,7 +11,7 @@ import '../../helpers/navigation_helper.dart';
 import '../../cubit/store_cubit.dart';
 
 
-/// Tela de Busca Fullscreen no estilo iFood
+/// Tela de Busca Fullscreen no estilo Menuhub
 /// - Campo de busca no topo com botão Cancelar
 /// - Resultados agrupados por categoria (lista, não grid)
 /// - Ao clicar em um item, abre a tela de detalhes normal

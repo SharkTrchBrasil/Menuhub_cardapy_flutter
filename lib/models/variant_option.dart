@@ -41,23 +41,38 @@ class VariantOption {
     this.linked_product_id,
   });
 
+  static int _parsePrice(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is Map) {
+      final amount = value['amount'] ?? value['value'];
+      if (amount is num) return (amount as num).toInt();
+      if (amount is String) {
+          return double.tryParse(amount)?.toInt() ?? 0;
+      }
+    }
+    if (value is String) return double.tryParse(value)?.toInt() ?? 0;
+    return 0;
+  }
+
   factory VariantOption.fromJson(Map<String, dynamic> json) {
     return VariantOption(
       id: json['id'] as int,
       variantId: json['variant_id'] as int,
       resolvedName: json['resolved_name'] as String,
-      resolvedPrice: json['resolved_price'] as int,
-      available: json['available'] as bool? ?? true,
+      resolvedPrice: _parsePrice(json['resolved_price']),
+      available: json['available'] == true || json['available'] == 1, // Suporte a int/bool
 
       // ✅ NOVOS CAMPOS
-      trackInventory: json['track_inventory'] as bool? ?? false,
+      trackInventory: json['track_inventory'] == true || json['track_inventory'] == 1,
       stockQuantity: json['stock_quantity'] as int? ?? 0,
-      isActuallyAvailable: json['is_actually_available'] as bool? ?? true,
+      isActuallyAvailable: json['is_actually_available'] == true || json['is_actually_available'] == 1,
 
       description: json['description'] as String?,
       imagePath: json['image_path'] as String?,
       name_override: json['name_override'] as String?,
-      price_override: json['price_override'] as int?,
+      price_override: json['price_override'] != null ? _parsePrice(json['price_override']) : null,
       pos_code: json['pos_code'] as String?,
       linked_product_id: json['linked_product_id'] as int?,
     );

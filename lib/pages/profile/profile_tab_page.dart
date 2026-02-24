@@ -98,7 +98,7 @@ class ProfileTabPage extends StatelessWidget {
                     _ProfileMenuItem(
                       icon: Icons.location_on,
                       title: 'Meus endereços',
-                      onTap: () => context.push('/select-address'),
+                      onTap: () => context.push('/select-address', extra: true),
                     ),
                     _ProfileMenuItem(
                       icon: Icons.payment,

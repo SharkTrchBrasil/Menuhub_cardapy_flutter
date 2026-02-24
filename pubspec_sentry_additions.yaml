@@ -1,0 +1,107 @@
+# ✅ ADIÇÕES PARA PUBSPEC.YAML - SENTRY/CRASHLYTICS INTEGRATION
+# 
+# Adicione estas dependências ao seu pubspec.yaml
+
+dependencies:
+  # ✅ Sentry para error tracking e performance monitoring
+  sentry_flutter: ^7.10.0
+  
+  # ✅ Firebase Crashlytics para crash reporting
+  firebase_crashlytics: ^3.4.9
+  
+  # ✅ Firebase Analytics para eventos de negócio
+  firebase_analytics: ^10.7.0
+  
+  # ✅ Firebase Core (necessário para Crashlytics e Analytics)
+  firebase_core: ^2.24.2
+
+dev_dependencies:
+  # ✅ Sentry para desenvolvimento
+  sentry_dart: ^7.10.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔥 INSTRUÇÕES DE INSTALAÇÃO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# 1. Execute flutter pub get
+# flutter pub get
+
+# 2. Configure o Firebase (se ainda não configurado)
+# - Adicione o google-services.json (Android)
+# - Adicione o GoogleService-Info.plist (iOS)
+# - Siga o guia: https://firebase.google.com/docs/flutter/setup
+
+# 3. Configure o Sentry
+# - Crie um projeto em https://sentry.io
+# - Obtenha seu DSN (Data Source Name)
+# - Configure no AppLogger.initialize()
+
+# 4. Adicione ao seu main.dart:
+# import 'package:totem_pro_admin/core/utils/app_logger.dart';
+# 
+# void main() async {
+#   await AppLogger.initialize(
+#     dsn: 'YOUR_SENTRY_DSN',
+#     environment: kDebugMode ? 'development' : 'production',
+#   );
+#   
+#   runApp(MyApp());
+# }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔥 CONFIGURAÇÃO DO FIREBASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Android (android/app/build.gradle):
+# apply plugin: 'com.google.gms.google-services'
+# 
+# dependencies {
+#   implementation platform('com.google.firebase:firebase-bom:32.7.0')
+#   implementation 'com.google.firebase:firebase-crashlytics'
+#   implementation 'com.google.firebase:firebase-analytics'
+# }
+
+# iOS (ios/Runner/Info.plist):
+# Adicione as chaves do Firebase
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔥 CONFIGURAÇÃO DO SENTRY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# No seu main.dart:
+# await AppLogger.initialize(
+#   dsn: 'https://YOUR_KEY@sentry.io/PROJECT_ID',
+#   environment: kDebugMode ? 'development' : 'production',
+#   tracesSampleRate: kDebugMode ? 1.0 : 0.1,
+# );
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔥 EXEMPLOS DE USO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Logging básico:
+# AppLogger.i('Usuário logado com sucesso');
+# AppLogger.e('Falha na operação', error, stackTrace);
+
+# Eventos de analytics:
+# AppLogger.trackEvent('purchase_completed', {
+#   'product_id': 'prod123',
+#   'value': 99.90,
+# });
+
+# Report de erro manual:
+# AppLogger.reportError(
+#   Exception('Erro customizado'),
+#   StackTrace.current,
+#   {'context': 'payment_processing'},
+# );
+
+# Performance tracking:
+# final result = await heavyOperation().logged('database_query');
+
+# Contexto do usuário:
+# AppLogger.setUserContext(
+#   userId: 'user123',
+#   email: 'user@example.com',
+#   storeId: 'store456',
+# );

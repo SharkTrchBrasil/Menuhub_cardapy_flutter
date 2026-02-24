@@ -24,7 +24,9 @@ class CartCubit extends Cubit<CartState> {
     // Cancela a inscrição anterior para evitar duplicatas
     _productSubscription?.cancel();
     // Inicia a "escuta" das atualizações de produtos
-    _productSubscription = _realtimeRepository.productsController.stream.listen(_onProductsUpdated);
+    _productSubscription = _realtimeRepository.productsController.stream.listen(
+      _onProductsUpdated,
+    );
   }
 
   void _onProductsUpdated(List<Product> updatedProducts) {
@@ -32,11 +34,17 @@ class CartCubit extends Cubit<CartState> {
       return;
     }
 
-    final productIdsInCart = state.cart.items.map((item) => item.product.id).toSet();
-    final bool isCartAffected = updatedProducts.any((updatedProduct) => productIdsInCart.contains(updatedProduct.id));
+    final productIdsInCart =
+        state.cart.items.map((item) => item.product.id).toSet();
+    final bool isCartAffected = updatedProducts.any(
+      (updatedProduct) => productIdsInCart.contains(updatedProduct.id),
+    );
 
     if (isCartAffected) {
-      AppLogger.info('Produtos no carrinho atualizados. Sincronizando...', tag: 'CART');
+      AppLogger.i(
+        'Produtos no carrinho atualizados. Sincronizando...',
+        tag: 'CART',
+      );
       fetchCart();
     }
   }
@@ -53,10 +61,10 @@ class CartCubit extends Cubit<CartState> {
     try {
       final cart = await _realtimeRepository.getOrCreateCart();
       emit(state.copyWith(status: CartStatus.success, cart: cart));
-      // ✅ Calcula promoções após carregar carrinho
-      calculatePromotions();
     } catch (e) {
-      emit(state.copyWith(status: CartStatus.error, errorMessage: e.toString()));
+      emit(
+        state.copyWith(status: CartStatus.error, errorMessage: e.toString()),
+      );
     }
   }
 
@@ -66,44 +74,52 @@ class CartCubit extends Cubit<CartState> {
     // Não emitimos 'loading' para a UI não piscar a cada item adicionado.
     emit(state.copyWith(isUpdating: true));
     try {
-      AppLogger.debug(
+      AppLogger.d(
         'Atualizando item: productId=${payload.productId}, qty=${payload.quantity}',
         tag: 'CART',
       );
-      
+
       // ✅ NOVO: Tenta usar modo granular primeiro
       try {
-        final response = await _realtimeRepository.updateCartItemGranular(payload);
-        AppLogger.success(
+        final response = await _realtimeRepository.updateCartItemGranular(
+          payload,
+        );
+        AppLogger.i(
           'Item atualizado (granular). Action: ${response.action}, Total: ${response.cartItemsCount} itens',
           tag: 'CART',
         );
-        
+
         // Atualiza o estado localmente baseado na ação
         final currentCart = state.cart;
         Cart updatedCart;
-        
+
         switch (response.action) {
           case 'removed':
             // Remove o item da lista local
             updatedCart = currentCart.copyWith(
-              items: currentCart.items.where((i) => i.id != response.removedItemId).toList(),
+              items:
+                  currentCart.items
+                      .where((i) => i.id != response.removedItemId)
+                      .toList(),
               subtotal: response.cartSubtotal,
               discount: response.cartDiscount,
               total: response.cartTotal,
             );
             break;
-            
+
           case 'added':
             // Adiciona o novo item à lista local
             if (response.item != null) {
               var newItem = response.item!;
-              
+
               // ✅ ROBUSTEZ VISUAL: Se o backend retornou item sem variantes (comum em pizzas recém-criadas),
               // mas nós enviamos variantes, usamos as variantes do payload para garantir a exibição correta (borda, sabores).
               // Verifica se payload.variants não é nulo antes de acessar isNotEmpty
-              if (newItem.variants.isEmpty && (payload.variants?.isNotEmpty ?? false)) {
-                print("⚠️ [CartCubit] Backend retornou item sem variantes. Usando dados locais para exibição.");
+              if (newItem.variants.isEmpty &&
+                  (payload.variants?.isNotEmpty ?? false)) {
+                print(
+                  "⚠️ [CartCubit] Backend retornou item sem variantes. Usando dados locais para exibição.",
+                );
                 newItem = newItem.copyWith(
                   variants: payload.variants,
                   // Tenta preservar outros dados se estarem zerados
@@ -125,19 +141,20 @@ class CartCubit extends Cubit<CartState> {
               );
             }
             break;
-            
+
           case 'quantity_changed':
           case 'updated':
           default:
             // Atualiza o item existente na lista local
             if (response.item != null) {
-              final updatedItems = currentCart.items.map((item) {
-                if (item.id == response.item!.id) {
-                  return response.item!;
-                }
-                return item;
-              }).toList();
-              
+              final updatedItems =
+                  currentCart.items.map((item) {
+                    if (item.id == response.item!.id) {
+                      return response.item!;
+                    }
+                    return item;
+                  }).toList();
+
               updatedCart = currentCart.copyWith(
                 items: updatedItems,
                 subtotal: response.cartSubtotal,
@@ -152,31 +169,49 @@ class CartCubit extends Cubit<CartState> {
               );
             }
         }
-        
-        emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
+
+        emit(
+          state.copyWith(
+            status: CartStatus.success,
+            cart: updatedCart,
+            isUpdating: false,
+          ),
+        );
         calculatePromotions();
         return;
-        
       } on CartGranularFallbackException catch (e) {
         // Fallback: backend retornou carrinho completo (versão antiga)
-        AppLogger.warning('Fallback: usando carrinho completo (backend antigo)', tag: 'CART');
-        emit(state.copyWith(status: CartStatus.success, cart: e.cart, isUpdating: false));
+        AppLogger.w(
+          'Fallback: usando carrinho completo (backend antigo)',
+          tag: 'CART',
+        );
+        emit(
+          state.copyWith(
+            status: CartStatus.success,
+            cart: e.cart,
+            isUpdating: false,
+          ),
+        );
         calculatePromotions();
         return;
       }
-      
     } on NetworkException catch (e) {
-      AppLogger.error('Erro de rede ao atualizar item', error: e, tag: 'CART');
+      AppLogger.e('Erro de rede ao atualizar item', error: e, tag: 'CART');
       await fetchCart();
       emit(state.copyWith(isUpdating: false));
       throw CartException('Erro de conexão. Verifique sua internet.');
     } on ServerException catch (e) {
-      AppLogger.error('Erro do servidor ao atualizar item', error: e, tag: 'CART');
+      AppLogger.e('Erro do servidor ao atualizar item', error: e, tag: 'CART');
       await fetchCart();
       emit(state.copyWith(isUpdating: false));
       throw CartException(e.message);
     } catch (e, stackTrace) {
-      AppLogger.error('Erro ao atualizar item', error: e, stackTrace: stackTrace, tag: 'CART');
+      AppLogger.e(
+        'Erro ao atualizar item',
+        error: e,
+        stackTrace: stackTrace,
+        tag: 'CART',
+      );
       await fetchCart();
       emit(state.copyWith(isUpdating: false));
       throw CartException('Erro ao atualizar carrinho. Tente novamente.');
@@ -193,21 +228,29 @@ class CartCubit extends Cubit<CartState> {
       total: 0,
       couponCode: null, // Limpa cupom também
     );
-    
+
     // Atualiza estado
-    emit(state.copyWith(
-      status: CartStatus.success, 
-      cart: emptyCart, 
-      isUpdating: true
-    ));
+    emit(
+      state.copyWith(
+        status: CartStatus.success,
+        cart: emptyCart,
+        isUpdating: true,
+      ),
+    );
 
     try {
       final updatedCart = await _realtimeRepository.clearCart();
-      AppLogger.success('Carrinho limpo no backend', tag: 'CART');
+      AppLogger.i('Carrinho limpo no backend', tag: 'CART');
       // Confirma com o estado real do backend (que deve ser vazio também)
-      emit(state.copyWith(status: CartStatus.success, cart: updatedCart, isUpdating: false));
+      emit(
+        state.copyWith(
+          status: CartStatus.success,
+          cart: updatedCart,
+          isUpdating: false,
+        ),
+      );
     } catch (e) {
-      AppLogger.error('Erro ao limpar carrinho no backend', error: e, tag: 'CART');
+      AppLogger.e('Erro ao limpar carrinho no backend', error: e, tag: 'CART');
       // Mesmo com erro no backend, mantemos limpo localmente pois o pedido foi feito
       emit(state.copyWith(isUpdating: false));
     }
@@ -216,8 +259,15 @@ class CartCubit extends Cubit<CartState> {
   Future<void> applyCoupon(String code) async {
     try {
       final updatedCart = await _realtimeRepository.applyCoupon(code);
-      emit(state.copyWith(cart: updatedCart));
-      calculatePromotions();
+      AppLogger.i(
+        'Cupom aplicado: ${updatedCart.couponCode}, desconto: ${updatedCart.discount}, frete grátis: ${updatedCart.isFreeDelivery}',
+        tag: 'CART',
+      );
+      emit(state.copyWith(status: CartStatus.success, cart: updatedCart));
+
+      // ✅ NOVO: Recalcula promoções após aplicar cupom para garantir que
+      // outros descontos e regras de frete sejam atualizados.
+      await calculatePromotions();
     } catch (e) {
       rethrow;
     }
@@ -226,9 +276,20 @@ class CartCubit extends Cubit<CartState> {
   Future<void> removeCoupon() async {
     try {
       final updatedCart = await _realtimeRepository.removeCoupon();
-      emit(state.copyWith(cart: updatedCart));
-      // Recalcula promoções após remover cupom
-      calculatePromotions();
+      AppLogger.i(
+        'Cupom removido. Backend retornou: couponCode=${updatedCart.couponCode}, desconto=${updatedCart.discount}, frete grátis=${updatedCart.isFreeDelivery}',
+        tag: 'CART',
+      );
+
+      // ✅ CORREÇÃO: SEMPRE usa copyWithCouponRemoved para garantir que todos os campos
+      // relacionados ao cupom sejam resetados, incluindo isFreeDelivery.
+      // Isso é necessário porque o backend pode retornar isFreeDelivery: true incorretamente.
+      final cartToEmit = updatedCart.copyWithCouponRemoved();
+
+      emit(state.copyWith(status: CartStatus.success, cart: cartToEmit));
+
+      // ✅ NOVO: Recalcula promoções após remover cupom.
+      await calculatePromotions();
     } catch (e) {
       rethrow;
     }
@@ -256,7 +317,7 @@ class CartCubit extends Cubit<CartState> {
       emit(state.copyWith(cart: updatedCart));
     } catch (e) {
       // Falha silenciosa na UI, apenas loga
-      AppLogger.error('Erro ao atualizar promoções', error: e, tag: 'CART');
+      AppLogger.e('Erro ao atualizar promoções', error: e, tag: 'CART');
     }
   }
 }

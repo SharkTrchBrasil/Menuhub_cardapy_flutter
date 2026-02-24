@@ -7,8 +7,16 @@ class Customer {
   final String email;
   final String? phone;
   final String? photo;
+  final String? cpf; // ✅ ADICIONADO
 
-  Customer( {this.id, required this.name, required this.email, this.phone, this.photo,});
+  Customer({
+    this.id,
+    required this.name,
+    required this.email,
+    this.phone,
+    this.photo,
+    this.cpf,
+  });
 
   factory Customer.fromJson(Map<String, dynamic> json) => Customer(
     id: json['id'],
@@ -16,6 +24,7 @@ class Customer {
     email: json['email'],
     phone: json['phone'],
     photo: json['photo'],
+    cpf: json['cpf'] ?? json['tax_id'], // Aceita cpf ou tax_id
   );
 
 
@@ -25,6 +34,7 @@ class Customer {
     String? email,
     String? phone,
     String? photo,
+    String? cpf,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -32,6 +42,7 @@ class Customer {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       photo: photo ?? this.photo,
+      cpf: cpf ?? this.cpf,
     );
   }
 
@@ -43,7 +54,8 @@ class Customer {
     "name": name,
     "email": email,
     "phone": phone,
-    "photo": photo
+    "photo": photo,
+    "cpf": cpf,
   };
 
 

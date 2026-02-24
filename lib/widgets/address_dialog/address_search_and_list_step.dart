@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/services/address_search_service.dart';
 
-/// Step 0: Tela de busca + lista de endereços salvos
+/// Step 0: Tela de busca + lista de endereços salvos (Versão Enterprise/Desktop)
 class AddressSearchAndListStep extends StatelessWidget {
   final TextEditingController searchController;
   final FocusNode searchFocusNode;
@@ -15,6 +15,9 @@ class AddressSearchAndListStep extends StatelessWidget {
   final VoidCallback onClearSearch;
   final Function(AddressSearchResult) onSearchResultSelected;
   final Function(CustomerAddress) onSavedAddressSelected;
+  final bool isManagement;
+  final bool isDesktop;
+  final VoidCallback? onSearchChanged;
 
   const AddressSearchAndListStep({
     super.key,
@@ -26,34 +29,29 @@ class AddressSearchAndListStep extends StatelessWidget {
     required this.onClearSearch,
     required this.onSearchResultSelected,
     required this.onSavedAddressSelected,
+    this.isManagement = false,
+    this.isDesktop = false,
+    this.onSearchChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AddressCubit, AddressState>(
       builder: (context, state) {
-        final customer = context.read<AuthCubit>().state.customer;
-
-        if (customer?.id != null && state.status == AddressStatus.initial) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.read<AddressCubit>().loadAddresses(customer!.id!);
-          });
-        }
-
         final addresses = state.addresses;
         final selectedAddress = state.selectedAddress;
-        final isLoading = state.status == AddressStatus.loading && addresses.isEmpty;
+        final isLoading = state.status == AddressStatus.loading;
 
         return Container(
           color: Colors.white,
           child: Column(
             key: const ValueKey('searchAndList'),
             children: [
-              // Ilustração com asset
-              _buildIllustration(),
+              // Ilustração com asset (Oculto se for gerenciamento)
+              if (!isManagement) _buildIllustration(),
 
-              // Título e subtítulo
-              _buildTitleSection(),
+              // Título e subtítulo (Oculto se for gerenciamento)
+              if (!isManagement) _buildTitleSection(),
 
               // Campo de busca
               _buildSearchField(context),
@@ -76,12 +74,11 @@ class AddressSearchAndListStep extends StatelessWidget {
       height: 150,
       margin: const EdgeInsets.only(top: 40, bottom: 20),
       child: Image.asset(
-        'assets/address.webp', // ✅ SEU ASSET AQUI
-        width: 199, // Largura similar ao design original
-        height: 113, // Altura similar ao design original
+        'assets/address.webp',
+        width: 199,
+        height: 113,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
-          // Fallback caso o asset não seja encontrado
           return Container(
             width: 199,
             height: 113,
@@ -140,330 +137,139 @@ class AddressSearchAndListStep extends StatelessWidget {
 
   Widget _buildSearchField(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFFE0E0E0),
-            width: 1,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: TextField(
+        controller: searchController,
+        focusNode: searchFocusNode,
+        onChanged: (_) => onSearchChanged?.call(),
+        decoration: InputDecoration(
+          hintText: 'Buscar endereço e número',
+          prefixIcon: const Icon(Icons.search, color: Color(0xFFEA1D2C)),
+          suffixIcon: searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: onClearSearch,
+                )
+              : null,
+          filled: true,
+          fillColor: const Color(0xFFF5F5F5),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
           ),
-        ),
-        child: Stack(
-          children: [
-            // Campo de texto
-            TextField(
-              controller: searchController,
-              focusNode: searchFocusNode,
-              decoration: const InputDecoration(
-                hintText: 'Buscar endereço e número',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.only(left: 16, right: 56, top: 18, bottom: 18),
-                hintStyle: TextStyle(
-                  color: Color(0xFF999999),
-                  fontSize: 16,
-                ),
-              ),
-              style: const TextStyle(
-                fontSize: 16,
-                color: Color(0xFF3F3E3E),
-              ),
-            ),
-
-            // Ícone de busca (botão transparente sobre todo o campo)
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () {
-                    // Foca no campo de busca quando clicar em qualquer área
-                    searchFocusNode.requestFocus();
-                  },
-                  child: Container(),
-                ),
-              ),
-            ),
-
-            // Ícone de lupa
-            Positioned(
-              right: 8,
-              top: 8,
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.search,
-                  color: Color(0xFF3F3E3E),
-                  size: 20,
-                ),
-              ),
-            ),
-          ],
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
         ),
       ),
     );
   }
 
   Widget _buildSearchResults(BuildContext context) {
+    if (isSearching) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       itemCount: searchResults.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        color: Colors.grey.shade200,
-      ),
+      separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
       itemBuilder: (context, index) {
         final result = searchResults[index];
-        return _buildSearchResultItem(result);
-      },
-    );
-  }
-
-  Widget _buildSearchResultItem(AddressSearchResult result) {
-    return Container(
-      height: 64,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+        return ListTile(
+          leading: const Icon(Icons.location_on_outlined, color: Color(0xFF666666)),
+          title: Text(
+            result.description,
+            style: const TextStyle(fontSize: 14, color: Color(0xFF3F3E3E)),
+          ),
           onTap: () => onSearchResultSelected(result),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  color: Colors.grey.shade600,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        result.street ?? result.description,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF3F3E3E),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (result.neighborhood != null || result.city != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '${result.neighborhood ?? ''}, ${result.city ?? ''}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSavedAddressesList(
-      BuildContext context,
-      List<CustomerAddress> addresses,
-      CustomerAddress? selectedAddress,
-      bool isLoading,
-      ) {
-    if (isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEA1D2C)),
-          ),
-        ),
-      );
-    }
-
-    if (addresses.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.location_off,
-                size: 64,
-                color: Colors.grey.shade400,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Nenhum endereço cadastrado',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Use a busca acima para adicionar um endereço',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-      itemCount: addresses.length,
-      itemBuilder: (context, index) {
-        final address = addresses[index];
-        final isSelected = selectedAddress?.id == address.id;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _buildAddressListItem(
-            address: address,
-            isSelected: isSelected,
-            onTap: () => onSavedAddressSelected(address),
-          ),
         );
       },
     );
   }
 
-  Widget _buildAddressListItem({
-    required CustomerAddress address,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    // Define ícone baseado no tipo de endereço
-    IconData icon = Icons.location_on_outlined;
-    Color iconColor = const Color(0xFF3F3E3E);
-    Color iconBgColor = const Color(0xFFF5F5F5);
-
-    if (address.label.toLowerCase().contains('casa')) {
-      icon = Icons.home_outlined;
-    } else if (address.label.toLowerCase().contains('trabalho')) {
-      icon = Icons.work_outlined;
+  Widget _buildSavedAddressesList(
+    BuildContext context,
+    List<CustomerAddress> addresses,
+    CustomerAddress? selectedAddress,
+    bool isLoading,
+  ) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
 
+    if (addresses.isEmpty) {
+      return const Center(
+        child: Text(
+          'Nenhum endereço salvo',
+          style: TextStyle(color: Color(0xFF666666)),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: addresses.length,
+      itemBuilder: (context, index) {
+        final address = addresses[index];
+        final isSelected = selectedAddress?.id == address.id;
+
+        return _buildAddressListItem(context, address, isSelected);
+      },
+    );
+  }
+
+  Widget _buildAddressListItem(BuildContext context, CustomerAddress address, bool isSelected) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected ? const Color(0xFFEA1D2C) : const Color(0xFFE0E0E0),
-          width: isSelected ? 2 : 1,
+          color: isSelected ? const Color(0xFFEA1D2C) : const Color(0xFFF5F5F5),
+          width: 1.5,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Ícone à esquerda
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: iconBgColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: iconColor,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Informações do endereço
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        address.label.isNotEmpty ? address.label : 'Endereço',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF3F3E3E),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${address.street}, ${address.number}${address.complement?.isNotEmpty == true ? ', ${address.complement}' : ''}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF666666),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        '${address.neighborhood} - ${address.city}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF666666),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Ícone de três pontos à direita
-                IconButton(
-                  icon: const Icon(
-                    Icons.more_vert,
-                    color: Color(0xFF999999),
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    // TODO: Implementar ações do endereço
-                  },
-                ),
-              ],
-            ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF5F5F5),
+            shape: BoxShape.circle,
           ),
+          child: const Icon(Icons.home_outlined, color: Color(0xFF3F3E3E), size: 20),
         ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              address.label.isNotEmpty ? address.label : 'Endereço',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF3F3E3E),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${address.street}, ${address.number}',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF666666),
+              ),
+            ),
+            Text(
+              '${address.neighborhood} - ${address.city}',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF666666),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        onTap: () => onSavedAddressSelected(address),
       ),
     );
   }

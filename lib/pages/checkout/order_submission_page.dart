@@ -354,7 +354,7 @@ class _OrderSubmissionPageState extends State<OrderSubmissionPage>
               });
             } else {
               // Pagamento normal - vai para tela de sucesso
-              router.go('/order/success', extra: {
+              router.go('/success', extra: {
                 'order': order,
                 'paymentMethod': paymentMethod,
               });

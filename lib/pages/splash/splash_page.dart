@@ -121,11 +121,11 @@ class _SplashPageState extends State<SplashPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ✅ NOVO: Animação de loading com ícones de comida
-              FoodLoadingAnimation(
-                size: 80,
-                primaryColor: theme.primaryColor,
-                message: 'Preparando seu cardápio...',
+              // ✅ Logo 400x400
+              Image.asset(
+                'assets/logo.png', // Verificado em c:/Users/Sharkcode/Documents/Menuhub/totem/assets/logo.png
+                width: 400,
+                height: 400,
               ),
             ],
           ),

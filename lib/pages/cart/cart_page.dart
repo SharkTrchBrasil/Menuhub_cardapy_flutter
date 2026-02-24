@@ -4,12 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:collection/collection.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/pages/cart/widgets/cart_bottom_bar.dart';
+import 'package:totem/widgets/unified_cart_bottom_bar.dart';
 import 'package:totem/pages/cart/widgets/cart_itens_section.dart';
+import 'package:totem/widgets/order_summary_card.dart';
 import 'package:totem/pages/cart/widgets/coupon_section.dart';
 import 'package:totem/pages/cart/widgets/free_shipping_progress.dart';
 import 'package:totem/pages/cart/widgets/min_order_info.dart';
-import 'package:totem/pages/cart/widgets/order_summary.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
@@ -57,8 +57,8 @@ class CartPage extends StatelessWidget {
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
           hoverColor: Colors.transparent,
-          icon: Icon(Icons.keyboard_arrow_down, color: theme.primaryColor),
-          onPressed: () => context.pop(),
+          icon: Icon(Icons.keyboard_arrow_down, color: Colors.black),
+          onPressed: () => context.go('/'),
         ),
         title: const Text('SACOLA', style: TextStyle(fontSize: 14)),
         centerTitle: true,
@@ -73,7 +73,7 @@ class CartPage extends StatelessWidget {
       body: BlocListener<CartCubit, CartState>(
         listener: (context, state) {
           if (state.status == CartStatus.success && state.cart.items.isEmpty) {
-            context.pop();
+            context.go('/');
           }
         },
         child: Padding(
@@ -104,7 +104,7 @@ class CartPage extends StatelessWidget {
                       children: [
                         StoreHeaderCard(
                           showAddItemsButton: true,
-                          onAddItemsPressed: () => context.pop(),
+                          onAddItemsPressed: () => context.go('/'),
                         ),
                         const SizedBox(height: 25),
                         if (minOrder > 0 && (cart.subtotal / 100) < minOrder) ...[
@@ -115,7 +115,7 @@ class CartPage extends StatelessWidget {
                         const SizedBox(height: 25),
                         Center(
                           child: GestureDetector(
-                            onTap: () => context.pop(),
+                            onTap: () => context.go('/'),
                             child: Text(
                               'Adicionar mais itens',
                               style: TextStyle(fontSize: 16, color: theme.primaryColor, fontWeight: FontWeight.bold),
@@ -137,21 +137,14 @@ class CartPage extends StatelessWidget {
                           threshold: store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 40),
-                        OrderSummary(
-                          subtotalInCents: cart.subtotal,
-                          discountInCents: cart.discount,
-                          deliveryFeeInCents: deliveryFeeInCents,
-                        ),
+
+                        const OrderSummaryCard(),
+
                         const SizedBox(height: 40),
                       ],
                     ),
                   ),
-                  CartBottomBar(
-                    subtotal: cart.subtotal / 100.0,
-                    finalTotal: cart.total / 100.0,
-                    minOrder: minOrder,
-                    hasCoupon: cart.couponCode != null,
-                  ),
+                  const UnifiedCartBottomBar(variant: CartBottomBarVariant.cart),
                 ],
               );
             },

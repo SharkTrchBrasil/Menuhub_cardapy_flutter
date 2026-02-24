@@ -1,5 +1,5 @@
 // lib/pages/orders/order_history_page.dart
-// ✅ Página de histórico de pedidos estilo iFood
+// ✅ Página de histórico de pedidos estilo Menuhub
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -71,8 +71,8 @@ class _OrderHistoryContent extends StatelessWidget {
           return CustomScrollView(
             slivers: [
               // ✅ Seção "Em andamento"
-              if (inProgressOrders.isNotEmpty) ...[
-                _buildSectionTitle('Em andamento'),
+              _buildSectionTitle('Em andamento'),
+              if (inProgressOrders.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -81,13 +81,22 @@ class _OrderHistoryContent extends StatelessWidget {
                         _InProgressOrderCard(order: order)).toList(),
                     ),
                   ),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      'Sem pedidos recentes por aqui',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
                 ),
-              ],
               
-              // ✅ Banner de cupons
-              SliverToBoxAdapter(
-                child: _buildCouponBanner(context),
-              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
               
               // ✅ Seção "Histórico" agrupado por data
               if (historyOrders.isNotEmpty) ...[
@@ -158,42 +167,20 @@ class _OrderHistoryContent extends StatelessWidget {
   SliverToBoxAdapter _buildSectionTitle(String title) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
         child: Text(
           title,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.bold,
+            color: Color(0xFF3F3E3E),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildCouponBanner(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.pink[50],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'Você ganhou cupons grátis aqui',
-            style: TextStyle(
-              color: Colors.pink[400],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Icon(Icons.chevron_right, color: Colors.pink[400], size: 20),
-        ],
-      ),
-    );
-  }
+
 
   List<Widget> _buildHistoryByDate(BuildContext context, List<Order> orders) {
     // Agrupa por data
@@ -239,7 +226,7 @@ class _OrderHistoryContent extends StatelessWidget {
   }
 }
 
-/// Card para pedido em andamento (estilo iFood)
+/// Card para pedido em andamento (estilo Menuhub)
 class _InProgressOrderCard extends StatelessWidget {
   final Order order;
 
@@ -288,10 +275,11 @@ class _InProgressOrderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Entrega não rastreável',
+                      _getStatusLabel(order.orderStatus),
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w600,
+                        color: _getStatusColor(order.orderStatus),
                       ),
                     ),
                   ],
@@ -401,7 +389,7 @@ class _InProgressOrderCard extends StatelessWidget {
   }
 }
 
-/// Card para pedido no histórico (estilo iFood)
+/// Card para pedido no histórico (estilo Menuhub)
 class _HistoryOrderCard extends StatelessWidget {
   final Order order;
 
@@ -443,17 +431,17 @@ class _HistoryOrderCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          isCanceled ? 'Pedido cancelado' : 'Pedido concluído',
+                          _getStatusLabel(order.orderStatus),
                           style: TextStyle(
                             fontSize: 13,
-                            color: isCanceled ? Colors.red : Colors.grey[600],
+                            color: _getStatusColor(order.orderStatus),
                           ),
                         ),
                         const SizedBox(width: 4),
                         Icon(
-                          isCanceled ? Icons.cancel : Icons.check_circle,
+                          _getStatusIcon(order.orderStatus),
                           size: 14,
-                          color: isCanceled ? Colors.red : Colors.green,
+                          color: _getStatusColor(order.orderStatus),
                         ),
                       ],
                     ),
@@ -591,5 +579,59 @@ class _HistoryOrderCard extends StatelessWidget {
       ),
       useFullScreenOnDesktop: false,
     );
+  }
+}
+
+String _getStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'pending': return 'Pendente';
+    case 'confirmed': return 'Confirmado';
+    case 'preparing': return 'Em preparo';
+    case 'ready': return 'Pronto para entrega';
+    case 'dispatched':
+    case 'on_route':
+    case 'out_for_delivery': return 'Em entrega';
+    case 'delivered':
+    case 'finalized':
+    case 'concluded': return 'Finalizado';
+    case 'canceled':
+    case 'cancelled': return 'Cancelado';
+    default: return status;
+  }
+}
+
+Color _getStatusColor(String status) {
+  switch (status.toLowerCase()) {
+    case 'pending': return Colors.orange;
+    case 'confirmed': return Colors.blue;
+    case 'preparing': return Colors.purple;
+    case 'ready': return Colors.cyan;
+    case 'dispatched':
+    case 'on_route':
+    case 'out_for_delivery': return Colors.indigo;
+    case 'delivered':
+    case 'finalized':
+    case 'concluded': return Colors.green;
+    case 'canceled':
+    case 'cancelled': return Colors.red;
+    default: return Colors.grey;
+  }
+}
+
+IconData _getStatusIcon(String status) {
+  switch (status.toLowerCase()) {
+    case 'canceled':
+    case 'cancelled': return Icons.cancel;
+    case 'delivered':
+    case 'finalized':
+    case 'concluded': return Icons.check_circle;
+    case 'dispatched':
+    case 'on_route':
+    case 'out_for_delivery': return Icons.delivery_dining;
+    case 'preparing': return Icons.restaurant;
+    case 'ready': return Icons.check_circle_outline;
+    case 'confirmed': return Icons.check;
+    case 'pending': return Icons.access_time;
+    default: return Icons.info_outline;
   }
 }

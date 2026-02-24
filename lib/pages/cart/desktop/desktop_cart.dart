@@ -5,12 +5,12 @@ import 'package:totem/models/product.dart';
 import 'package:totem/models/cart_item.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/pages/cart/cart_state.dart';
-import 'package:totem/pages/cart/widgets/cart_bottom_bar.dart';
+import 'package:totem/widgets/unified_cart_bottom_bar.dart';
 import 'package:totem/pages/cart/widgets/cart_itens_section.dart';
 import 'package:totem/pages/cart/widgets/coupon_section.dart';
 import 'package:totem/pages/cart/widgets/free_shipping_progress.dart';
 import 'package:totem/pages/cart/widgets/min_order_info.dart';
-import 'package:totem/pages/cart/widgets/order_summary.dart';
+import 'package:totem/widgets/order_summary_card.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/services/product_recommendation_service.dart';
 import 'package:totem/widgets/store_header_card.dart';
@@ -44,10 +44,7 @@ class DesktopCart extends StatelessWidget {
 
     final minOrder = store?.getMinOrderForDelivery() ?? 0;
 
-    int deliveryFeeInCents = 0;
-    if (deliveryFeeState is DeliveryFeeLoaded) {
-      deliveryFeeInCents = (deliveryFeeState.deliveryFee * 100).toInt();
-    }
+
 
     return Scaffold(
       backgroundColor: theme.cartBackgroundColor,
@@ -88,8 +85,7 @@ class DesktopCart extends StatelessWidget {
           padding: const EdgeInsets.all(24.0),
           child: BlocBuilder<CartCubit, CartState>(
             buildWhen: (previous, current) =>
-                previous.cart.items.length != current.cart.items.length ||
-                previous.cart.total != current.cart.total ||
+                previous.cart != current.cart ||
                 previous.status != current.status,
             builder: (context, state) {
               if (state.status == CartStatus.loading && state.cart.isEmpty) {
@@ -185,23 +181,12 @@ class DesktopCart extends StatelessWidget {
                           threshold: store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 48),
-                        OrderSummary(
-                          subtotalInCents: cart.subtotal,
-                          discountInCents: cart.discount,
-                          deliveryFeeInCents: deliveryFeeInCents,
-                          isFreeDelivery: cart.isFreeDelivery,
-                          couponCode: cart.couponCode,
-                        ),
+                        OrderSummaryCard(),
                         const SizedBox(height: 48),
                       ],
                     ),
                   ),
-                  CartBottomBar(
-                    subtotal: cart.subtotal / 100.0,
-                    finalTotal: cart.total / 100.0,
-                    minOrder: minOrder,
-                    hasCoupon: cart.couponCode != null,
-                  ),
+                  const UnifiedCartBottomBar(variant: CartBottomBarVariant.cart),
                 ],
               );
             },

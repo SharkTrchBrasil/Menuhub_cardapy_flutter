@@ -1,5 +1,5 @@
 // lib/pages/order/widgets/order_rating_widget.dart
-// ✅ Widget Avaliação - Estilo iFood
+// ✅ Widget Avaliação - Estilo Menuhub
 // Aparece apenas para pedidos concluídos dentro do prazo
 
 import 'package:flutter/material.dart';

@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:collection/collection.dart'; // ✅ Import para firstOrNull
 import 'package:totem/models/customer_address.dart';
-import 'package:totem/pages/address/widgets/Address_bottom_bar.dart';
+import 'package:totem/widgets/unified_cart_bottom_bar.dart';
 
 import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
@@ -17,6 +17,7 @@ import '../cart/cart_state.dart';
 import 'cubits/address_cubit.dart';
 import 'cubits/delivery_fee_cubit.dart';
 import 'package:totem/widgets/address_selection_bottom_sheet.dart'; // ✅ Novo bottom sheet moderno
+import 'package:totem/themes/ds_theme_switcher.dart';
 
 class AddressPage extends StatefulWidget {
   const AddressPage({super.key});
@@ -59,18 +60,27 @@ class _AddressPageState extends State<AddressPage> {
           },
         ),
       ],
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Entrega'),
-          centerTitle: true,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      child: Builder(
+        builder: (context) {
+          final theme = context.watch<DsThemeSwitcher>().theme;
+          return Scaffold(
+            backgroundColor: theme.cartBackgroundColor, // Mantém fundo consistente
+            appBar: AppBar(
+              title: const Text('ENTREGA', style: TextStyle(fontSize: 14)),
+              centerTitle: true,
+              backgroundColor: theme.cartBackgroundColor,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.keyboard_arrow_left, color: Colors.black),
+                onPressed: () => context.go('/cart'),
+              ),
+            ),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
               BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
                 builder: (context, feeState) {
                   final title = feeState.deliveryType == DeliveryType.delivery
@@ -98,8 +108,10 @@ class _AddressPageState extends State<AddressPage> {
           ),
         ),
         bottomNavigationBar: _buildBottomBar(),
-      ),
-    );
+      ); // Scaffold
+    }, // Builder function
+      ), // Builder
+    ); // MultiBlocListener
   }
 
   void _triggerFeeCalculation(BuildContext context) async {
@@ -233,46 +245,10 @@ class _AddressPageState extends State<AddressPage> {
   }
 
   Widget _buildBottomBar() {
-    return BlocBuilder<CartCubit, CartState>(
-      builder: (context, cartState) {
-        return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
-          builder: (context, feeState) {
-            return BlocBuilder<AddressCubit, AddressState>(
-              builder: (context, addressState) {
-                final cartTotal = cartState.cart.total / 100.0;
-                // ✅ LÓGICA CORRIGIDA E SEGURA
-                double deliveryFee = 0.0;
-                if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
-                  deliveryFee = feeState.deliveryFee;
-                }
-                final grandTotal = cartTotal + deliveryFee;
-
-                // ✅ NOVO: Verifica se pode continuar (não pode se tiver erro de frete no delivery)
-                final bool hasDeliveryError = feeState is DeliveryFeeError && 
-                    feeState.deliveryType == DeliveryType.delivery;
-                final bool noAddressForDelivery = feeState.deliveryType == DeliveryType.delivery && 
-                    addressState.selectedAddress == null;
-                final bool canContinue = !hasDeliveryError && !noAddressForDelivery;
-
-                VoidCallback? continueAction;
-                if (canContinue) {
-                  continueAction = () {
-                    context.go('/checkout');
-                  };
-                }
-
-                return AddressBottomBar(
-                  totalPrice: grandTotal,
-                  totalItems: cartState.cart.items.length,
-                  onContinuePressed: continueAction,
-                  // ✅ NOVO: Passa mensagem de erro para exibir se necessário
-                  errorMessage: hasDeliveryError ? (feeState as DeliveryFeeError).message : null,
-                );
-              },
-            );
-          },
-        );
-      },
+    // ✅ Usando widget unificado para bottom bar
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14.0),
+      child: const UnifiedCartBottomBar(variant: CartBottomBarVariant.address),
     );
   }
 }
@@ -361,9 +337,32 @@ class _DeliveryOptionTile extends StatelessWidget {
     final state = feeState; // Apenas para facilitar a leitura
     
     // ✅ Verifica se deve ocultar o valor do frete (hide_fee_display)
-    final store = context.read<StoreCubit>().state.store;
+    final storeState = context.read<StoreCubit>().state;
+    final store = storeState.store;
     if (store != null && _shouldHideFeeDisplay(store)) {
       return ''; // Ocultar valor
+    }
+    
+    // ✅ CORREÇÃO: Verifica se tem cupom de frete grátis aplicado
+    final cart = context.read<CartCubit>().state.cart;
+    final storeCoupons = store?.coupons ?? [];
+    bool hasFreeDeliveryCoupon = false;
+    
+    if (cart.couponCode != null) {
+      final appliedCoupon = storeCoupons.where(
+        (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
+      ).firstOrNull;
+      
+      if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
+        hasFreeDeliveryCoupon = true;
+      } else if (cart.isFreeDelivery) {
+        hasFreeDeliveryCoupon = true;
+      }
+    }
+    
+    // ✅ Se tem cupom de frete grátis, mostra "Grátis"
+    if (hasFreeDeliveryCoupon && title == 'Delivery') {
+      return 'Grátis';
     }
     
     if (state is DeliveryFeeRequiresAddress) {
@@ -474,7 +473,7 @@ class _OutOfAreaWarning extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Endereço fora da área',
+                  'Não entregamos neste endereço',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.red.shade900,
@@ -491,7 +490,7 @@ class _OutOfAreaWarning extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Escolha outro endereço ou selecione "Retirar na loja".',
+                  'Por favor, escolha outro endereço ou selecione "Retirar na loja".',
                   style: TextStyle(
                     color: Colors.red.shade700,
                     fontSize: 12,
