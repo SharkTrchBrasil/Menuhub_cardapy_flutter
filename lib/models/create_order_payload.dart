@@ -13,19 +13,19 @@ class CreateOrderPayload {
   final int? deliveryFee;
   final bool? isScheduled;
   final String? scheduledFor; // ISO 8601 datetime string
-  
+
   // ✅ SEGURANÇA: Coordenadas GPS reais do cliente
   final double? customerLatitude;
   final double? customerLongitude;
-  
+
   // ✅ NOVO: Campos para pagamento online (Mercado Pago)
   final String? mercadopagoPaymentId;
   final String? paymentType; // 'delivery' ou 'online'
-  
+
   // ✅ ALINHAMENTO iFOOD: Origem do pedido
-  final String? platform;     // 'ANDROID', 'IOS', 'WEB'
-  final String? appName;      // 'Totem', 'Menuhub', etc
-  final String? appVersion;   // '1.0.0'
+  final String? platform; // 'ANDROID', 'IOS', 'WEB'
+  final String? appName; // 'Totem', 'Menuhub', etc
+  final String? appVersion; // '1.0.0'
   final String? salesChannel; // 'TOTEM', 'MENU', 'MENUHUB'
 
   CreateOrderPayload({
@@ -76,8 +76,7 @@ class CreateOrderPayload {
   Map<String, dynamic> toJson() {
     return {
       'payment_method_id': paymentMethodId,
-      // Map deliveryType to Backend OrderType Enum (TABLE, POS, DELIVERY, PICKUP)
-      'orderType': _mapToOrderType(deliveryType),
+      'delivery_type': deliveryType,
       'observation': observation,
       'needs_change': needsChange,
       // Backend espera o valor em Reais, como definido no Pydantic

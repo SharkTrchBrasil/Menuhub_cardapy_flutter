@@ -21,10 +21,13 @@ import 'package:totem/widgets/store_closed_widgets.dart';
 enum CartBottomBarVariant {
   /// Home - mostra logo da loja, pill shape, botão "Ver sacola"
   home,
+
   /// Carrinho - sem logo, botão "Continuar"
   cart,
+
   /// Endereço - sem logo, botão "Continuar"
   address,
+
   /// Checkout - sem logo, botão "Finalizar pedido"
   checkout,
 }
@@ -34,7 +37,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
   final VoidCallback? onContinuePressed;
   final String? errorMessage;
   final String? overrideButtonLabel; // ✅ Allow custom button text
-  
+
   const UnifiedCartBottomBar({
     super.key,
     required this.variant,
@@ -46,30 +49,31 @@ class UnifiedCartBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    
+
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, storeState) {
         final store = storeState.store;
         final storeCoupons = store?.coupons ?? [];
         final storeLogoUrl = store?.image?.url;
         final minOrder = store?.getMinOrderForDelivery() ?? 0.0;
-        
+
         return BlocBuilder<CartCubit, CartState>(
           builder: (context, cartState) {
             final cart = cartState.cart;
-            
+
             // ✅ Não mostra se o carrinho estiver vazio
             if (cart.isEmpty) {
               return const SizedBox.shrink();
             }
-            
+
             return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
               builder: (context, feeState) {
                 // ✅ Lógica unificada de cálculo de frete
                 double deliveryFee = 0.0;
                 bool isDeliveryFreeFromRule = false;
 
-                if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+                if (feeState is DeliveryFeeLoaded &&
+                    feeState.deliveryType == DeliveryType.delivery) {
                   deliveryFee = feeState.deliveryFee;
                   isDeliveryFreeFromRule = feeState.isFree == true;
                   if (isDeliveryFreeFromRule) {
@@ -82,10 +86,15 @@ class UnifiedCartBottomBar extends StatelessWidget {
                 // ✅ Verifica se tem cupom de frete grátis
                 bool hasFreeDeliveryCoupon = false;
                 if (cart.couponCode != null) {
-                  final appliedCoupon = storeCoupons.where(
-                    (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
-                  ).firstOrNull;
-                  
+                  final appliedCoupon =
+                      storeCoupons
+                          .where(
+                            (c) =>
+                                c.code.toUpperCase() ==
+                                cart.couponCode!.toUpperCase(),
+                          )
+                          .firstOrNull;
+
                   if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
                     hasFreeDeliveryCoupon = true;
                   } else if (cart.isFreeDelivery) {
@@ -93,74 +102,175 @@ class UnifiedCartBottomBar extends StatelessWidget {
                   }
                 }
 
-                final isFreeDelivery = isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
+                final isFreeDelivery =
+                    isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
                 final effectiveFee = isFreeDelivery ? 0.0 : deliveryFee;
 
                 // ✅ Cálculo do total
                 final subtotalValue = cart.subtotal / 100.0;
                 final discountValue = cart.discount / 100.0;
                 final finalTotal = subtotalValue - discountValue + effectiveFee;
-                
-                final itemCount = cart.items.fold<int>(0, (sum, item) => sum + (item.quantity > 0 ? item.quantity : 1));
-                final hasCoupon = cart.discount > 0 || hasFreeDeliveryCoupon;
+
+                final itemCount = cart.items.fold<int>(
+                  0,
+                  (sum, item) => sum + (item.quantity > 0 ? item.quantity : 1),
+                );
+
+                // ✅ Lógica corrigida: Ícone e cor verde SÓ aparecem se houver cupom digitado/aplicado
+                // Frete grátis por regra da loja (sem cupom) deve aparecer de forma neutra (preto)
+                final hasCouponApplied =
+                    cart.couponCode != null && cart.couponCode!.isNotEmpty;
+                final isGreenStatus = hasCouponApplied;
+                final hasCouponIcon = hasCouponApplied;
 
                 // ✅ Texto dinâmico baseado no contexto
                 String labelText;
                 if (variant == CartBottomBarVariant.home) {
-                  labelText = isFreeDelivery ? 'Total com entrega grátis' : 'Total com entrega';
+                  labelText =
+                      isFreeDelivery
+                          ? 'Total com entrega grátis'
+                          : 'Total com entrega';
                 } else {
-                  labelText = isFreeDelivery ? 'Total com entrega grátis' : 'Total com entrega';
+                  labelText =
+                      isFreeDelivery
+                          ? 'Total com entrega grátis'
+                          : 'Total com entrega';
                 }
 
                 // ✅ Texto do botão baseado na variante
                 String buttonLabel = overrideButtonLabel ?? '';
                 if (buttonLabel.isEmpty) {
                   switch (variant) {
-                  case CartBottomBarVariant.home:
-                    buttonLabel = 'Ver sacola';
-                    break;
-                  case CartBottomBarVariant.cart:
-                  case CartBottomBarVariant.address:
-                    buttonLabel = 'Continuar';
-                    break;
-                  case CartBottomBarVariant.checkout:
-                    buttonLabel = 'Finalizar';
-                    break;
+                    case CartBottomBarVariant.home:
+                      buttonLabel = 'Ver sacola';
+                      break;
+                    case CartBottomBarVariant.cart:
+                    case CartBottomBarVariant.address:
+                      buttonLabel = 'Continuar';
+                      break;
+                    case CartBottomBarVariant.checkout:
+                      buttonLabel = 'Finalizar';
+                      break;
+                  }
                 }
-                } // Fecha o if (buttonLabel.isEmpty)
 
                 // ✅ Build baseado na variante
+                final closingSoonInfo = StoreStatusService.getClosingSoonInfo(
+                  store,
+                );
+
+                Widget bottomBarWidget;
                 if (variant == CartBottomBarVariant.home) {
-                  return _buildHomeVariant(
+                  bottomBarWidget = _buildHomeVariant(
                     context: context,
                     theme: theme,
                     storeLogoUrl: storeLogoUrl,
                     labelText: labelText,
                     finalTotal: finalTotal,
                     itemCount: itemCount,
-                    hasCoupon: hasCoupon,
+                    hasCoupon: hasCouponIcon,
                     isFreeDelivery: isFreeDelivery,
+                    isGreenStatus: isGreenStatus,
                     buttonLabel: buttonLabel,
                   );
                 } else {
-                  return _buildStandardVariant(
+                  bottomBarWidget = _buildStandardVariant(
                     context: context,
                     theme: theme,
                     labelText: labelText,
                     finalTotal: finalTotal,
                     itemCount: itemCount,
-                    hasCoupon: hasCoupon,
+                    hasCoupon: hasCouponIcon,
                     isFreeDelivery: isFreeDelivery,
+                    isGreenStatus: isGreenStatus,
                     buttonLabel: buttonLabel,
                     minOrder: minOrder,
                     store: store,
                   );
                 }
+
+                // ✅ Mostra o aviso "colado" no topo da barra (fora da home)
+                if (closingSoonInfo != null &&
+                    variant != CartBottomBarVariant.home) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 15,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildClosingSoonBar(
+                            closingSoonInfo['closingTime'] as TimeOfDay,
+                          ),
+                          bottomBarWidget,
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return bottomBarWidget;
               },
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildClosingSoonBar(TimeOfDay closingTime) {
+    final formattedTime =
+        '${closingTime.hour.toString().padLeft(2, '0')}:${closingTime.minute.toString().padLeft(2, '0')}';
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: const BoxDecoration(color: Colors.black),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center, // Centraliza o conteúdo
+        children: [
+          const Icon(Icons.access_time_filled, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          const Text(
+            'Loja fechando • Peça até às',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.bold, // Mais peso nas letras
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.red, // Vermelho padrão
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              formattedTime,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -174,17 +284,18 @@ class UnifiedCartBottomBar extends StatelessWidget {
     required int itemCount,
     required bool hasCoupon,
     required bool isFreeDelivery,
+    required bool isGreenStatus,
     required String buttonLabel,
   }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
         ),
         border: Border(
-          top: BorderSide(color: Colors.grey.shade200, width: 1),
+          top: BorderSide(color: Colors.grey.shade300, width: 0.8),
         ),
       ),
       child: Material(
@@ -192,11 +303,11 @@ class UnifiedCartBottomBar extends StatelessWidget {
         child: InkWell(
           onTap: () => context.go('/cart'),
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(12),
-            topRight: Radius.circular(12),
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 // ✅ Logo da loja circular
@@ -209,21 +320,23 @@ class UnifiedCartBottomBar extends StatelessWidget {
                     color: Colors.grey.shade100,
                   ),
                   child: ClipOval(
-                    child: (storeLogoUrl != null && storeLogoUrl.isNotEmpty)
-                        ? Image.network(
-                            storeLogoUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Icon(
+                    child:
+                        (storeLogoUrl != null && storeLogoUrl.isNotEmpty)
+                            ? Image.network(
+                              storeLogoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (_, __, ___) => Icon(
+                                    Icons.store,
+                                    color: Colors.grey.shade400,
+                                    size: 20,
+                                  ),
+                            )
+                            : Icon(
                               Icons.store,
                               color: Colors.grey.shade400,
                               size: 20,
                             ),
-                          )
-                        : Icon(
-                            Icons.store,
-                            color: Colors.grey.shade400,
-                            size: 20,
-                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -233,7 +346,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ✅ Texto do label (Total com entrega grátis)
+                      // ✅ Texto do label
                       if (isFreeDelivery)
                         RichText(
                           text: TextSpan(
@@ -245,7 +358,9 @@ class UnifiedCartBottomBar extends StatelessWidget {
                               const TextSpan(text: 'Total com '),
                               TextSpan(
                                 text: 'entrega grátis',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -259,13 +374,12 @@ class UnifiedCartBottomBar extends StatelessWidget {
                             fontWeight: FontWeight.normal,
                           ),
                         ),
-                        
+
                       const SizedBox(height: 2),
 
                       Row(
                         children: [
-                          // ✅ Ícone de ticket verde
-                          if (hasCoupon || isFreeDelivery) ...[
+                          if (hasCoupon) ...[
                             Icon(
                               Icons.confirmation_number_rounded,
                               color: Colors.green.shade700,
@@ -273,24 +387,27 @@ class UnifiedCartBottomBar extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                           ],
-                          
+
                           // ✅ Valor Total
                           Text(
                             finalTotal.toCurrency(),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: (hasCoupon || isFreeDelivery) ? Colors.green.shade700 : Colors.black87,
+                              color:
+                                  isGreenStatus
+                                      ? Colors.green.shade700
+                                      : Colors.black87,
                             ),
                           ),
-                          
+
                           // ✅ Qtd Itens
                           Text(
                             ' / $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey.shade500,
-                              fontWeight: FontWeight.normal, // Mantém peso normal
+                              fontWeight: FontWeight.normal,
                             ),
                           ),
                         ],
@@ -300,7 +417,10 @@ class UnifiedCartBottomBar extends StatelessWidget {
                 ),
                 // ✅ Botão arredondado
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.primaryColor,
                     borderRadius: BorderRadius.circular(8),
@@ -331,6 +451,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
     required int itemCount,
     required bool hasCoupon,
     required bool isFreeDelivery,
+    required bool isGreenStatus,
     required String buttonLabel,
     required double minOrder,
     required dynamic store,
@@ -339,29 +460,29 @@ class UnifiedCartBottomBar extends StatelessWidget {
       color: Colors.white,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8,),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           child: Row(
             children: [
-              // ✅ Informações do carrinho (sem logo)
+              // ✅ Informações do carrinho
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ✅ Texto do label (Total com entrega grátis)
-                    // Se for frete grátis, usa RichText para fazer apenas "entrega grátis" bold
                     if (isFreeDelivery)
                       RichText(
                         text: TextSpan(
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade800, // Texto base preto/cinza
+                            color: Colors.grey.shade800,
                           ),
                           children: [
                             const TextSpan(text: 'Total com '),
                             TextSpan(
                               text: 'entrega grátis',
-                              style: const TextStyle(fontWeight: FontWeight.bold), // Apenas isso em bold
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -375,33 +496,35 @@ class UnifiedCartBottomBar extends StatelessWidget {
                           fontWeight: FontWeight.normal,
                         ),
                       ),
-                    
-                    const SizedBox(height: 2), // Pequeno espaçamento
+
+                    const SizedBox(height: 2),
 
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // ✅ Ícone de ticket verde se tiver desconto ou frete grátis
-                        if (hasCoupon || isFreeDelivery) ...[
+                        if (hasCoupon) ...[
                           Icon(
-                            Icons.confirmation_number_rounded, // Ícone estilo ticket
+                            Icons.confirmation_number_rounded,
                             color: Colors.green.shade700,
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                         ],
-                        
-                        // ✅ Valor Total (Verde se tem benefício)
+
+                        // ✅ Valor Total
                         Text(
                           finalTotal.toCurrency(),
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
-                            color: (hasCoupon || isFreeDelivery) ? Colors.green.shade700 : Colors.black87,
+                            color:
+                                isGreenStatus
+                                    ? Colors.green.shade700
+                                    : Colors.black87,
                           ),
                         ),
-                        
-                        // ✅ Quantidade de itens (Cinza)
+
+                        // ✅ Quantidade de itens
                         Text(
                           ' / $itemCount ${itemCount == 1 ? 'item' : 'itens'}',
                           style: TextStyle(
@@ -417,9 +540,14 @@ class UnifiedCartBottomBar extends StatelessWidget {
               ),
               // ✅ Botão arredondado
               GestureDetector(
-                onTap: onContinuePressed ?? () => _handleContinue(context, store, minOrder, finalTotal),
+                onTap:
+                    onContinuePressed ??
+                    () => _handleContinue(context, store, minOrder, finalTotal),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.primaryColor,
                     borderRadius: BorderRadius.circular(8),
@@ -442,19 +570,24 @@ class UnifiedCartBottomBar extends StatelessWidget {
   }
 
   /// ✅ Lógica de continue para Cart e Address
-  void _handleContinue(BuildContext context, dynamic store, double minOrder, double finalTotal) {
+  void _handleContinue(
+    BuildContext context,
+    dynamic store,
+    double minOrder,
+    double finalTotal,
+  ) {
     // Validação de loja fechada
     if (store != null) {
       final status = StoreStatusService.validateStoreStatus(store);
-      
+
       if (!status.canReceiveOrders) {
         StoreClosedHelper.showModal(
           context,
           isCartPage: variant == CartBottomBarVariant.cart,
           isDesktop: MediaQuery.of(context).size.width >= 768,
-          nextOpenTime: status.message, 
+          nextOpenTime: status.message,
           onSeeOtherOptions: () {
-            Navigator.of(context).pop(); 
+            Navigator.of(context).pop();
           },
         );
         return;
@@ -469,7 +602,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
 
     // Navegação baseada na variante
     final authState = context.read<AuthCubit>().state;
-    
+
     if (variant == CartBottomBarVariant.cart) {
       if (authState.isLoggedIn) {
         context.go('/address');
@@ -483,49 +616,50 @@ class UnifiedCartBottomBar extends StatelessWidget {
 
   void _showMinOrderBottomSheet(BuildContext context, double minOrder) {
     final theme = context.read<DsThemeSwitcher>().theme;
-    
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              'Valor mínimo do pedido.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: theme.cartTextColor,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'O valor mínimo para entrega é de R\$ ${minOrder.toStringAsFixed(2)}.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Text(
-                'Ok, entendi',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: theme.primaryColor,
-                  fontSize: 16,
+      builder:
+          (_) => Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Valor mínimo do pedido.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: theme.cartTextColor,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 14),
+                Text(
+                  'O valor mínimo para entrega é de R\$ ${minOrder.toStringAsFixed(2)}.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 24),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Text(
+                    'Ok, entendi',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: theme.primaryColor,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
             ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }

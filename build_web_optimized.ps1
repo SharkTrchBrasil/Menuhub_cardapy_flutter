@@ -17,45 +17,45 @@ Write-Host ""
 $startTime = Get-Date
 
 # Configurações
-$BuildMode = if ($WasmMode) { "WASM (Experimental)" } else { "JavaScript" }
+if ($WasmMode) { $BuildMode = "WASM (Experimental)" } else { $BuildMode = "JavaScript" }
 Write-Host "[INFO] Modo de build: $BuildMode" -ForegroundColor Blue
 Write-Host ""
 
 # 1. Limpar build anterior (opcional)
 if (-not $SkipClean) {
     Write-Host "[1/5] Limpando build anterior..." -ForegroundColor Yellow
-    flutter clean 2>&1 | Out-Null
-    Write-Host "      ✓ Cache limpo" -ForegroundColor Green
+    flutter clean
+    Write-Host "      + Cache limpo" -ForegroundColor Green
 } else {
-    Write-Host "[1/5] Pulando limpeza (--SkipClean)" -ForegroundColor Gray
+    Write-Host "[1/5] Pulando limpeza" -ForegroundColor Gray
 }
 
 # 2. Obter dependências
 Write-Host ""
-Write-Host "[2/5] Obtendo dependências..." -ForegroundColor Yellow
-flutter pub get 2>&1 | Out-Null
-Write-Host "      ✓ Dependências atualizadas" -ForegroundColor Green
+Write-Host "[2/5] Obtendo dependencias..." -ForegroundColor Yellow
+flutter pub get
+Write-Host "      + Dependencias atualizadas" -ForegroundColor Green
 
 # 3. Análise estática (opcional)
 if ($Analyze) {
     Write-Host ""
-    Write-Host "[3/5] Executando análise estática..." -ForegroundColor Yellow
-    flutter analyze --no-fatal-infos 2>&1 | Out-Host
+    Write-Host "[3/5] Executando analise estatica..." -ForegroundColor Yellow
+    flutter analyze --no-fatal-infos
 } else {
     Write-Host ""
-    Write-Host "[3/5] Pulando análise (use -Analyze para ativar)" -ForegroundColor Gray
+    Write-Host "[3/5] Pulando analise (use -Analyze para ativar)" -ForegroundColor Gray
 }
 
 # 4. Build principal
 Write-Host ""
 Write-Host "[4/5] Construindo para web..." -ForegroundColor Yellow
 Write-Host "      - Tree shake icons: ON" -ForegroundColor Gray
-Write-Host "      - Minificação: ON" -ForegroundColor Gray
-Write-Host "      - Otimização: O4 (máxima)" -ForegroundColor Gray
+Write-Host "      - Minificacao: ON" -ForegroundColor Gray
+Write-Host "      - Otimizacao: O4" -ForegroundColor Gray
 Write-Host ""
 
 if ($WasmMode) {
-    # Build com WASM (experimental - melhor performance)
+    # Build com WASM
     flutter build web `
         --wasm `
         --release `
@@ -64,7 +64,7 @@ if ($WasmMode) {
         --no-source-maps `
         --dart-define=FLUTTER_WEB_USE_SKIA=true
 } else {
-    # Build padrão JavaScript (mais compatível)
+    # Build padrão JavaScript
     flutter build web `
         --release `
         --tree-shake-icons `
@@ -74,33 +74,24 @@ if ($WasmMode) {
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "❌ ERRO no build! Verifique os logs acima." -ForegroundColor Red
+    Write-Host "X ERRO no build! Verifique os logs acima." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "      ✓ Build concluído!" -ForegroundColor Green
+Write-Host "      + Build concluido!" -ForegroundColor Green
 
 # 5. Otimizações pós-build
 Write-Host ""
-Write-Host "[5/5] Aplicando otimizações pós-build..." -ForegroundColor Yellow
+Write-Host "[5/5] Analisando build..." -ForegroundColor Yellow
 
 $buildPath = "build\web"
 
-# Verificar se o diretório existe
 if (Test-Path $buildPath) {
-    # Calcular tamanho total
     $totalSize = (Get-ChildItem -Path $buildPath -Recurse | Measure-Object -Property Length -Sum).Sum
     $totalSizeMB = [math]::Round($totalSize / 1MB, 2)
-    
-    # Contar arquivos
-    $jsFiles = (Get-ChildItem -Path $buildPath -Filter "*.js" -Recurse).Count
-    $dartFiles = (Get-ChildItem -Path $buildPath -Filter "*.dart.js" -Recurse).Count
-    
-    Write-Host "      ✓ Tamanho total: $totalSizeMB MB" -ForegroundColor Green
-    Write-Host "      ✓ Arquivos JS: $jsFiles" -ForegroundColor Green
+    Write-Host "      + Tamanho total: $totalSizeMB MB" -ForegroundColor Green
 }
 
-# Tempo total
 $endTime = Get-Date
 $duration = $endTime - $startTime
 $durationSec = [math]::Round($duration.TotalSeconds, 1)
@@ -117,15 +108,9 @@ Write-Host "  1. Testar localmente:" -ForegroundColor White
 Write-Host "     flutter run -d chrome --release" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  2. Servir build:" -ForegroundColor White
-Write-Host "     cd build\web && python -m http.server 8080" -ForegroundColor Gray
+Write-Host "     cd build\web ; python -m http.server 8080" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  3. Deploy para produção:" -ForegroundColor White
+Write-Host "  3. Deploy para producao:" -ForegroundColor White
 Write-Host "     Copie a pasta build\web\ para seu servidor" -ForegroundColor Gray
 Write-Host ""
 
-# Dicas de performance
-Write-Host "💡 Dicas de Performance:" -ForegroundColor Yellow
-Write-Host "  • Configure gzip/brotli no servidor para comprimir JS" -ForegroundColor White
-Write-Host "  • Use CDN para servir os assets (CloudFlare, AWS CloudFront)" -ForegroundColor White
-Write-Host "  • Configure cache headers para arquivos estáticos (1 ano)" -ForegroundColor White
-Write-Host ""

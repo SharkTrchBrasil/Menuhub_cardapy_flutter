@@ -9,19 +9,19 @@ import 'package:totem/models/availability_model.dart';
 class ProductCategoryLink extends Equatable {
   final int? productId;
   final int categoryId;
-  
+
   // Preços
   final int price;
   final int? costPrice;
   final bool isOnPromotion;
   final int? promotionalPrice;
-  
+
   // Disponibilidade
   final bool isAvailable;
   final bool isFeatured;
   final int displayOrder;
   final String? posCode;
-  
+
   // Disponibilidade por horário
   final AvailabilityType availabilityType;
   final List<ScheduleRule> schedules;
@@ -41,18 +41,31 @@ class ProductCategoryLink extends Equatable {
     this.schedules = const [],
   });
 
-  /// ✅ Verifica se o produto está em promoção (flag OU preço promocional definido e menor)
+  /// ✅ Verifica se o produto está em promoção (flag E preço promocional menor que original)
   bool get hasPromotion {
-    return (isOnPromotion && promotionalPrice != null) ||
-        (promotionalPrice != null && promotionalPrice! > 0 && promotionalPrice! < price);
+    return isOnPromotion &&
+        promotionalPrice != null &&
+        promotionalPrice! > 0 &&
+        promotionalPrice! < price;
   }
 
-  /// Retorna o preço efetivo (promocional ou normal)
+  /// ✅ Retorna o preço efetivo (promocional ou normal)
   int get effectivePrice {
     if (hasPromotion) {
-      return promotionalPrice!;
+      return promotionalPrice!; // preço com desconto
     }
-    return price;
+    return price; // preço original sem desconto
+  }
+
+  /// ✅ Retorna o preço original (quando há promoção)
+  int? get originalPrice {
+    return hasPromotion ? price : null;
+  }
+
+  /// ✅ Calcula percentual de desconto
+  double? get discountPercentage {
+    if (!hasPromotion) return null;
+    return ((price - promotionalPrice!) / price) * 100;
   }
 
   static int _parsePrice(dynamic value) {
@@ -61,9 +74,9 @@ class ProductCategoryLink extends Equatable {
     if (value is double) return value.toInt();
     if (value is Map) {
       final amount = value['amount'] ?? value['value'];
-      if (amount is num) return (amount as num).toInt();
+      if (amount is num) return amount.toInt();
       if (amount is String) {
-          return double.tryParse(amount)?.toInt() ?? 0;
+        return double.tryParse(amount)?.toInt() ?? 0;
       }
     }
     if (value is String) return double.tryParse(value)?.toInt() ?? 0;
@@ -75,25 +88,32 @@ class ProductCategoryLink extends Equatable {
       productId: json['product_id'],
       categoryId: json['category_id'] ?? 0,
       price: _parsePrice(json['price']),
-      costPrice: json['cost_price'] != null ? _parsePrice(json['cost_price']) : null,
+      costPrice:
+          json['cost_price'] != null ? _parsePrice(json['cost_price']) : null,
       isOnPromotion: json['is_on_promotion'] ?? false,
-      promotionalPrice: json['promotional_price'] != null ? _parsePrice(json['promotional_price']) : null,
+      promotionalPrice:
+          json['promotional_price'] != null
+              ? _parsePrice(json['promotional_price'])
+              : null,
       isAvailable: json['is_available'] ?? true,
       isFeatured: json['is_featured'] ?? false,
       displayOrder: json['display_order'] ?? 0,
       posCode: json['pos_code'],
-      availabilityType: json['availability_type'] != null
-          ? AvailabilityType.values.firstWhere(
-              (e) => e.toString().split('.').last.toUpperCase() == 
-                     (json['availability_type'] as String).toUpperCase(),
-              orElse: () => AvailabilityType.always,
-            )
-          : AvailabilityType.always,
-      schedules: json['schedules'] != null
-          ? (json['schedules'] as List<dynamic>)
-              .map((s) => ScheduleRule.fromJson(s as Map<String, dynamic>))
-              .toList()
-          : const [],
+      availabilityType:
+          json['availability_type'] != null
+              ? AvailabilityType.values.firstWhere(
+                (e) =>
+                    e.toString().split('.').last.toUpperCase() ==
+                    (json['availability_type'] as String).toUpperCase(),
+                orElse: () => AvailabilityType.always,
+              )
+              : AvailabilityType.always,
+      schedules:
+          json['schedules'] != null
+              ? (json['schedules'] as List<dynamic>)
+                  .map((s) => ScheduleRule.fromJson(s as Map<String, dynamic>))
+                  .toList()
+              : const [],
     );
   }
 
@@ -161,5 +181,6 @@ class ProductCategoryLink extends Equatable {
   ];
 
   @override
-  String toString() => 'ProductCategoryLink(productId: $productId, categoryId: $categoryId, price: $price)';
+  String toString() =>
+      'ProductCategoryLink(productId: $productId, categoryId: $categoryId, price: $price)';
 }

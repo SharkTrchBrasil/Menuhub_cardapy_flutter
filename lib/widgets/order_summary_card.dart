@@ -13,17 +13,14 @@ import 'package:totem/models/payment_method.dart';
 class OrderSummaryCard extends StatelessWidget {
   final PlatformPaymentMethod? paymentMethod;
 
-  const OrderSummaryCard({
-    super.key,
-    this.paymentMethod,
-  });
+  const OrderSummaryCard({super.key, this.paymentMethod});
 
   @override
   Widget build(BuildContext context) {
     // ✅ CORREÇÃO: Busca os cupons da store para verificar o tipo
     final storeState = context.watch<StoreCubit>().state;
     final storeCoupons = storeState.store?.coupons ?? [];
-    
+
     return BlocBuilder<CartCubit, CartState>(
       builder: (context, cartState) {
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
@@ -34,7 +31,8 @@ class OrderSummaryCard extends StatelessWidget {
             double deliveryFee = 0.0;
             bool isDeliveryFreeFromRule = false;
 
-            if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+            if (feeState is DeliveryFeeLoaded &&
+                feeState.deliveryType == DeliveryType.delivery) {
               deliveryFee = feeState.deliveryFee;
               isDeliveryFreeFromRule = feeState.isFree ?? false;
               if (isDeliveryFreeFromRule) {
@@ -49,10 +47,15 @@ class OrderSummaryCard extends StatelessWidget {
             bool hasFreeDeliveryCoupon = false;
             if (cart.couponCode != null) {
               // Busca o cupom aplicado na lista de cupons da store
-              final appliedCoupon = storeCoupons.where(
-                (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
-              ).firstOrNull;
-              
+              final appliedCoupon =
+                  storeCoupons
+                      .where(
+                        (c) =>
+                            c.code.toUpperCase() ==
+                            cart.couponCode!.toUpperCase(),
+                      )
+                      .firstOrNull;
+
               // Se encontrou o cupom, verifica se é do tipo FREE_DELIVERY
               if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
                 hasFreeDeliveryCoupon = true;
@@ -61,8 +64,9 @@ class OrderSummaryCard extends StatelessWidget {
                 hasFreeDeliveryCoupon = true;
               }
             }
-            
-            final isFreeDelivery = isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
+
+            final isFreeDelivery =
+                isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
             final effectiveDeliveryFee = isFreeDelivery ? 0.0 : deliveryFee;
 
             // Totais
@@ -72,19 +76,23 @@ class OrderSummaryCard extends StatelessWidget {
             // Lógica de Taxa de Pagamento
             double paymentFee = 0.0;
             if (paymentMethod != null && paymentMethod!.activation != null) {
-              paymentFee = paymentMethod!.activation!.calculateFee(subtotalValue);
+              paymentFee = paymentMethod!.activation!.calculateFee(
+                subtotalValue,
+              );
             }
-            
+
             // Total Final
-            final grandTotal = subtotalValue - discountValue + effectiveDeliveryFee + paymentFee;
+            final grandTotal =
+                subtotalValue -
+                discountValue +
+                effectiveDeliveryFee +
+                paymentFee;
 
             // ✅ CORREÇÃO: hasCoupon considera desconto direto OU cupom de frete grátis
             final hasCoupon = cart.discount > 0 || hasFreeDeliveryCoupon;
 
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-              ),
+              decoration: const BoxDecoration(color: Colors.white),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -97,33 +105,39 @@ class OrderSummaryCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Subtotal
                   _buildRow(
                     label: 'Subtotal',
                     value: subtotalValue.toCurrency(),
                     textColor: Colors.grey.shade600,
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Taxa de entrega
                   _buildRow(
                     label: 'Taxa de entrega',
-                    value: isFreeDelivery ? 'Grátis' : (effectiveDeliveryFee * 100).toInt().toCurrency,
-                    valueColor: isFreeDelivery ? Colors.green.shade700 : null,
+                    value:
+                        isFreeDelivery
+                            ? 'Grátis'
+                            : (effectiveDeliveryFee * 100).toInt().toCurrency,
+                    valueColor:
+                        hasFreeDeliveryCoupon ? Colors.green.shade700 : null,
                     textColor: Colors.grey.shade600,
                   ),
-                  
+
                   // Cupom
                   if (hasCoupon) ...[
                     const SizedBox(height: 12),
                     _buildRow(
-                      label: 'Cupom${cart.couponCode != null ? ' (${cart.couponCode})' : ''}',
+                      label:
+                          'Cupom${cart.couponCode != null ? ' (${cart.couponCode})' : ''}',
                       // ✅ CORREÇÃO: Mostra valor correto para cupom de frete grátis vs desconto direto
-                      value: cart.discount > 0 
-                          ? '- ${cart.discount.toCurrency}' 
-                          : 'Frete grátis',
+                      value:
+                          cart.discount > 0
+                              ? '- ${cart.discount.toCurrency}'
+                              : 'Frete grátis',
                       valueColor: Colors.green.shade700,
                       textColor: Colors.grey.shade600,
                     ),
@@ -138,9 +152,9 @@ class OrderSummaryCard extends StatelessWidget {
                       textColor: Colors.grey.shade600,
                     ),
                   ],
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Total
                   _buildRow(
                     label: 'Total',

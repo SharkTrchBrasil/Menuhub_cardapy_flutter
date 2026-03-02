@@ -49,24 +49,42 @@ class CartPage extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: theme.cartBackgroundColor,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: theme.cartBackgroundColor,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
           hoverColor: Colors.transparent,
-          icon: Icon(Icons.keyboard_arrow_down, color: Colors.black),
+          icon: const Icon(Icons.expand_more, color: Colors.black, size: 28),
           onPressed: () => context.go('/'),
         ),
-        title: const Text('SACOLA', style: TextStyle(fontSize: 14)),
+        title: const Text(
+          'SACOLA',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: Colors.black,
+          ),
+        ),
         centerTitle: true,
         actions: [
           TextButton(
-            style: ButtonStyle(overlayColor: MaterialStateProperty.all(Colors.transparent)),
+            style: ButtonStyle(
+              overlayColor: MaterialStateProperty.all(Colors.transparent),
+            ),
             onPressed: () => context.read<CartCubit>().clearCart(),
-            child: Text('Limpar', style: TextStyle(fontWeight: FontWeight.w600, color: theme.primaryColor)),
+            child: const Text(
+              'Limpar',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Color(0xFFE91E63), // Pink/Red color from image
+              ),
+            ),
           ),
         ],
       ),
@@ -76,79 +94,82 @@ class CartPage extends StatelessWidget {
             context.go('/');
           }
         },
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: BlocBuilder<CartCubit, CartState>(
-            builder: (context, state) {
-              if (state.status == CartStatus.loading && state.cart.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
-              }
+        child: BlocBuilder<CartCubit, CartState>(
+          builder: (context, state) {
+            if (state.status == CartStatus.loading && state.cart.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-              final cart = state.cart;
+            final cart = state.cart;
 
-              if (cart.items.isEmpty) {
-                return const Center(child: Text('Sua sacola está vazia'));
-              }
+            if (cart.items.isEmpty) {
+              return const Center(child: Text('Sua sacola está vazia'));
+            }
 
-              final recommendedProducts = getRecommendedProducts(
-                allProducts: allProducts,
-                allCategories: allCategories,
-                itemsInCart: cart.items,
-                bebidaCategories: bebidaCategoryNames,
-              );
+            final recommendedProducts = getRecommendedProducts(
+              allProducts: allProducts,
+              allCategories: allCategories,
+              itemsInCart: cart.items,
+              bebidaCategories: bebidaCategoryNames,
+            );
 
-              return Column(
-                children: [
-                  Expanded(
-                    child: ListView(
-                      children: [
-                        StoreHeaderCard(
-                          showAddItemsButton: true,
-                          onAddItemsPressed: () => context.go('/'),
-                        ),
+            return Column(
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(12.0),
+                    children: [
+                      StoreHeaderCard(
+                        showAddItemsButton: true,
+                        onAddItemsPressed: () => context.go('/'),
+                      ),
+                      const SizedBox(height: 25),
+                      if (minOrder > 0 && (cart.subtotal / 100) < minOrder) ...[
+                        MinOrderNotice(minOrder: minOrder),
                         const SizedBox(height: 25),
-                        if (minOrder > 0 && (cart.subtotal / 100) < minOrder) ...[
-                          MinOrderNotice(minOrder: minOrder),
-                          const SizedBox(height: 25),
-                        ],
-                        CartItemsSection(items: cart.items),
-                        const SizedBox(height: 25),
-                        Center(
-                          child: GestureDetector(
-                            onTap: () => context.go('/'),
-                            child: Text(
-                              'Adicionar mais itens',
-                              style: TextStyle(fontSize: 16, color: theme.primaryColor, fontWeight: FontWeight.bold),
+                      ],
+                      CartItemsSection(items: cart.items),
+                      const SizedBox(height: 25),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => context.go('/'),
+                          child: Text(
+                            'Adicionar mais itens',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 25),
-                        if (recommendedProducts.isNotEmpty)
-                          RecommendedProductsSection(
-                            recommendedProducts: recommendedProducts,
-                            allCategories: allCategories,
-                            onProductTap: (product) => handleProductTap(context, product),
-                          ),
-                        const SizedBox(height: 34),
-                        CouponSection(couponCode: cart.couponCode),
-                        const SizedBox(height: 26),
-                        FreeShippingProgress(
-                          cartTotal: cart.subtotal / 100.0,
-                          threshold: store?.getFreeDeliveryThresholdForDelivery(),
+                      ),
+                      const SizedBox(height: 25),
+                      if (recommendedProducts.isNotEmpty)
+                        RecommendedProductsSection(
+                          recommendedProducts: recommendedProducts,
+                          allCategories: allCategories,
+                          onProductTap:
+                              (product) => handleProductTap(context, product),
                         ),
-                        const SizedBox(height: 40),
+                      const SizedBox(height: 34),
+                      CouponSection(couponCode: cart.couponCode),
+                      const SizedBox(height: 26),
+                      FreeShippingProgress(
+                        cartTotal: cart.subtotal / 100.0,
+                        threshold: store?.getFreeDeliveryThresholdForDelivery(),
+                      ),
+                      const SizedBox(height: 40),
 
-                        const OrderSummaryCard(),
+                      const OrderSummaryCard(),
 
-                        const SizedBox(height: 40),
-                      ],
-                    ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
-                  const UnifiedCartBottomBar(variant: CartBottomBarVariant.cart),
-                ],
-              );
-            },
-          ),
+                ),
+                const UnifiedCartBottomBar(variant: CartBottomBarVariant.cart),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -172,7 +193,9 @@ class CartPage extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Erro: ${product.name} não pertence a nenhuma categoria.'),
+              content: Text(
+                'Erro: ${product.name} não pertence a nenhuma categoria.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -183,9 +206,12 @@ class CartPage extends StatelessWidget {
       // 3. Cria o payload com o categoryId correto.
       final payload = UpdateCartItemPayload(
         productId: product.id!,
-        categoryId: firstCategoryLink.categoryId, // Usa o ID da primeira categoria encontrada
+        categoryId:
+            firstCategoryLink
+                .categoryId, // Usa o ID da primeira categoria encontrada
         quantity: 1,
-        variants: null, // Para produtos simples, não há variantes a serem enviadas
+        variants:
+            null, // Para produtos simples, não há variantes a serem enviadas
       );
 
       try {
@@ -203,7 +229,9 @@ class CartPage extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Não foi possível adicionar ${product.name}. Tente novamente.'),
+              content: Text(
+                'Não foi possível adicionar ${product.name}. Tente novamente.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -216,7 +244,8 @@ class CartPage extends StatelessWidget {
     required List<Product> allProducts,
     required List<Category> allCategories,
     required List<CartItem> itemsInCart,
-    Set<String>? bebidaCategories, // Mantido para compatibilidade, mas não usado mais
+    Set<String>?
+    bebidaCategories, // Mantido para compatibilidade, mas não usado mais
     int maxItems = 10,
   }) {
     // ✅ Usa o serviço profissional de recomendações

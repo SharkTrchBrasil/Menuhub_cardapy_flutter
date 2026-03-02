@@ -3,23 +3,27 @@ import 'package:brasil_fields/brasil_fields.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/responsive_builder.dart';
-
+import '../../../widgets/ds_button.dart';
 
 /// ✅ Helper para mostrar dialog no desktop e bottomsheet no mobile
-Future<String?> showPhoneCollectionDialog(BuildContext context, {String? initialPhone}) {
+Future<String?> showPhoneCollectionDialog(
+  BuildContext context, {
+  String? initialPhone,
+}) {
   final isDesktop = ResponsiveBuilder.isDesktop(context);
-  
+
   if (isDesktop) {
     // ✅ Desktop: Mostra como Dialog
     return showDialog<String?>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: PhoneCollectionWidget(initialPhone: initialPhone),
-        ),
-      ),
+      builder:
+          (context) => Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: PhoneCollectionWidget(initialPhone: initialPhone),
+            ),
+          ),
     );
   } else {
     // ✅ Mobile: Mostra como BottomSheet
@@ -30,12 +34,13 @@ Future<String?> showPhoneCollectionDialog(BuildContext context, {String? initial
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: PhoneCollectionWidget(initialPhone: initialPhone),
-      ),
+      builder:
+          (context) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: PhoneCollectionWidget(initialPhone: initialPhone),
+          ),
     );
   }
 }
@@ -44,10 +49,7 @@ Future<String?> showPhoneCollectionDialog(BuildContext context, {String? initial
 class PhoneCollectionWidget extends StatefulWidget {
   final String? initialPhone;
 
-  const PhoneCollectionWidget({
-    super.key,
-    this.initialPhone,
-  });
+  const PhoneCollectionWidget({super.key, this.initialPhone});
 
   @override
   State<PhoneCollectionWidget> createState() => _PhoneCollectionWidgetState();
@@ -103,22 +105,40 @@ class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
             style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 24),
-          TextField(
-            controller: _controller,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              TelefoneInputFormatter(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Telefone',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _controller,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  TelefoneInputFormatter(),
+                ],
+                decoration: InputDecoration(
+                  hintText: '(00) 00000-0000',
+                  prefixIcon: const Icon(Icons.phone),
+                  errorText: _errorMessage,
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                enabled: !_isSubmitting,
+                autofocus:
+                    isDesktop, // ✅ Desktop: foca automaticamente no campo
+              ),
             ],
-            decoration: InputDecoration(
-              labelText: 'Telefone',
-              hintText: '(00) 00000-0000',
-              prefixIcon: const Icon(Icons.phone),
-              errorText: _errorMessage,
-              border: const OutlineInputBorder(),
-            ),
-            enabled: !_isSubmitting,
-            autofocus: isDesktop, // ✅ Desktop: foca automaticamente no campo
           ),
           const SizedBox(height: 24),
           if (isDesktop)
@@ -126,44 +146,34 @@ class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _isSubmitting ? null : () => Navigator.pop(context, null),
+                  onPressed:
+                      _isSubmitting ? null : () => Navigator.pop(context, null),
                   child: const Text('Cancelar'),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
+                DsButton(
                   onPressed: _isSubmitting ? null : _validateAndSubmit,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  label: 'Confirmar',
+                  isLoading: _isSubmitting,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
                   ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Confirmar',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
                 ),
               ],
             )
           else
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _validateAndSubmit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: DsButton(
+                onPressed: _isSubmitting ? null : _validateAndSubmit,
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                label: 'Confirmar',
+                isLoading: _isSubmitting,
               ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text(
-                      'Confirmar',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
             ),
         ],
       ),
@@ -172,22 +182,24 @@ class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
 
   void _validateAndSubmit() {
     final phoneText = _controller.text.replaceAll(RegExp(r'[^\d]'), '');
-    
+
     if (phoneText.isEmpty) {
       setState(() => _errorMessage = 'Por favor, informe seu telefone.');
       return;
     }
 
     if (phoneText.length < 10) {
-      setState(() => _errorMessage = 'Telefone inválido. Informe um número completo.');
+      setState(
+        () => _errorMessage = 'Telefone inválido. Informe um número completo.',
+      );
       return;
     }
 
     // Formata o telefone para enviar (apenas dígitos)
     final formattedPhone = phoneText;
-    
+
     setState(() => _isSubmitting = true);
-    
+
     // Retorna o telefone formatado
     Navigator.pop(context, formattedPhone);
   }
@@ -205,14 +217,10 @@ class _PhoneCollectionWidgetState extends State<PhoneCollectionWidget> {
 class PhoneCollectionBottomSheet extends StatelessWidget {
   final String? initialPhone;
 
-  const PhoneCollectionBottomSheet({
-    super.key,
-    this.initialPhone,
-  });
+  const PhoneCollectionBottomSheet({super.key, this.initialPhone});
 
   @override
   Widget build(BuildContext context) {
     return PhoneCollectionWidget(initialPhone: initialPhone);
   }
 }
-

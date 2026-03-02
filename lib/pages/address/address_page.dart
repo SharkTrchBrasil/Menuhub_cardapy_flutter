@@ -5,9 +5,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:collection/collection.dart'; // ✅ Import para firstOrNull
 import 'package:totem/models/customer_address.dart';
+import 'package:totem/models/coupon.dart';
 import 'package:totem/widgets/unified_cart_bottom_bar.dart';
 
-import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../cubit/store_state.dart';
 import '../../models/delivery_type.dart';
@@ -64,52 +64,70 @@ class _AddressPageState extends State<AddressPage> {
         builder: (context) {
           final theme = context.watch<DsThemeSwitcher>().theme;
           return Scaffold(
-            backgroundColor: theme.cartBackgroundColor, // Mantém fundo consistente
+            backgroundColor:
+                theme.cartBackgroundColor, // Mantém fundo consistente
             appBar: AppBar(
               title: const Text('ENTREGA', style: TextStyle(fontSize: 14)),
               centerTitle: true,
               backgroundColor: theme.cartBackgroundColor,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.keyboard_arrow_left, color: Colors.black),
+                icon: const Icon(
+                  Icons.keyboard_arrow_left,
+                  color: Colors.black,
+                ),
                 onPressed: () => context.go('/cart'),
               ),
             ),
-            body: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-              BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
-                builder: (context, feeState) {
-                  final title = feeState.deliveryType == DeliveryType.delivery
-                      ? 'Entregar no endereço'
-                      : 'Local de retirada';
-                  return _SectionTitle(title: title);
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildAddressCard(),
-              const SizedBox(height: 32),
-              // ✅ NOVO: Oculta título "Opções de entrega" também
-              BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
-                builder: (context, feeState) {
-                  final addressState = context.watch<AddressCubit>().state;
-                  if (feeState.deliveryType == DeliveryType.delivery && addressState.selectedAddress == null) {
-                    return const SizedBox.shrink();
-                  }
-                  return const _SectionTitle(title: 'Opções de entrega');
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildDeliveryOptions(),
-            ],
-          ),
-        ),
-        bottomNavigationBar: _buildBottomBar(),
-      ); // Scaffold
-    }, // Builder function
+            body: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
+                          builder: (context, feeState) {
+                            final title =
+                                feeState.deliveryType == DeliveryType.delivery
+                                    ? 'Entregar no endereço'
+                                    : 'Local de retirada';
+                            return _SectionTitle(title: title);
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        _buildAddressCard(),
+                        const SizedBox(height: 32),
+                        // ✅ NOVO: Oculta título "Opções de entrega" também
+                        BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
+                          builder: (context, feeState) {
+                            final addressState =
+                                context.watch<AddressCubit>().state;
+                            if (feeState.deliveryType ==
+                                    DeliveryType.delivery &&
+                                addressState.selectedAddress == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return const _SectionTitle(
+                              title: 'Opções de entrega',
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        _buildDeliveryOptions(),
+                      ],
+                    ),
+                  ),
+                ),
+                const UnifiedCartBottomBar(
+                  variant: CartBottomBarVariant.address,
+                ),
+              ],
+            ),
+            bottomNavigationBar: _buildBottomBar(),
+          ); // Scaffold
+        }, // Builder function
       ), // Builder
     ); // MultiBlocListener
   }
@@ -153,7 +171,10 @@ class _AddressPageState extends State<AddressPage> {
             }
             if (addressState.selectedAddress == null) {
               return ListTile(
-                leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                leading: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                ),
                 title: const Text('Nenhum endereço selecionado'),
                 subtitle: const Text('Toque para escolher ou cadastrar'),
                 onTap: () {
@@ -176,41 +197,35 @@ class _AddressPageState extends State<AddressPage> {
     // ✅ NOVO: Oculta opções de entrega se for Delivery e não tiver endereço selecionado
     final deliveryType = context.watch<DeliveryFeeCubit>().state.deliveryType;
     final selectedAddress = context.watch<AddressCubit>().state.selectedAddress;
-    
+
     if (deliveryType == DeliveryType.delivery && selectedAddress == null) {
-      return const SizedBox.shrink(); 
+      return const SizedBox.shrink();
     }
 
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, storeState) {
         final store = storeState.store;
         if (store == null) {
-          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+          return const SizedBox(
+            height: 100,
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
 
-        final deliveryEnabled = store.store_operation_config?.deliveryEnabled ?? false;
-        final pickupEnabled = store.store_operation_config?.pickupEnabled ?? false;
+        final deliveryEnabled =
+            store.store_operation_config?.deliveryEnabled ?? false;
+        final pickupEnabled =
+            store.store_operation_config?.pickupEnabled ?? false;
 
-        // ✅ LÓGICA DE TEMPO: Prioriza regra ativa (se houver), depois config da loja, depois fallback padrão
-        final activeRule = store.deliveryFeeRules
-            .where((r) => r.isActive && r.deliveryMethod == 'delivery')
-            .firstOrNull;
-
-        String deliveryTime;
-        if (activeRule?.estimatedMinMinutes != null) {
-          deliveryTime = '${activeRule?.estimatedMinMinutes}-${activeRule?.estimatedMaxMinutes} min';
-        } else {
-          final minTime = store.store_operation_config?.deliveryEstimatedMin ?? 30;
-          final maxTime = store.store_operation_config?.deliveryEstimatedMax ?? 45;
-          deliveryTime = '$minTime-$maxTime min';
-        }
+        final deliveryTime = store.getDeliveryTimeRange();
 
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
           builder: (context, feeState) {
             // ✅ NOVO: Verifica se há erro de frete (fora da área)
-            final bool hasDeliveryError = feeState is DeliveryFeeError && 
+            final bool hasDeliveryError =
+                feeState is DeliveryFeeError &&
                 feeState.deliveryType == DeliveryType.delivery;
-            
+
             return Column(
               children: [
                 if (deliveryEnabled)
@@ -220,20 +235,27 @@ class _AddressPageState extends State<AddressPage> {
                     feeState: feeState, // Passa o estado completo
                     isSelected: feeState.deliveryType == DeliveryType.delivery,
                     onTap: () {
-                      context.read<DeliveryFeeCubit>().updateDeliveryType(DeliveryType.delivery);
+                      context.read<DeliveryFeeCubit>().updateDeliveryType(
+                        DeliveryType.delivery,
+                      );
                     },
                   ),
                 // ✅ NOVO: Mostra alerta de erro quando endereço está fora da área
                 if (hasDeliveryError)
-                  _OutOfAreaWarning(message: (feeState as DeliveryFeeError).message),
+                  _OutOfAreaWarning(
+                    message: (feeState as DeliveryFeeError).message,
+                  ),
                 if (pickupEnabled)
                   _DeliveryOptionTile(
                     title: 'Retirar na loja',
-                    deliveryTime: 'Pronto em ${store.store_operation_config?.pickupEstimatedMin} min',
+                    deliveryTime:
+                        'Pronto em ${store.store_operation_config?.pickupEstimatedMin} min',
                     feeState: feeState, // Passa o estado completo
                     isSelected: feeState.deliveryType == DeliveryType.pickup,
                     onTap: () {
-                      context.read<DeliveryFeeCubit>().updateDeliveryType(DeliveryType.pickup);
+                      context.read<DeliveryFeeCubit>().updateDeliveryType(
+                        DeliveryType.pickup,
+                      );
                     },
                   ),
               ],
@@ -245,11 +267,7 @@ class _AddressPageState extends State<AddressPage> {
   }
 
   Widget _buildBottomBar() {
-    // ✅ Usando widget unificado para bottom bar
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14.0),
-      child: const UnifiedCartBottomBar(variant: CartBottomBarVariant.address),
-    );
+    return const SizedBox.shrink(); // Removido pois agora está no body Column
   }
 }
 
@@ -260,7 +278,8 @@ class _PickupLocationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? imageUrl = store.image?.url;
-    final addressLine = '${store.street}, ${store.number} - ${store.neighborhood}, ${store.city}';
+    final addressLine =
+        '${store.street}, ${store.number} - ${store.neighborhood}, ${store.city}';
     return ListTile(
       leading: Container(
         decoration: BoxDecoration(
@@ -270,13 +289,24 @@ class _PickupLocationCard extends StatelessWidget {
         child: CircleAvatar(
           radius: 28,
           backgroundColor: Colors.grey.shade100,
-          backgroundImage: (imageUrl != null && imageUrl.isNotEmpty) ? NetworkImage(imageUrl) : null,
-          child: (imageUrl == null || imageUrl.isEmpty)
-              ? const Icon(Icons.store_mall_directory_outlined, color: Colors.black54, size: 24)
-              : null,
+          backgroundImage:
+              (imageUrl != null && imageUrl.isNotEmpty)
+                  ? NetworkImage(imageUrl)
+                  : null,
+          child:
+              (imageUrl == null || imageUrl.isEmpty)
+                  ? const Icon(
+                    Icons.store_mall_directory_outlined,
+                    color: Colors.black54,
+                    size: 24,
+                  )
+                  : null,
         ),
       ),
-      title: Text(store.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+      title: Text(
+        store.name,
+        style: const TextStyle(fontWeight: FontWeight.w900),
+      ),
       subtitle: Text(addressLine),
     );
   }
@@ -290,7 +320,9 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
     );
   }
 }
@@ -303,14 +335,25 @@ class _AddressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = '${address.neighborhood} ${address.complement ?? ""} - ${address.city}';
+    final subtitle =
+        '${address.neighborhood} ${address.complement ?? ""} - ${address.city}';
     return ListTile(
-      leading: const Icon(Icons.location_on_outlined, color: Colors.black, size: 24),
-      title: Text('${address.street}, ${address.number}', style: const TextStyle(fontWeight: FontWeight.w900)),
+      leading: const Icon(
+        Icons.location_on_outlined,
+        color: Colors.black,
+        size: 24,
+      ),
+      title: Text(
+        '${address.street}, ${address.number}',
+        style: const TextStyle(fontWeight: FontWeight.w900),
+      ),
       subtitle: Text(subtitle),
       trailing: TextButton(
         onPressed: onTap,
-        child: const Text('Trocar', style: TextStyle(color: Colors.red)),
+        child: const Text(
+          'Trocar',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+        ),
       ),
       onTap: onTap,
     );
@@ -335,36 +378,36 @@ class _DeliveryOptionTile extends StatelessWidget {
 
   String _getFeeText(BuildContext context) {
     final state = feeState; // Apenas para facilitar a leitura
-    
+
     // ✅ Verifica se deve ocultar o valor do frete (hide_fee_display)
     final storeState = context.read<StoreCubit>().state;
     final store = storeState.store;
     if (store != null && _shouldHideFeeDisplay(store)) {
       return ''; // Ocultar valor
     }
-    
+
     // ✅ CORREÇÃO: Verifica se tem cupom de frete grátis aplicado
     final cart = context.read<CartCubit>().state.cart;
     final storeCoupons = store?.coupons ?? [];
-    bool hasFreeDeliveryCoupon = false;
-    
+
+    Coupon? appliedCoupon;
     if (cart.couponCode != null) {
-      final appliedCoupon = storeCoupons.where(
-        (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
-      ).firstOrNull;
-      
-      if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
-        hasFreeDeliveryCoupon = true;
-      } else if (cart.isFreeDelivery) {
-        hasFreeDeliveryCoupon = true;
-      }
+      appliedCoupon =
+          storeCoupons
+              .where(
+                (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase(),
+              )
+              .firstOrNull;
     }
-    
-    // ✅ Se tem cupom de frete grátis, mostra "Grátis"
-    if (hasFreeDeliveryCoupon && title == 'Delivery') {
+
+    // ✅ Se tem cupom de frete grátis REAL aplicado
+    if (cart.couponCode != null &&
+        cart.couponCode!.isNotEmpty &&
+        (cart.isFreeDelivery || appliedCoupon?.isFreeDelivery == true) &&
+        title == 'Delivery') {
       return 'Grátis';
     }
-    
+
     if (state is DeliveryFeeRequiresAddress) {
       return 'A calcular';
     }
@@ -408,28 +451,43 @@ class _DeliveryOptionTile extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(deliveryTime, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+        subtitle: Text(
+          deliveryTime,
+          style: const TextStyle(fontSize: 14, color: Colors.grey),
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _getFeeText(context),
-              style: TextStyle(
-                // ✅ NOVO: Mostra vermelho se for erro/indisponível
-                color: (feeState is DeliveryFeeError && title == 'Delivery')
-                    ? Colors.red
-                    : (feeState is DeliveryFeeLoaded && (feeState as DeliveryFeeLoaded).deliveryFee > 0)
-                        ? null
-                        : Colors.green,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
+            Builder(
+              builder: (context) {
+                final cart = context.read<CartCubit>().state.cart;
+                final hasCouponApplied =
+                    cart.couponCode != null && cart.couponCode!.isNotEmpty;
+                final feeText = _getFeeText(context);
+
+                return Text(
+                  feeText,
+                  style: TextStyle(
+                    color:
+                        (feeState is DeliveryFeeError && title == 'Delivery')
+                            ? Colors.red
+                            : (feeText == 'Grátis' && hasCouponApplied)
+                            ? Colors.green
+                            : Colors.black87,
+                    fontWeight:
+                        (feeText == 'Grátis' && hasCouponApplied)
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                    fontSize: 14,
+                  ),
+                );
+              },
             ),
             Radio<bool>(
               value: isSelected,
               groupValue: true,
               onChanged: (value) => onTap(),
-              activeColor: Colors.red,
+              activeColor: Colors.black,
             ),
           ],
         ),
@@ -449,21 +507,21 @@ class _OutOfAreaWarning extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 12.0),
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: Colors.grey.shade100,
         borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: Colors.red.shade200, width: 1.0),
+        border: Border.all(color: Colors.grey.shade300, width: 1.0),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.red.shade100,
+              color: Colors.grey.shade200,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.location_off_rounded,
-              color: Colors.red.shade700,
+              color: Colors.black87,
               size: 24,
             ),
           ),
@@ -476,23 +534,20 @@ class _OutOfAreaWarning extends StatelessWidget {
                   'Não entregamos neste endereço',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.red.shade900,
+                    color: Colors.black,
                     fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   message,
-                  style: TextStyle(
-                    color: Colors.red.shade800,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Por favor, escolha outro endereço ou selecione "Retirar na loja".',
                   style: TextStyle(
-                    color: Colors.red.shade700,
+                    color: Colors.grey.shade600,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                   ),

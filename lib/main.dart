@@ -281,7 +281,7 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       }
     }
     // ✅ Fallback para localhost - mude para a loja que deseja testar
-    return 'maxlanches';
+    return 'lanchonetejeitomineiro';
   }
 
   @override

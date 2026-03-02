@@ -20,10 +20,13 @@ class OrderAgainListWidget extends StatelessWidget {
         // Filter for orders that are worth showing (e.g. CONCLUDED or recent)
         // For now, take all valid orders that have items.
         // We reverse to show most recent first if not already sorted.
-        final pastOrders = state.orders
-            .where((o) => o.lastStatus == 'CONCLUDED' && o.bag.items.isNotEmpty)
-            .take(5)
-            .toList();
+        final pastOrders =
+            state.orders
+                .where(
+                  (o) => o.lastStatus == 'CONCLUDED' && o.bag.items.isNotEmpty,
+                )
+                .take(5)
+                .toList();
 
         if (pastOrders.isEmpty) {
           return const SizedBox.shrink();
@@ -38,7 +41,7 @@ class OrderAgainListWidget extends StatelessWidget {
               child: Text(
                 'Peça novamente',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1F1F1F),
                 ),
@@ -56,7 +59,7 @@ class OrderAgainListWidget extends StatelessWidget {
                 },
               ),
             ),
-             const SizedBox(height: 24),
+            const SizedBox(height: 24),
           ],
         );
       },
@@ -73,13 +76,14 @@ class _OrderAgainCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = order.bag.items; // List<BagItem>
     final totalItemCount = order.bag.itemCount; // Total quantity of items
-    
-    // Images: Get unique non-null images. 
-    final images = items
-        .map((i) => i.logoUrl)
-        .where((url) => url != null && url.isNotEmpty)
-        .toSet() // Dedupe images
-        .toList();
+
+    // Images: Get unique non-null images.
+    final images =
+        items
+            .map((i) => i.logoUrl)
+            .where((url) => url != null && url.isNotEmpty)
+            .toSet() // Dedupe images
+            .toList();
 
     return Container(
       width: 320,
@@ -112,56 +116,60 @@ class _OrderAgainCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   // Item List (Top 2 items)
-                   ...items.take(2).map((item) => Padding(
-                     padding: const EdgeInsets.only(bottom: 2),
-                     child: Text(
-                       '${item.quantity} ${item.name}',
-                       style: const TextStyle(
-                         fontSize: 13,
-                         fontWeight: FontWeight.w400,
-                         color: Color(0xFF4A4A4A),
-                       ),
-                       maxLines: 1,
-                       overflow: TextOverflow.ellipsis,
-                     ),
-                   )),
-                   // +N items
-                   if (items.length > 2)
-                     Padding(
-                       padding: const EdgeInsets.only(top: 2),
-                       child: Text(
-                         '+ ${totalItemCount - items.take(2).fold(0, (sum, i) => sum + i.quantity)} itens', 
-                         style: const TextStyle(
-                           fontSize: 12,
-                           color: Colors.grey,
-                         ),
-                       ),
-                     ),
-                   
-                   const Spacer(),
-                   
-                   // ✅ CORREÇÃO: Mostra subtotal (apenas produtos), não total com frete
-                   Text(
-                     order.subtotalAmount.toCurrency(),
-                     style: const TextStyle(
-                       fontSize: 16,
-                       fontWeight: FontWeight.bold,
-                       color: Colors.black87,
-                     ),
-                   ),
-                   const SizedBox(height: 6),
-                   InkWell(
-                     onTap: () => _addOrderToCart(context),
-                     child: Text(
-                       'Adicionar à sacola',
-                       style: TextStyle(
-                         color: Theme.of(context).primaryColor,
-                         fontSize: 14,
-                         fontWeight: FontWeight.bold,
-                       ),
-                     ),
-                   ),
+                  // Item List (Top 2 items)
+                  ...items
+                      .take(2)
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            '${item.quantity} ${item.name}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF4A4A4A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  // +N items
+                  if (items.length > 2)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '+ ${totalItemCount - items.take(2).fold(0, (sum, i) => sum + i.quantity)} itens',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+
+                  const Spacer(),
+
+                  // ✅ CORREÇÃO: Mostra subtotal (apenas produtos), não total com frete
+                  Text(
+                    order.subtotalAmount.toCurrency(),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => _addOrderToCart(context),
+                    child: Text(
+                      'Adicionar à sacola',
+                      style: TextStyle(
+                        color: Theme.of(context).primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -241,11 +249,13 @@ class _OrderAgainCard extends StatelessWidget {
               children: [
                 Expanded(child: _buildImageTile(getImg(2))),
                 const SizedBox(width: 1),
-                Expanded(child: _buildImageTile(
-                  getImg(3),
-                  // If we have more items than shown (4), display overlay logic
-                  overlayText: (totalCount > 4) ? '+${totalCount - 3}' : null
-                )),
+                Expanded(
+                  child: _buildImageTile(
+                    getImg(3),
+                    // If we have more items than shown (4), display overlay logic
+                    overlayText: (totalCount > 4) ? '+${totalCount - 3}' : null,
+                  ),
+                ),
               ],
             ),
           ),
@@ -256,7 +266,7 @@ class _OrderAgainCard extends StatelessWidget {
 
   Widget _buildImageTile(String? url, {String? overlayText}) {
     if (url == null) {
-        return Container(color: Colors.grey.shade100);
+      return Container(color: Colors.grey.shade100);
     }
 
     // SANITIZATION LOGIC START
@@ -292,7 +302,7 @@ class _OrderAgainCard extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
-          )
+          ),
       ],
     );
   }
@@ -303,17 +313,23 @@ class _OrderAgainCard extends StatelessWidget {
     final products = storeState.products ?? [];
 
     int addedCount = 0;
-    
+
     for (final bagItem in order.bag.items) {
       // Find product by external ID (which maps to Product ID)
       // Fallback: name match covering potential type issues
-      final product = products.firstWhereOrNull((p) => p.id.toString() == bagItem.externalId) 
-                   ?? products.firstWhereOrNull((p) => p.name == bagItem.name); 
-                   
+      final product =
+          products.firstWhereOrNull(
+            (p) => p.id.toString() == bagItem.externalId,
+          ) ??
+          products.firstWhereOrNull((p) => p.name == bagItem.name);
+
       if (product != null && product.id != null) {
         // Resolve category ID
-        final categoryId = product.primaryCategoryId ?? 
-            (product.categoryLinks.isNotEmpty ? product.categoryLinks.first.categoryId : 0);
+        final categoryId =
+            product.primaryCategoryId ??
+            (product.categoryLinks.isNotEmpty
+                ? product.categoryLinks.first.categoryId
+                : 0);
 
         final payload = UpdateCartItemPayload(
           productId: product.id!,
@@ -322,7 +338,7 @@ class _OrderAgainCard extends StatelessWidget {
           note: bagItem.notes,
           // variants: skipped for now
         );
-        
+
         try {
           await cartCubit.updateItem(payload);
           addedCount++;
@@ -334,19 +350,21 @@ class _OrderAgainCard extends StatelessWidget {
 
     if (context.mounted) {
       if (addedCount > 0) {
-         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$addedCount itens adicionados à sacola!'),
-              backgroundColor: Colors.green,
-            ),
-         );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$addedCount itens adicionados à sacola!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       } else {
-         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Não foi possível readicionar os itens (produtos não encontrados).'),
-              backgroundColor: Colors.red,
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível readicionar os itens (produtos não encontrados).',
             ),
-         );
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

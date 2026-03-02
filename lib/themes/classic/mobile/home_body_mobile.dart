@@ -6,7 +6,6 @@ import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/option_group.dart';
-import 'package:totem/themes/classic/widgets/store_card.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
@@ -14,15 +13,11 @@ import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
 import '../../../cubit/auth_cubit.dart';
-import '../../../pages/cart/cart_cubit.dart';
-import '../../../pages/cart/cart_state.dart';
-import '../../../core/extensions.dart';
-import '../../../themes/ds_theme_switcher.dart';
-import 'package:totem/themes/classic/widgets/coupon_list_widget.dart';
-import 'package:totem/themes/classic/widgets/order_again_list_widget.dart'; // ✅ Importante
-import '../../../widgets/store_closed_widgets.dart';
+import 'package:totem/themes/classic/widgets/order_again_list_widget.dart';
 import '../../../widgets/unified_cart_bottom_bar.dart';
+import '../../../core/extensions.dart';
 import '../../../repositories/realtime_repository.dart';
+import '../../../widgets/premium_store_header.dart';
 
 class HomeBodyMobile extends StatefulWidget {
   final List<BannerModel> banners;
@@ -112,7 +107,11 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
       } else {
         _filteredProducts =
             widget.products.where((product) {
-              return product.name.toLowerCase().contains(query.toLowerCase());
+              final q = query.toLowerCase();
+              final nameMatch = product.name.toLowerCase().contains(q);
+              final descMatch =
+                  product.description?.toLowerCase().contains(q) ?? false;
+              return nameMatch || descMatch;
             }).toList();
       }
       WidgetsBinding.instance.addPostFrameCallback(
@@ -178,26 +177,11 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   }
 
   void _onScroll() {
-    if (_isManualScrolling) return; // ✅ Evita conflito ao clicar na categoria
-
-    // Recalcula se necessário (raro, mas garante precisão)
-    if (_categoryOffsets.isEmpty) _calculateCategoryOffsets();
+    if (_isManualScrolling) return;
 
     final currentScrollOffset = _scrollController.offset;
-
-    // Controla a visibilidade da busca sticky com threshold mais suave
-    final shouldShowSticky = currentScrollOffset > 300;
-    if (shouldShowSticky != _showStickySearch) {
-      setState(() {
-        _showStickySearch = shouldShowSticky;
-      });
-    }
-
     Category? newSelectedCategory;
-
-    // ✅ Offsets mais precisos considerando o cabeçalho fixo
-    final stickyHeaderHeight = _showStickySearch ? 120.0 : 60.0;
-    final selectionPoint = currentScrollOffset + stickyHeaderHeight + 20;
+    final selectionPoint = currentScrollOffset + 120;
 
     for (var i = 0; i < widget.categories.length; i++) {
       final category = widget.categories[i];
@@ -210,24 +194,141 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
       }
     }
 
-    // Se chegou no fim, seleciona a última
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 50) {
-      newSelectedCategory = widget.categories.last;
-    }
-
     if (newSelectedCategory != null &&
         widget.selectedCategory?.id != newSelectedCategory.id) {
       widget.onCategorySelected(newSelectedCategory);
 
-      // ✅ Sincroniza o scroll horizontal
-      final index = widget.categories.indexWhere(
+      final index = categoriesWithProducts.indexWhere(
         (c) => c.id == newSelectedCategory?.id,
       );
       if (index != -1) {
         _scrollToHorizontalCategory(index);
       }
     }
+
+    // Calcula offset da primeira categoria
+    double firstCatOffset = 9999.0;
+    for (final cat in categoriesWithProducts) {
+      if (cat.id != null && _categoryOffsets.containsKey(cat.id)) {
+        final off = _categoryOffsets[cat.id]!;
+        if (off < firstCatOffset) firstCatOffset = off;
+      }
+    }
+
+    final shouldShowSticky = currentScrollOffset > (firstCatOffset - 100);
+    if (shouldShowSticky != _showStickySearch) {
+      setState(() {
+        _showStickySearch = shouldShowSticky;
+      });
+    }
+  }
+
+  /// ✅ Lista de categorias úteis para exibição
+  List<Category> get categoriesWithProducts =>
+      widget.categories.where((category) {
+        if (category.isCustomizable) return true;
+        final hasProductsWithLinks = _filteredProducts.any(
+          (p) => p.categoryLinks.any((link) => link.categoryId == category.id),
+        );
+        final hasCategoryLinks =
+            category.productLinks.isNotEmpty &&
+            category.productLinks.any(
+              (link) => _filteredProducts.any((p) => p.id == link.productId),
+            );
+        return hasProductsWithLinks || hasCategoryLinks;
+      }).toList();
+
+  /// ✅ Abre o Bottom Sheet com todas as categorias
+  void _showCategoryBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Cardápio completo',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: categoriesWithProducts.length,
+                    itemBuilder: (context, index) {
+                      final category = categoriesWithProducts[index];
+                      // Conta produtos na categoria
+                      final count =
+                          _filteredProducts.where((p) {
+                            return p.categoryLinks.any(
+                                  (l) => l.categoryId == category.id,
+                                ) ||
+                                p.primaryCategoryId == category.id ||
+                                category.productLinks.any(
+                                  (l) => l.productId == p.id,
+                                );
+                          }).length;
+
+                      return ListTile(
+                        title: Text(
+                          category.name,
+                          style: TextStyle(
+                            fontWeight:
+                                widget.selectedCategory?.id == category.id
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                            color:
+                                widget.selectedCategory?.id == category.id
+                                    ? Colors.black
+                                    : Colors.grey.shade700,
+                          ),
+                        ),
+                        trailing: Text(
+                          count.toString(),
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          widget.onCategorySelected(category);
+                          _scrollToCategory(category.id!);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -239,10 +340,9 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              const StoreCardData(),
+              const SliverToBoxAdapter(child: PremiumStoreHeader()),
 
               // const SliverToBoxAdapter(child: SizedBox(height: 80)), // Removed as per request to reduce whitespace
-              const SliverToBoxAdapter(child: CouponListWidget()), // ✅ Cupons
               const SliverToBoxAdapter(
                 child: OrderAgainListWidget(),
               ), // ✅ Peça Novamente
@@ -253,49 +353,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                   categories: widget.categories,
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _StickyHeaderDelegate(
-                  minHeight: _showStickySearch ? 120 : 60,
-                  maxHeight: _showStickySearch ? 120 : 60,
-                  child: Container(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    child:
-                        _showStickySearch
-                            ? Column(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  child: TextField(
-                                    controller: _stickySearchController,
-                                    decoration: InputDecoration(
-                                      hintText: 'Buscar no cardápio...',
-                                      prefixIcon: const Icon(Icons.search),
-                                      filled: true,
-                                      fillColor: Colors.grey.shade200,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 8,
-                                            horizontal: 16,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(child: _buildHorizontalCategories()),
-                              ],
-                            )
-                            : _buildHorizontalCategories(),
-                  ),
-                ),
-              ),
+              // Sticky Header movido para o Stack overlay
               SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final category = widget.categories[index];
@@ -323,17 +381,8 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                             hasProductLink;
                       }).toList();
 
-                  // ✅ Se não encontrou produtos na lista filtrada, mas a categoria tem productLinks,
-                  // busca os produtos correspondentes na lista completa
-                  if (productsInCategory.isEmpty &&
-                      category.productLinks.isNotEmpty) {
-                    productsInCategory =
-                        widget.products.where((p) {
-                          return category.productLinks.any(
-                            (link) => link.productId == p.id,
-                          );
-                        }).toList();
-                  }
+                  // ✅ Removemos o fallback que ignorava a busca
+                  // Se productsInCategory está vazio, a categoria não deve exibir nada extras.
 
                   if (productsInCategory.isEmpty)
                     return const SizedBox.shrink();
@@ -386,11 +435,14 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                               child: Text(
                                 category.name,
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1F1F1F),
+                                ),
                               ),
                             ),
                             // ✅ Lista de tamanhos como cards de produto (igual ProductItem)
@@ -546,11 +598,14 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                               child: Text(
                                 category.name,
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1F1F1F),
+                                ),
                               ),
                             ),
                             // ✅ Exibe cada produto como um tamanho
@@ -591,11 +646,14 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                           child: Text(
                             category.name,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1F1F1F),
+                            ),
                           ),
                         ),
                         ...productsInCategory.map(
@@ -613,21 +671,92 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ],
           ),
-          // ✅ Cart bottom bar - colado nas tabs, sem padding lateral
+          // ✅ Floating Sticky Header (Search + Categories)
+          if (_showStickySearch)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: BlocBuilder<StoreCubit, StoreState>(
+                builder: (context, storeState) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                            child: TextField(
+                              controller: _stickySearchController,
+                              readOnly: true,
+                              onTap: () => context.push('/search'),
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Buscar em ${storeState.store?.name ?? ''}',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                  borderSide: BorderSide.none,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 0,
+                                  horizontal: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                          _buildHorizontalCategories(),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          // ✅ Cart bottom bar
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: BlocBuilder<AuthCubit, AuthState>(
-              builder: (context, authState) {
-                if (authState.customer != null) {
-                  // ✅ Quando logado, mostra card de carrinho unificado
-                  return const UnifiedCartBottomBar(
-                    variant: CartBottomBarVariant.home,
-                  );
-                }
-                // ✅ Quando não logado, mostra card de login
-                return const _LoginPromoCard();
+            child: BlocBuilder<StoreCubit, StoreState>(
+              builder: (context, storeState) {
+                final canOrder =
+                    StoreStatusService.validateStoreStatus(
+                      storeState.store,
+                    ).canReceiveOrders;
+
+                if (!canOrder) return const SizedBox.shrink();
+
+                return BlocBuilder<AuthCubit, AuthState>(
+                  builder: (context, authState) {
+                    if (authState.customer != null) {
+                      // ✅ Quando logado, mostra card de carrinho unificado
+                      return const UnifiedCartBottomBar(
+                        variant: CartBottomBarVariant.home,
+                      );
+                    }
+                    // ✅ Quando não logado, mostra card de login
+                    return const _LoginPromoCard();
+                  },
+                );
               },
             ),
           ),
@@ -663,70 +792,69 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
         }).toList();
 
     return Container(
-      height: 60,
+      height: 50,
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        boxShadow: [
-          if (_showStickySearch)
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-        ],
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 0.5),
+        ),
       ),
-      child: ListView.builder(
-        controller: _categoryScrollController,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: categoriesWithProducts.length,
-        itemBuilder: (context, index) {
-          final category = categoriesWithProducts[index];
-          final isSelected = widget.selectedCategory?.id == category.id;
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.menu, size: 20),
+            onPressed: _showCategoryBottomSheet,
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: _categoryScrollController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              itemCount: categoriesWithProducts.length,
+              itemBuilder: (context, index) {
+                final category = categoriesWithProducts[index];
+                final isSelected = widget.selectedCategory?.id == category.id;
 
-          return GestureDetector(
-            onTap: () {
-              widget.onCategorySelected(category);
-              _scrollToCategory(category.id!);
-              _scrollToHorizontalCategory(index);
-            },
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 80),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 200),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color:
-                          isSelected
-                              ? Theme.of(context).primaryColor
-                              : Colors.grey.shade600,
-                      fontFamily: 'Inter',
-                    ),
-                    child: Text(category.name),
-                  ),
-                  const SizedBox(height: 6),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    height: 3,
-                    width: isSelected ? 30 : 0,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor,
-                      borderRadius: BorderRadius.circular(2),
+                return GestureDetector(
+                  onTap: () {
+                    widget.onCategorySelected(category);
+                    _scrollToCategory(category.id!);
+                    _scrollToHorizontalCategory(index);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          category.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color:
+                                isSelected
+                                    ? Colors.black
+                                    : Colors.grey.shade600,
+                          ),
+                        ),
+                        if (isSelected)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            height: 2,
+                            width: 20,
+                            color: Colors.black,
+                          ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -764,10 +892,13 @@ class _LoginPromoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-      margin: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade300, width: 0.8),
+        ),
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
@@ -803,37 +934,4 @@ class _LoginPromoCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final double minHeight;
-  final double maxHeight;
-  final Widget child;
-
-  const _StickyHeaderDelegate({
-    required this.minHeight,
-    required this.maxHeight,
-    required this.child,
-  });
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return SizedBox.expand(child: child);
-  }
-
-  @override
-  double get maxExtent => maxHeight;
-
-  @override
-  double get minExtent => minHeight;
-
-  @override
-  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) =>
-      maxHeight != oldDelegate.maxHeight ||
-      minHeight != oldDelegate.minHeight ||
-      child != oldDelegate.child;
 }

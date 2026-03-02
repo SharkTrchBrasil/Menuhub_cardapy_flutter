@@ -52,7 +52,13 @@ class CartItemVariantOption extends Equatable {
   int get effectiveId => variantOptionId ?? optionItemId ?? 0;
 
   @override
-  List<Object?> get props => [variantOptionId, optionItemId, quantity, name, price];
+  List<Object?> get props => [
+    variantOptionId,
+    optionItemId,
+    quantity,
+    name,
+    price,
+  ];
 
   // ✅ IMPORTANTE: toString() retorna o nome para exibição correta
   @override
@@ -64,12 +70,15 @@ class CartItemVariant extends Equatable {
   final int? variantId;
   // ✅ NOVO: Para pizzas, armazena ID do OptionGroup
   final int? optionGroupId;
+  // ✅ NOVO: Armazena o tipo do grupo (TOPPING, CRUST, EDGE, etc)
+  final String? groupType;
   final String name;
   final List<CartItemVariantOption> options;
 
   const CartItemVariant({
     this.variantId,
     this.optionGroupId,
+    this.groupType,
     required this.name,
     required this.options,
   });
@@ -78,16 +87,19 @@ class CartItemVariant extends Equatable {
     return CartItemVariant(
       variantId: json['variant_id'],
       optionGroupId: json['option_group_id'],
+      groupType: json['group_type'],
       name: json['name'] ?? '',
-      options: (json['options'] as List? ?? [])
-          .map((optionJson) => CartItemVariantOption.fromJson(optionJson))
-          .toList(),
+      options:
+          (json['options'] as List? ?? [])
+              .map((optionJson) => CartItemVariantOption.fromJson(optionJson))
+              .toList(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'variant_id': variantId,
     'option_group_id': optionGroupId,
+    'group_type': groupType,
     'name': name,
     'options': options.map((o) => o.toJson()).toList(),
   };
@@ -96,7 +108,13 @@ class CartItemVariant extends Equatable {
   int get effectiveId => variantId ?? optionGroupId ?? 0;
 
   @override
-  List<Object?> get props => [variantId, optionGroupId, name, options];
+  List<Object?> get props => [
+    variantId,
+    optionGroupId,
+    groupType,
+    name,
+    options,
+  ];
 }
 
 class CartItem extends Equatable {
@@ -107,7 +125,8 @@ class CartItem extends Equatable {
   final List<CartItemVariant> variants;
   final int unitPrice;
   final int totalPrice;
-  final String? sizeName; // ✅ Para exibir o tamanho escolhido (ex: "Pizza Grande")
+  final String?
+  sizeName; // ✅ Para exibir o tamanho escolhido (ex: "Pizza Grande")
   final String? sizeImageUrl; // ✅ NOVO: Imagem do tamanho escolhido
 
   const CartItem({
@@ -128,9 +147,10 @@ class CartItem extends Equatable {
       product: Product.fromJson(json['product']),
       quantity: json['quantity'],
       note: json['note'],
-      variants: (json['variants'] as List)
-          .map((variantJson) => CartItemVariant.fromJson(variantJson))
-          .toList(),
+      variants:
+          (json['variants'] as List)
+              .map((variantJson) => CartItemVariant.fromJson(variantJson))
+              .toList(),
       unitPrice: _parseMoney(json['unit_price']),
       totalPrice: _parseMoney(json['total_price']),
       sizeName: json['size_name'],
@@ -200,15 +220,15 @@ class CartItem extends Equatable {
   }
 
   const CartItem.empty()
-      : id = 0,
-        product = const Product.empty(),
-        quantity = 1,
-        note = null,
-        variants = const [],
-        unitPrice = 0,
-        totalPrice = 0,
-        sizeName = null,
-        sizeImageUrl = null;
+    : id = 0,
+      product = const Product.empty(),
+      quantity = 1,
+      note = null,
+      variants = const [],
+      unitPrice = 0,
+      totalPrice = 0,
+      sizeName = null,
+      sizeImageUrl = null;
 
   String get formattedUnitPrice => unitPrice.toCurrency;
   String get formattedTotalPrice => totalPrice.toCurrency;
@@ -234,7 +254,17 @@ class CartItem extends Equatable {
   bool get hasVariants => variants.isNotEmpty;
 
   @override
-  List<Object?> get props => [id, product, quantity, note, variants, unitPrice, totalPrice, sizeName, sizeImageUrl];
+  List<Object?> get props => [
+    id,
+    product,
+    quantity,
+    note,
+    variants,
+    unitPrice,
+    totalPrice,
+    sizeName,
+    sizeImageUrl,
+  ];
 
   @override
   String toString() {

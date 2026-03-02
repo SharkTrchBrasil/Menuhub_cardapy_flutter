@@ -21,18 +21,14 @@ class OrderTrackingPage extends StatelessWidget {
   final Order order;
   final PlatformPaymentMethod? paymentMethod;
 
-  const OrderTrackingPage({
-    super.key,
-    required this.order,
-    this.paymentMethod,
-  });
+  const OrderTrackingPage({super.key, required this.order, this.paymentMethod});
 
   @override
   Widget build(BuildContext context) {
     final store = context.read<StoreCubit>().state.store;
     final isDelivery = order.deliveryType == 'delivery';
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
@@ -69,7 +65,7 @@ class OrderTrackingPage extends StatelessWidget {
                 child: const Text(
                   'Ajuda',
                   style: TextStyle(
-                    color: Color(0xFFEA1D2C),
+                    color: Colors.black,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -88,21 +84,26 @@ class OrderTrackingPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.chat_bubble_outline, color: Color(0xFFEA1D2C), size: 20),
+                  child: const Icon(
+                    Icons.chat_bubble_outline,
+                    color: Colors.black,
+                    size: 20,
+                  ),
                 ),
                 onPressed: () {
-                   // Lógica de chat
+                  // Lógica de chat
                 },
               ),
               const SizedBox(width: 8),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: isDelivery && store != null
-                  ? _buildMap(store)
-                  : _buildPickupHeader(store, theme),
+              background:
+                  isDelivery && store != null
+                      ? _buildMap(store)
+                      : _buildPickupHeader(store, theme),
             ),
           ),
-          
+
           // ✅ Card de Status sobreposto ao mapa
           SliverToBoxAdapter(
             child: Transform.translate(
@@ -110,7 +111,7 @@ class OrderTrackingPage extends StatelessWidget {
               child: _buildStatusCard(context, theme),
             ),
           ),
-          
+
           // ✅ Conteúdo principal
           SliverToBoxAdapter(
             child: Padding(
@@ -120,17 +121,17 @@ class OrderTrackingPage extends StatelessWidget {
                 children: [
                   // Endereço de entrega/retirada
                   _buildAddressSection(context, theme, store),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Detalhes do pedido
                   _buildOrderDetailsSection(context, theme),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Itens do pedido
                   _buildItemsSection(context, theme),
-                  
+
                   const SizedBox(height: 100), // Espaço para bottom bar
                 ],
               ),
@@ -138,7 +139,7 @@ class OrderTrackingPage extends StatelessWidget {
           ),
         ],
       ),
-      
+
       // ✅ Bottom bar com botões de ação
       bottomNavigationBar: _buildBottomBar(context, theme),
     );
@@ -148,7 +149,7 @@ class OrderTrackingPage extends StatelessWidget {
   Widget _buildMap(dynamic store) {
     final lat = store?.latitude ?? -23.5505;
     final lng = store?.longitude ?? -46.6333;
-    
+
     return FlutterMap(
       options: MapOptions(
         initialCenter: LatLng(lat, lng),
@@ -170,7 +171,7 @@ class OrderTrackingPage extends StatelessWidget {
               height: 50,
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.red,
+                  color: Colors.black,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 3),
                   boxShadow: [
@@ -214,17 +215,22 @@ class OrderTrackingPage extends StatelessWidget {
   /// Card de status do pedido
   Widget _buildStatusCard(BuildContext context, ThemeData theme) {
     final statusInfo = _getStatusInfo(order.orderStatus);
-    
+
     // Estimativa de entrega
     final eta = order.delivery.expectedDeliveryTime;
     final etaEnd = order.delivery.expectedDeliveryTimeEnd;
     String timeRange = 'Pendente';
     if (eta != null) {
       final start = DateFormat('HH:mm').format(eta);
-      final end = etaEnd != null ? DateFormat('HH:mm').format(etaEnd) : DateFormat('HH:mm').format(eta.add(const Duration(minutes: 15)));
+      final end =
+          etaEnd != null
+              ? DateFormat('HH:mm').format(etaEnd)
+              : DateFormat(
+                'HH:mm',
+              ).format(eta.add(const Duration(minutes: 15)));
       timeRange = '$start - $end';
     }
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
@@ -290,17 +296,28 @@ class OrderTrackingPage extends StatelessWidget {
                 style: TextStyle(fontSize: 14, color: Color(0xFF717171)),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.help_outline, size: 16, color: Color(0xFF717171)),
+              const Icon(
+                Icons.help_outline,
+                size: 16,
+                color: Color(0xFF717171),
+              ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF2F2F2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.keyboard, size: 16, color: Color(0xFF3F3E3E)),
+                    const Icon(
+                      Icons.keyboard,
+                      size: 16,
+                      color: Color(0xFF3F3E3E),
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       order.deliveryCode ?? '7201',
@@ -322,18 +339,19 @@ class OrderTrackingPage extends StatelessWidget {
 
   /// Barra de progresso do pedido
   Widget _buildProgressBar(ThemeData theme) {
-    final statuses = order.deliveryType == 'delivery'
-        ? ['pending', 'preparing', 'ready', 'on_route', 'delivered']
-        : ['pending', 'preparing', 'ready', 'delivered'];
-    
+    final statuses =
+        order.deliveryType == 'delivery'
+            ? ['pending', 'preparing', 'ready', 'on_route', 'delivered']
+            : ['pending', 'preparing', 'ready', 'delivered'];
+
     final currentIndex = statuses.indexOf(order.orderStatus);
     final progress = currentIndex < 0 ? 0 : currentIndex;
-    
+
     return Row(
       children: List.generate(statuses.length, (index) {
         final isActive = index <= progress;
         final isCurrent = index == progress;
-        
+
         return Expanded(
           child: Container(
             height: 4,
@@ -342,24 +360,25 @@ class OrderTrackingPage extends StatelessWidget {
               color: isActive ? theme.primaryColor : Colors.grey[300],
               borderRadius: BorderRadius.circular(2),
             ),
-            child: isCurrent
-                ? TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(seconds: 2),
-                    builder: (context, value, child) {
-                      return FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: value,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: theme.primaryColor.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(2),
+            child:
+                isCurrent
+                    ? TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(seconds: 2),
+                      builder: (context, value, child) {
+                        return FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: theme.primaryColor.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  )
-                : null,
+                        );
+                      },
+                    )
+                    : null,
           ),
         );
       }),
@@ -367,10 +386,14 @@ class OrderTrackingPage extends StatelessWidget {
   }
 
   /// Seção de endereço
-  Widget _buildAddressSection(BuildContext context, ThemeData theme, dynamic store) {
+  Widget _buildAddressSection(
+    BuildContext context,
+    ThemeData theme,
+    dynamic store,
+  ) {
     final isDelivery = order.deliveryType == 'delivery';
     final address = order.delivery.deliveryAddress;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -394,11 +417,17 @@ class OrderTrackingPage extends StatelessWidget {
                 children: [
                   Text(
                     '${address.streetName}, ${address.streetNumber ?? 'S/N'}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   Text(
                     '${address.neighborhood} - ${address.city}, ${address.state}',
-                    style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
+                    style: const TextStyle(
+                      color: Color(0xFF717171),
+                      fontSize: 14,
+                    ),
                   ),
                 ],
               ),
@@ -432,8 +461,10 @@ class OrderTrackingPage extends StatelessWidget {
 
   /// Seção de detalhes do pedido
   Widget _buildOrderDetailsSection(BuildContext context, ThemeData theme) {
-    final totalFormatted = UtilBrasilFields.obterReal(order.bag.total.value / 100.0);
-    
+    final totalFormatted = UtilBrasilFields.obterReal(
+      order.bag.total.value / 100.0,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -474,16 +505,22 @@ class OrderTrackingPage extends StatelessWidget {
                   children: [
                     Text(
                       order.merchant.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     Text(
                       'Pedido Nº ${order.sequentialId} • ${order.items.length} ${order.items.length == 1 ? 'item' : 'itens'}',
-                      style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
+                      style: const TextStyle(
+                        color: Color(0xFF717171),
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Color(0xFFEA1D2C)),
+              const Icon(Icons.chevron_right, color: Colors.black),
             ],
           ),
         ),
@@ -491,14 +528,18 @@ class OrderTrackingPage extends StatelessWidget {
         // Pagamento
         Row(
           children: [
-             if (order.payments.primaryMethod != null)
+            if (order.payments.primaryMethod != null)
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Icon(_getPaymentIcon(order.payments.primaryMethod!.method), size: 20, color: const Color(0xFF3F3E3E)),
+                child: Icon(
+                  _getPaymentIcon(order.payments.primaryMethod!.method),
+                  size: 20,
+                  color: const Color(0xFF3F3E3E),
+                ),
               ),
             const SizedBox(width: 12),
             Expanded(
@@ -507,11 +548,17 @@ class OrderTrackingPage extends StatelessWidget {
                 children: [
                   Text(
                     'Pagamento na entrega • ${order.payments.primaryMethod?.method.name.toUpperCase() == 'CREDIT_CARD' ? 'Crédito' : 'Dinheiro'}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                   Text(
                     order.payments.primaryMethod?.displayName ?? 'Mastercard',
-                    style: const TextStyle(color: Color(0xFF717171), fontSize: 14),
+                    style: const TextStyle(
+                      color: Color(0xFF717171),
+                      fontSize: 14,
+                    ),
                   ),
                 ],
               ),
@@ -528,7 +575,11 @@ class OrderTrackingPage extends StatelessWidget {
             ),
             Text(
               totalFormatted,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF3F3E3E)),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Color(0xFF3F3E3E),
+              ),
             ),
           ],
         ),
@@ -542,9 +593,7 @@ class OrderTrackingPage extends StatelessWidget {
               'Chat com a loja',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFEA1D2C),
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.black),
           ),
         ),
       ],
@@ -554,7 +603,8 @@ class OrderTrackingPage extends StatelessWidget {
   IconData _getPaymentIcon(dynamic type) {
     final typeStr = type.toString().toLowerCase();
     if (typeStr.contains('credit')) return Icons.credit_card;
-    if (typeStr.contains('cash') || typeStr.contains('dinheiro')) return Icons.payments;
+    if (typeStr.contains('cash') || typeStr.contains('dinheiro'))
+      return Icons.payments;
     return Icons.payment;
   }
 
@@ -562,7 +612,7 @@ class OrderTrackingPage extends StatelessWidget {
   Widget _buildItemsSection(BuildContext context, ThemeData theme) {
     final totalCents = order.charge?.grandTotal ?? 0;
     final totalFormatted = UtilBrasilFields.obterReal(totalCents / 100.0);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -593,41 +643,50 @@ class OrderTrackingPage extends StatelessWidget {
             border: Border.all(color: Colors.grey[200]!),
           ),
           child: Column(
-            children: order.products.map((product) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${product.quantity}x',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
+            children:
+                order.products.map((product) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${product.quantity}x',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            product.name,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Text(
+                          UtilBrasilFields.obterReal(
+                            product.totalPrice / 100.0,
+                          ),
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        product.name,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    Text(
-                      UtilBrasilFields.obterReal(product.totalPrice / 100.0),
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
           ),
         ),
       ],
@@ -653,7 +712,11 @@ class OrderTrackingPage extends StatelessWidget {
                 children: [
                   Text(
                     'Vai uma bebida enquanto espera?',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                   Text(
                     'Entrega grátis - 35 min',
@@ -665,14 +728,21 @@ class OrderTrackingPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFEA1D2C),
+                color: Colors.grey.shade900,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
                 children: [
                   Icon(Icons.timer, color: Colors.white, size: 14),
                   SizedBox(width: 4),
-                  Text('23:15', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text(
+                    '23:15',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -693,44 +763,26 @@ class OrderTrackingPage extends StatelessWidget {
           'color': Colors.orange,
         };
       case 'confirmed':
-        return {
-          'text': 'Seu pedido foi confirmado',
-          'color': Colors.blue,
-        };
+        return {'text': 'Seu pedido foi confirmado', 'color': Colors.blue};
       case 'preparing':
         return {
           'text': 'Seu pedido está sendo preparado',
           'color': Colors.blue,
         };
       case 'ready':
-        return {
-          'text': 'Pedido pronto!',
-          'color': Colors.green,
-        };
+        return {'text': 'Pedido pronto!', 'color': Colors.green};
       case 'on_route':
       case 'out_for_delivery':
-        return {
-          'text': 'Pedido saiu para entrega',
-          'color': Colors.purple,
-        };
+        return {'text': 'Pedido saiu para entrega', 'color': Colors.purple};
       case 'delivered':
       case 'finalized':
       case 'concluded':
-        return {
-          'text': 'Pedido entregue!',
-          'color': Colors.green,
-        };
+        return {'text': 'Pedido entregue!', 'color': Colors.green};
       case 'canceled':
       case 'cancelled':
-        return {
-          'text': 'Pedido cancelado',
-          'color': Colors.red,
-        };
+        return {'text': 'Pedido cancelado', 'color': Colors.red};
       default:
-        return {
-          'text': 'Processando...',
-          'color': Colors.grey,
-        };
+        return {'text': 'Processando...', 'color': Colors.grey};
     }
   }
 

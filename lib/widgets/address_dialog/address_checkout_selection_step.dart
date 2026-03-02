@@ -20,7 +20,7 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
   final Function(CustomerAddress)? onEditAddress;
   final Function(CustomerAddress)? onDeleteAddress;
   final VoidCallback? onSearchChanged;
-  
+
   const AddressCheckoutSelectionStep({
     super.key,
     required this.searchController,
@@ -46,7 +46,10 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
         final isLoading = state.status == AddressStatus.loading;
 
         // Ocultar lista e botão se estiver buscando, se o campo tiver texto ou se estiver focado (Imagem 2)
-        final isSearchingFlow = showSearchResults || searchController.text.isNotEmpty || searchFocusNode.hasFocus;
+        final isSearchingFlow =
+            showSearchResults ||
+            searchController.text.isNotEmpty ||
+            searchFocusNode.hasFocus;
 
         return Column(
           children: [
@@ -58,9 +61,15 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
 
             // 3. Resultados da busca OR Lista de endereços salvos
             Expanded(
-              child: isSearchingFlow
-                  ? _buildSearchResults(context)
-                  : _buildSavedAddressesList(context, addresses, selectedAddress, isLoading),
+              child:
+                  isSearchingFlow
+                      ? _buildSearchResults(context)
+                      : _buildSavedAddressesList(
+                        context,
+                        addresses,
+                        selectedAddress,
+                        isLoading,
+                      ),
             ),
 
             // 4. Botão Confirmar Fixo
@@ -85,7 +94,10 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
                   context,
                   label: 'Entregar no endereço',
                   isSelected: deliveryType == DeliveryType.delivery,
-                  onTap: () => context.read<DeliveryFeeCubit>().updateDeliveryType(DeliveryType.delivery),
+                  onTap:
+                      () => context.read<DeliveryFeeCubit>().updateDeliveryType(
+                        DeliveryType.delivery,
+                      ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -94,7 +106,10 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
                   context,
                   label: 'Retirar na loja',
                   isSelected: deliveryType == DeliveryType.pickup,
-                  onTap: () => context.read<DeliveryFeeCubit>().updateDeliveryType(DeliveryType.pickup),
+                  onTap:
+                      () => context.read<DeliveryFeeCubit>().updateDeliveryType(
+                        DeliveryType.pickup,
+                      ),
                 ),
               ),
             ],
@@ -104,14 +119,19 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
     );
   }
 
-  Widget _buildToggleItem(BuildContext context, {required String label, required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildToggleItem(
+    BuildContext context, {
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFEECEE) : const Color(0xFFF5F5F5),
+          color: isSelected ? Colors.black : const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -119,7 +139,7 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? const Color(0xFFEA1D2C) : const Color(0xFF3E3E3E),
+            color: isSelected ? Colors.white : const Color(0xFF3E3E3E),
           ),
         ),
       ),
@@ -129,7 +149,7 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
   Widget _buildSearchField(BuildContext context) {
     final hasText = searchController.text.isNotEmpty;
     final isFocused = searchFocusNode.hasFocus;
-    
+
     return Column(
       children: [
         Padding(
@@ -144,18 +164,24 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
             decoration: InputDecoration(
               hintText: 'Endereço e número',
               // Seta de voltar à esquerda se estiver focado ou com texto (Imagem 2)
-              prefixIcon: (isFocused || hasText)
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFFEA1D2C), size: 18),
-                    onPressed: onClearSearch,
-                  )
-                : const Icon(Icons.search, color: Color(0xFFEA1D2C)),
-              suffixIcon: hasText
-                  ? IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: onClearSearch,
-                    )
-                  : null,
+              prefixIcon:
+                  (isFocused || hasText)
+                      ? IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new,
+                          color: Colors.black,
+                          size: 18,
+                        ),
+                        onPressed: onClearSearch,
+                      )
+                      : const Icon(Icons.search, color: Colors.black),
+              suffixIcon:
+                  hasText
+                      ? IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: onClearSearch,
+                      )
+                      : null,
               filled: true,
               fillColor: const Color(0xFFF5F5F5),
               border: OutlineInputBorder(
@@ -171,13 +197,15 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24),
             child: LinearProgressIndicator(
-              color: Color(0xFFEA1D2C),
-              backgroundColor: Color(0xFFFEECEE),
+              color: Colors.black,
+              backgroundColor: Color(0xFFF5F5F5),
               minHeight: 2,
             ),
           )
         else
-          const SizedBox(height: 2), // Espaço reservado para evitar pulos no layout
+          const SizedBox(
+            height: 2,
+          ), // Espaço reservado para evitar pulos no layout
       ],
     );
   }
@@ -199,11 +227,15 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 16),
       itemCount: searchResults.length,
-      separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
+      separatorBuilder:
+          (context, index) => const Divider(height: 1, indent: 72),
       itemBuilder: (context, index) {
         final result = searchResults[index];
         return ListTile(
-          leading: const Icon(Icons.location_on_outlined, color: Color(0xFF666666)),
+          leading: const Icon(
+            Icons.location_on_outlined,
+            color: Color(0xFF666666),
+          ),
           title: Text(
             result.description,
             style: const TextStyle(fontSize: 14, color: Color(0xFF3F3E3E)),
@@ -231,9 +263,10 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
         final address = addresses[index];
         final addressState = context.read<AddressCubit>().state;
         final isSelected = selectedAddress?.id == address.id;
-        
+
         // Verifica se o endereço está fora da área de entrega (marcado como -1.0 no Cubit)
-        final fee = address.id != null ? addressState.addressFees[address.id] : null;
+        final fee =
+            address.id != null ? addressState.addressFees[address.id] : null;
         final isOutOfArea = fee == -1.0;
 
         return Container(
@@ -242,13 +275,20 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? const Color(0xFFEA1D2C) : const Color(0xFFF5F5F5),
+              color: isSelected ? Colors.black : const Color(0xFFF5F5F5),
               width: 1.5,
             ),
           ),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: const Icon(Icons.home_outlined, color: Color(0xFF3E3E3E), size: 24),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            leading: const Icon(
+              Icons.home_outlined,
+              color: Color(0xFF3E3E3E),
+              size: 24,
+            ),
             trailing: IconButton(
               icon: const Icon(Icons.more_vert, color: Color(0xFF666666)),
               onPressed: () => _showAddressOptions(context, address),
@@ -266,11 +306,7 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
                   ),
                 ),
                 if (isSelected)
-                  const Icon(
-                    Icons.check_circle,
-                    color: Color(0xFFEA1D2C),
-                    size: 20,
-                  ),
+                  const Icon(Icons.check_circle, color: Colors.black, size: 20),
               ],
             ),
             subtitle: Column(
@@ -279,11 +315,17 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${address.street}, ${address.number}',
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF666666)),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF666666),
+                  ),
                 ),
                 Text(
                   '${address.neighborhood} - ${address.city}',
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF666666)),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF666666),
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -306,100 +348,130 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              address.label.isNotEmpty ? address.label : '${address.street}, ${address.number}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3F3E3E),
-              ),
+      builder:
+          (context) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${address.neighborhood}, ${address.city}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF666666),
-              ),
-            ),
-            const SizedBox(height: 32),
-            Row(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      onDeleteAddress?.call(address);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Color(0xFFF5F5F5)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.delete_outline, color: Color(0xFF3E3E3E), size: 20),
-                        SizedBox(width: 8),
-                        Text('Excluir', style: TextStyle(color: Color(0xFF3E3E3E), fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+                Text(
+                  address.label.isNotEmpty
+                      ? address.label
+                      : '${address.street}, ${address.number}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3F3E3E),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      onEditAddress?.call(address);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Color(0xFFF5F5F5)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 4),
+                Text(
+                  '${address.neighborhood}, ${address.city}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF666666),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          onDeleteAddress?.call(address);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: Color(0xFFF5F5F5)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.delete_outline,
+                              color: Color(0xFF3E3E3E),
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Excluir',
+                              style: TextStyle(
+                                color: Color(0xFF3E3E3E),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit_outlined, color: Color(0xFF3E3E3E), size: 20),
-                        SizedBox(width: 8),
-                        Text('Editar', style: TextStyle(color: Color(0xFF3E3E3E), fontWeight: FontWeight.bold)),
-                      ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          onEditAddress?.call(address);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: Color(0xFFF5F5F5)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.edit_outlined,
+                              color: Color(0xFF3E3E3E),
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Editar',
+                              style: TextStyle(
+                                color: Color(0xFF3E3E3E),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: Color(0xFFEA1D2C),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
-  Widget _buildConfirmButton(BuildContext context, CustomerAddress selectedAddress) {
+  Widget _buildConfirmButton(
+    BuildContext context,
+    CustomerAddress selectedAddress,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -415,7 +487,7 @@ class AddressCheckoutSelectionStep extends StatelessWidget {
       child: ElevatedButton(
         onPressed: () => onSavedAddressSelected(selectedAddress),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFEA1D2C),
+          backgroundColor: Colors.black,
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

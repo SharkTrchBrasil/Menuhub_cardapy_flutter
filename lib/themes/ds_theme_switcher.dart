@@ -4,7 +4,7 @@ import 'package:totem/themes/ds_theme.dart';
 
 class DsThemeSwitcher extends ChangeNotifier {
   DsTheme theme = DsTheme(
-    primaryColor: Colors.red,
+    primaryColor: Colors.black,
     // Cor principal do app (ex: botões, links)
     secondaryColor: Colors.black,
     // Cor secundária (ex: fundo de sidebar ou destaques)
@@ -15,7 +15,7 @@ class DsThemeSwitcher extends ChangeNotifier {
     inactiveColor: Colors.grey[300]!,
 
     // Elementos desativados (ex: botão inativo)
-    onPrimaryColor: Colors.black,
+    onPrimaryColor: Colors.white,
     // Texto ou ícone sobre `primaryColor` (bom contraste)
     onSecondaryColor: Colors.white,
     // Texto/ícone sobre `secondaryColor`
@@ -72,7 +72,6 @@ extension ThemeDataFromDsTheme on DsTheme {
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       appBarTheme: AppBarTheme(
-
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
@@ -84,7 +83,6 @@ extension ThemeDataFromDsTheme on DsTheme {
       //   unselectedLabelColor: Colors.grey,
       //   dividerColor: Colors.transparent,
       // ),
-
       textTheme: GoogleFonts.getTextTheme(
         fontFamily.nameGoogle,
       ).apply(bodyColor: onBackgroundColor, displayColor: onBackgroundColor),

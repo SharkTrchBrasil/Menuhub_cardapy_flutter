@@ -4,6 +4,7 @@ import 'package:shimmer/shimmer.dart';
 
 import 'package:totem/cubit/store_cubit.dart'; // Importe seu StoreCubit
 import 'package:totem/models/store.dart';
+// import 'package:totem/services/store_status_service.dart'; // Removido
 
 class StoreHeaderCard extends StatelessWidget {
   /// Controla se o botão "Adicionar mais itens" deve ser exibido.
@@ -53,66 +54,76 @@ class _StoreHeaderContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // ✅ SEGURANÇA EXTRA: Lida com a possibilidade de 'image' ser nulo.
     final String? imageUrl = store.image?.url;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.grey.shade100,
-            backgroundImage: (imageUrl != null && imageUrl.isNotEmpty)
-                ? NetworkImage(imageUrl)
-                : null,
-            child: (imageUrl == null || imageUrl.isEmpty)
-                ? Icon(
-              Icons.store_mall_directory_outlined,
-              color: Colors.grey.shade600,
-              size: 24,
-            )
-                : null,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  store.name,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-
-                // ✅ LÓGICA DO SUBTÍTULO DINÂMICO
-                if (showAddItemsButton)
-                  InkWell(
-                    onTap: onAddItemsPressed,
-                    child: Text(
-                      'Adicionar mais itens',
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.grey.shade100,
+                backgroundImage:
+                    (imageUrl != null && imageUrl.isNotEmpty)
+                        ? NetworkImage(imageUrl)
+                        : null,
+                child:
+                    (imageUrl == null || imageUrl.isEmpty)
+                        ? Icon(
+                          Icons.store_mall_directory_outlined,
+                          color: Colors.grey.shade600,
+                          size: 24,
+                        )
+                        : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      store.name,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  )
-                else if (store.description != null && store.description!.isNotEmpty)
-                  Text(
-                    store.description!,
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
+                    const SizedBox(height: 4),
+
+                    // ✅ LÓGICA DO SUBTÍTULO DINÂMICO
+                    if (showAddItemsButton)
+                      InkWell(
+                        onTap: onAddItemsPressed,
+                        child: Text(
+                          'Adicionar mais itens',
+                          style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else if (store.description != null &&
+                        store.description!.isNotEmpty)
+                      Text(
+                        store.description!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

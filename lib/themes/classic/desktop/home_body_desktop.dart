@@ -7,7 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/models/banners.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/models/product.dart';
-import 'package:totem/themes/classic/desktop/widgets/fetrured_list.dart';
+import 'package:totem/themes/classic/desktop/widgets/featured_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/product_grid_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/size_grid_list.dart';
 import 'package:totem/themes/classic/desktop/widgets/store_details_sidepanel.dart';

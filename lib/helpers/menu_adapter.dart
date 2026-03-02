@@ -243,7 +243,12 @@ class MenuAdapter {
             productId: itemProductId,
             categoryId: categoryId,
             price: (item.unitMinPrice * 100).round(), // Converte para centavos
-            isOnPromotion: false,
+            // ✅ Usa dados de promoção do item (vindos do backend)
+            isOnPromotion: item.isOnPromotion,
+            promotionalPrice:
+                item.promotionalPrice != null
+                    ? (item.promotionalPrice! * 100).round()
+                    : null,
             isAvailable: true,
             isFeatured: false,
             displayOrder: index,
@@ -288,6 +293,18 @@ class MenuAdapter {
 
     final int? priceInCents =
         effectivePrice > 0 ? (effectivePrice * 100).round() : null;
+
+    // ✅ Dados de promoção vindos do backend via MenuItem
+    final bool isOnPromotion = menuItem.isOnPromotion;
+    final int? promotionalPriceCents =
+        (isOnPromotion && menuItem.promotionalPrice != null)
+            ? (menuItem.promotionalPrice! * 100).round()
+            : null;
+    // Preço original (quando em promoção, é o preço que sera riscado na UI)
+    final int? originalPriceCents =
+        (isOnPromotion && menuItem.originalPrice != null)
+            ? (menuItem.originalPrice! * 100).round()
+            : null;
 
     // Converte logoUrl para ImageModel
     final List<ImageModel> images = [];
@@ -340,12 +357,13 @@ class MenuAdapter {
       storeId: 0, // Será preenchido pelo contexto
       servesUpTo: null,
       weight: menuItem.productInfo?.quantity,
-      soldCount: 0,
+      soldCount: menuItem.soldCount,
       productType: productType,
       price: priceInCents,
       costPrice: null,
-      isOnPromotion: false,
-      promotionalPrice: null,
+      // ✅ Promoção: usa dados reais do backend
+      isOnPromotion: isOnPromotion,
+      promotionalPrice: promotionalPriceCents,
       primaryCategoryId: categoryId,
       hasMultiplePrices:
           menuItem.unitPrice != menuItem.unitMinPrice ||
@@ -356,8 +374,14 @@ class MenuAdapter {
         ProductCategoryLink(
           productId: productId,
           categoryId: categoryId,
-          price: priceInCents ?? 0,
-          isOnPromotion: false,
+          // Se em promoção, price deve ser o original (para cálculo de desconto)
+          price:
+              isOnPromotion && originalPriceCents != null
+                  ? originalPriceCents
+                  : (priceInCents ?? 0),
+          // ✅ Campos de promoção propagados do backend
+          isOnPromotion: isOnPromotion,
+          promotionalPrice: promotionalPriceCents,
           isAvailable: true,
           isFeatured: false,
           displayOrder: 0,

@@ -10,6 +10,8 @@ class CartVariant {
   // --- Propriedades permanecem as mesmas ---
   final int id;
   final String name;
+  // ✅ NOVO: Tipo do grupo (SIZE, TOPPING, CRUST, EDGE, etc)
+  final String? groupType;
   final UIDisplayMode uiDisplayMode;
   final int minSelectedOptions;
   final int maxSelectedOptions;
@@ -19,6 +21,7 @@ class CartVariant {
   CartVariant({
     required this.id,
     required this.name,
+    this.groupType,
     required this.uiDisplayMode,
     required this.minSelectedOptions,
     required this.maxSelectedOptions,
@@ -28,31 +31,33 @@ class CartVariant {
 
   // Construtores e Getters permanecem os mesmos...
   factory CartVariant.fromProductVariantLink(
-      ProductVariantLink link, {
-        List<CartVariantOption>? options, // <-- Adicione este parâmetro
-      }) {
-    
+    ProductVariantLink link, {
+    List<CartVariantOption>? options, // <-- Adicione este parâmetro
+  }) {
     // ✅ Filtra apenas opções disponíveis (ativas, com estoque, etc.)
-    final availableOptions = link.variant.options
-        .where((option) => option.canBeSelected)
-        .toList();
-    
+    final availableOptions =
+        link.variant.options.where((option) => option.canBeSelected).toList();
+
     // ✅ Cria as CartVariantOptions
-    final cartOptions = options ?? availableOptions
-        .map((option) => CartVariantOption.fromVariantOption(option))
-        .toList();
-    
+    final cartOptions =
+        options ??
+        availableOptions
+            .map((option) => CartVariantOption.fromVariantOption(option))
+            .toList();
+
     // ✅ Auto-seleciona se grupo obrigatório tem apenas 1 opção
     final isRequired = link.minSelectedOptions > 0;
     final hasOnlyOneOption = cartOptions.length == 1;
-    
-    final finalOptions = (isRequired && hasOnlyOneOption)
-        ? cartOptions.map((o) => o.copyWith(quantity: 1)).toList()
-        : cartOptions;
+
+    final finalOptions =
+        (isRequired && hasOnlyOneOption)
+            ? cartOptions.map((o) => o.copyWith(quantity: 1)).toList()
+            : cartOptions;
 
     return CartVariant(
       id: link.variant.id!,
       name: link.variant.name,
+      groupType: null, // Produtos normais não usam group_type fixo do backend
       uiDisplayMode: link.uiDisplayMode,
       minSelectedOptions: link.minSelectedOptions,
       maxSelectedOptions: link.maxSelectedOptions,
@@ -62,10 +67,16 @@ class CartVariant {
   }
 
   bool get isRequired => minSelectedOptions > 0;
-  int get totalQuantitySelected => cartOptions.fold<int>(0, (sum, option) => sum + option.quantity);
-  int get distinctOptionsSelected => cartOptions.where((option) => option.quantity > 0).length;
-  int get totalPrice => cartOptions.fold<int>(0, (sum, option) => sum + (option.price * option.quantity));
-  bool get isValid => !isRequired || distinctOptionsSelected >= minSelectedOptions;
+  int get totalQuantitySelected =>
+      cartOptions.fold<int>(0, (sum, option) => sum + option.quantity);
+  int get distinctOptionsSelected =>
+      cartOptions.where((option) => option.quantity > 0).length;
+  int get totalPrice => cartOptions.fold<int>(
+    0,
+    (sum, option) => sum + (option.price * option.quantity),
+  );
+  bool get isValid =>
+      !isRequired || distinctOptionsSelected >= minSelectedOptions;
 
   /// ✅ NOVO MÉTODO: O CÉREBRO DAS REGRAS DA VARIANTE
   /// Recebe uma opção e a nova quantidade desejada, e retorna um *novo* CartVariant
@@ -79,10 +90,13 @@ class CartVariant {
     // Aplica as regras baseado no tipo de exibição
     switch (uiDisplayMode) {
       case UIDisplayMode.SINGLE:
-      // Zera todos e define a quantidade da opção selecionada para 1.
-        newOptions = newOptions.map((opt) {
-          return opt.copyWith(quantity: opt.id == optionToUpdate.id ? 1 : 0);
-        }).toList();
+        // Zera todos e define a quantidade da opção selecionada para 1.
+        newOptions =
+            newOptions.map((opt) {
+              return opt.copyWith(
+                quantity: opt.id == optionToUpdate.id ? 1 : 0,
+              );
+            }).toList();
         break;
 
       case UIDisplayMode.MULTIPLE:
@@ -91,26 +105,37 @@ class CartVariant {
         // "Escolha até 3 opções" = pode escolher 3 bacons OU 1 de cada OU qualquer combinação
         final effectiveMaxTotal = maxTotalQuantity ?? maxSelectedOptions;
         final currentTotalMultiple = totalQuantitySelected;
-        final differenceMultiple = newQuantity - newOptions[optionIndex].quantity;
-        
+        final differenceMultiple =
+            newQuantity - newOptions[optionIndex].quantity;
+
         // Permite o incremento apenas se não for exceder o total máximo
         if (currentTotalMultiple + differenceMultiple > effectiveMaxTotal) {
           // Se está tentando incrementar além do limite, calcula o máximo que pode adicionar
-          final maxCanAdd = effectiveMaxTotal - currentTotalMultiple + newOptions[optionIndex].quantity;
+          final maxCanAdd =
+              effectiveMaxTotal -
+              currentTotalMultiple +
+              newOptions[optionIndex].quantity;
           if (maxCanAdd > 0 && newQuantity > newOptions[optionIndex].quantity) {
-            newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: maxCanAdd);
+            newOptions[optionIndex] = newOptions[optionIndex].copyWith(
+              quantity: maxCanAdd,
+            );
           }
           // Se está tentando reduzir, permite
           else if (newQuantity < newOptions[optionIndex].quantity) {
-            newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity < 0 ? 0 : newQuantity);
+            newOptions[optionIndex] = newOptions[optionIndex].copyWith(
+              quantity: newQuantity < 0 ? 0 : newQuantity,
+            );
           }
           // Se não pode adicionar mais, não faz nada
-          if (newQuantity > newOptions[optionIndex].quantity && maxCanAdd <= 0) {
+          if (newQuantity > newOptions[optionIndex].quantity &&
+              maxCanAdd <= 0) {
             return this;
           }
         } else {
           // Não atingiu o máximo, permite a alteração
-          newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity < 0 ? 0 : newQuantity);
+          newOptions[optionIndex] = newOptions[optionIndex].copyWith(
+            quantity: newQuantity < 0 ? 0 : newQuantity,
+          );
         }
         break;
 
@@ -118,10 +143,13 @@ class CartVariant {
         final currentTotal = totalQuantitySelected;
         final difference = newQuantity - newOptions[optionIndex].quantity;
         // Permite o incremento apenas se não for exceder o total máximo.
-        if (maxTotalQuantity != null && (currentTotal + difference > maxTotalQuantity!)) {
+        if (maxTotalQuantity != null &&
+            (currentTotal + difference > maxTotalQuantity!)) {
           return this;
         }
-        newOptions[optionIndex] = newOptions[optionIndex].copyWith(quantity: newQuantity < 0 ? 0 : newQuantity);
+        newOptions[optionIndex] = newOptions[optionIndex].copyWith(
+          quantity: newQuantity < 0 ? 0 : newQuantity,
+        );
         break;
 
       default:
@@ -132,10 +160,11 @@ class CartVariant {
     return copyWith(options: newOptions);
   }
 
-  CartVariant copyWith({List<CartVariantOption>? options}) {
+  CartVariant copyWith({List<CartVariantOption>? options, String? groupType}) {
     return CartVariant(
       id: id,
       name: name,
+      groupType: groupType ?? this.groupType,
       uiDisplayMode: uiDisplayMode,
       minSelectedOptions: minSelectedOptions,
       maxSelectedOptions: maxSelectedOptions,
@@ -153,25 +182,27 @@ class CartVariant {
       minSelectedOptions: 0,
       maxSelectedOptions: 99,
       maxTotalQuantity: null,
-      cartOptions: (json['options'] as List)
-          .map((optJson) => CartVariantOption.fromJson(optJson as Map<String, dynamic>))
-          .toList(),
+      cartOptions:
+          (json['options'] as List)
+              .map(
+                (optJson) =>
+                    CartVariantOption.fromJson(optJson as Map<String, dynamic>),
+              )
+              .toList(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'variant_id': id,
-      'options': cartOptions
-          .where((o) => o.quantity > 0)
-          .map((o) {
+      'options':
+          cartOptions.where((o) => o.quantity > 0).map((o) {
             return {
               'variant_option_id': o.id,
               'quantity': o.quantity,
               'price': o.price,
             };
-          })
-          .toList(),
+          }).toList(),
     };
   }
 }

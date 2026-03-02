@@ -62,7 +62,7 @@ class StoreStatusService {
       // ✅ PAUSA RÁPIDA: Verifica se tem paused_until definido
       final pausedUntil = config?.pausedUntil;
       String message = 'Loja está fechada temporariamente';
-      
+
       if (pausedUntil != null && pausedUntil.isAfter(DateTime.now())) {
         // Calcula tempo restante
         final remaining = pausedUntil.difference(DateTime.now());
@@ -71,10 +71,11 @@ class StoreStatusService {
         } else {
           final hours = remaining.inHours;
           final mins = remaining.inMinutes % 60;
-          message = 'Loja pausada. Reabre em ${hours}h${mins > 0 ? ' ${mins}min' : ''}';
+          message =
+              'Loja pausada. Reabre em ${hours}h${mins > 0 ? ' ${mins}min' : ''}';
         }
       }
-      
+
       return StoreStatusResult(
         canReceiveOrders: false,
         reason: pausedUntil != null ? 'scheduled_quick_pause' : 'store_closed',
@@ -88,8 +89,9 @@ class StoreStatusService {
     }
 
     // 3. Verifica se está dentro dos horários de funcionamento
-    final isWithinHours = hours.isNotEmpty ? _checkWithinOpeningHours(hours) : true;
-    
+    final isWithinHours =
+        hours.isNotEmpty ? _checkWithinOpeningHours(hours) : true;
+
     if (!isWithinHours && hours.isNotEmpty) {
       final helper = StoreStatusHelper(hours: hours);
       return StoreStatusResult(
@@ -161,11 +163,66 @@ class StoreStatusService {
       reason: 'ok',
       message: null,
       isStoreOpen: true,
-      deliveryEnabled: deliveryAvailable,  // ✅ Retorna disponibilidade real (enabled && !paused)
+      deliveryEnabled:
+          deliveryAvailable, // ✅ Retorna disponibilidade real (enabled && !paused)
       pickupEnabled: pickupAvailable,
       tableEnabled: tableAvailable,
       withinOpeningHours: isWithinHours,
     );
+  }
+
+  /// ✅ Retorna informações se a loja está prestes a fechar (dentro de 10 min)
+  static Map<String, dynamic>? getClosingSoonInfo(Store? store) {
+    if (store == null) return null;
+    final hours = store.hours;
+    if (hours.isEmpty) return null;
+
+    final now = DateTime.now();
+    final todayWeekday = now.weekday % 7;
+    final currentTime = TimeOfDay.fromDateTime(now);
+    final currentMinutes = currentTime.hour * 60 + currentTime.minute;
+
+    final todayHours = hours.where(
+      (h) => h.dayOfWeek == todayWeekday && h.isActive,
+    );
+
+    for (final period in todayHours) {
+      if (period.openingTime == null || period.closingTime == null) continue;
+
+      final openMinutes =
+          period.openingTime!.hour * 60 + period.openingTime!.minute;
+      final closeMinutes =
+          period.closingTime!.hour * 60 + period.closingTime!.minute;
+
+      // Verifica se está aberta no momento
+      bool isOpen = false;
+      if (closeMinutes < openMinutes) {
+        isOpen = currentMinutes >= openMinutes || currentMinutes < closeMinutes;
+      } else {
+        isOpen = currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+      }
+
+      if (isOpen) {
+        // Calcula minutos restantes
+        int diff;
+        if (closeMinutes < openMinutes) {
+          // Vira a noite
+          if (currentMinutes >= openMinutes) {
+            diff = (24 * 60 - currentMinutes) + closeMinutes;
+          } else {
+            diff = closeMinutes - currentMinutes;
+          }
+        } else {
+          diff = closeMinutes - currentMinutes;
+        }
+
+        // Se falta 10 minutos ou menos
+        if (diff > 0 && diff <= 10) {
+          return {'closingTime': period.closingTime, 'minutesRemaining': diff};
+        }
+      }
+    }
+    return null;
   }
 
   /// Valida se um método específico está disponível
@@ -202,9 +259,11 @@ class StoreStatusService {
       case 'no_delivery_methods':
         return 'Nenhum método de entrega disponível. Entre em contato com a loja.';
       case 'scheduled_pause':
-        return result.message ?? 'Loja em pausa temporária. Tente novamente mais tarde.';
+        return result.message ??
+            'Loja em pausa temporária. Tente novamente mais tarde.';
       case 'scheduled_quick_pause':
-        return result.message ?? 'Loja pausada temporariamente. Reabrirá em breve.';
+        return result.message ??
+            'Loja pausada temporariamente. Reabrirá em breve.';
       case 'ok':
         return 'Loja aberta!';
       default:
@@ -220,12 +279,18 @@ class StoreStatusService {
     final todayWeekday = now.weekday % 7; // 0 = Dom, 6 = Sáb
     final currentTime = TimeOfDay.fromDateTime(now);
 
-    final todayHours = hours.where((h) => h.dayOfWeek == todayWeekday && h.isActive);
+    final todayHours = hours.where(
+      (h) => h.dayOfWeek == todayWeekday && h.isActive,
+    );
 
     for (final period in todayHours) {
       if (period.openingTime == null || period.closingTime == null) continue;
 
-      if (_isTimeWithinPeriod(currentTime, period.openingTime!, period.closingTime!)) {
+      if (_isTimeWithinPeriod(
+        currentTime,
+        period.openingTime!,
+        period.closingTime!,
+      )) {
         return true;
       }
     }
@@ -234,7 +299,11 @@ class StoreStatusService {
   }
 
   /// Verifica se o horário atual está dentro de um período
-  static bool _isTimeWithinPeriod(TimeOfDay time, TimeOfDay start, TimeOfDay end) {
+  static bool _isTimeWithinPeriod(
+    TimeOfDay time,
+    TimeOfDay start,
+    TimeOfDay end,
+  ) {
     final timeMinutes = time.hour * 60 + time.minute;
     final startMinutes = start.hour * 60 + start.minute;
     final endMinutes = end.hour * 60 + end.minute;
@@ -250,7 +319,10 @@ class StoreStatusService {
   }
 
   /// Verifica se está em uma pausa agendada
-  static String? _checkIfInScheduledPause(List<ScheduledPause> pauses, DateTime now) {
+  static String? _checkIfInScheduledPause(
+    List<ScheduledPause> pauses,
+    DateTime now,
+  ) {
     for (final pause in pauses) {
       if (!pause.isActive) continue;
       if (now.isAfter(pause.startTime) && now.isBefore(pause.endTime)) {
@@ -272,16 +344,20 @@ class StoreStatusService {
   }
 
   /// Verifica se pode fazer checkout
-  static StoreStatusResult canCheckout(Store? store, String? selectedDeliveryMethod) {
+  static StoreStatusResult canCheckout(
+    Store? store,
+    String? selectedDeliveryMethod,
+  ) {
     final status = validateStoreStatus(store);
-    
+
     if (!status.canReceiveOrders) {
       return status;
     }
 
     // Verifica se o método selecionado está disponível
     if (selectedDeliveryMethod != null) {
-      if (selectedDeliveryMethod.toLowerCase() == 'delivery' && !status.deliveryEnabled) {
+      if (selectedDeliveryMethod.toLowerCase() == 'delivery' &&
+          !status.deliveryEnabled) {
         return StoreStatusResult(
           canReceiveOrders: false,
           reason: 'delivery_disabled',
@@ -294,7 +370,8 @@ class StoreStatusService {
         );
       }
 
-      if (selectedDeliveryMethod.toLowerCase() == 'pickup' && !status.pickupEnabled) {
+      if (selectedDeliveryMethod.toLowerCase() == 'pickup' &&
+          !status.pickupEnabled) {
         return StoreStatusResult(
           canReceiveOrders: false,
           reason: 'pickup_disabled',
@@ -307,7 +384,8 @@ class StoreStatusService {
         );
       }
 
-      if (selectedDeliveryMethod.toLowerCase() == 'table' && !status.tableEnabled) {
+      if (selectedDeliveryMethod.toLowerCase() == 'table' &&
+          !status.tableEnabled) {
         return StoreStatusResult(
           canReceiveOrders: false,
           reason: 'table_disabled',
@@ -324,4 +402,3 @@ class StoreStatusService {
     return status;
   }
 }
-

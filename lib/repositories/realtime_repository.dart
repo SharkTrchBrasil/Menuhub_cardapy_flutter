@@ -52,6 +52,8 @@ class RealtimeRepository {
   Completer<void>? _reconnectionCompleter;
   String? _storeUrl; // Armazena store_url para renovação de token
   HeartbeatManager? _heartbeatManager;
+  int?
+  _lastLinkedCustomerId; // ✅ NOVO: Armazena o último ID vinculado para re-link na reconexão
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -101,8 +103,28 @@ class RealtimeRepository {
     );
 
     // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
-    _socket.on('connect', (_) {
+    _socket.on('connect', (_) async {
       AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
+
+      // ✅ NOVO: Re-vincula o cliente se já estávamos autenticados
+      if (_lastLinkedCustomerId != null) {
+        AppLogger.i(
+          '🔄 Re-vinculando cliente $_lastLinkedCustomerId à nova sessão...',
+          tag: 'REALTIME',
+        );
+        try {
+          await linkCustomerToSession(_lastLinkedCustomerId!);
+          AppLogger.success(
+            '✅ Cliente re-vinculado com sucesso!',
+            tag: 'REALTIME',
+          );
+        } catch (e) {
+          AppLogger.e(
+            '❌ Falha ao re-vincular cliente na reconexão: $e',
+            tag: 'REALTIME',
+          );
+        }
+      }
 
       // ✅ NOVO: Inicia monitoramento de heartbeat
       _heartbeatManager?.stop();
@@ -683,9 +705,8 @@ class RealtimeRepository {
       }
     });
 
-    // O evento `initial_state_loaded` agora é manipulado no handler de conexão do backend,
-    // então não precisamos de um listener específico para ele aqui, mas para outros eventos sim.
-    _socket.on('order_update', (data) {
+    // ✅ CORREÇÃO: Nome alinhado com o backend que emite 'order_updated'
+    _socket.on('order_updated', (data) {
       AppLogger.d('🛒 Atualização de pedido recebida');
       try {
         final Order order = Order.fromJson(data);
@@ -694,7 +715,7 @@ class RealtimeRepository {
         // ✅ ATUALIZA CUBIT: Garante que o estado global de pedidos do cliente seja atualizado
         getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
       } catch (e) {
-        AppLogger.e('❌ Erro ao processar order_update: $e');
+        AppLogger.e('❌ Erro ao processar order_updated: $e');
       }
     });
 
@@ -1930,6 +1951,7 @@ class RealtimeRepository {
   // ✅ MÉTODO `linkCustomerToSession` MAIS SEGURO
   Future<void> linkCustomerToSession(int customerId) async {
     final completer = Completer<void>();
+    _lastLinkedCustomerId = customerId; // ✅ Salva para reconexões
 
     // Adiciona uma verificação extra para garantir que o socket está conectado
     if (!_socket.connected) {
@@ -1955,6 +1977,10 @@ class RealtimeRepository {
     );
 
     return completer.future;
+  }
+
+  void clearCustomer() {
+    _lastLinkedCustomerId = null;
   }
 
   Future<Cart> getOrCreateCart() async {

@@ -73,7 +73,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     if (!mounted) return;
     final product = widget.productState.product;
     if (product == null) return;
-    
+
     for (int i = 0; i < product.selectedVariants.length; i++) {
       final variant = product.selectedVariants[i];
       if (variant.isRequired && !variant.isValid) {
@@ -93,8 +93,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
 
   // ✅ Helper para obter preço original e promocional
   int? _getOriginalPrice(CartProduct product) {
-    final link = product.product.categoryLinks
-        .firstWhereOrNull((l) => l.categoryId == product.category.id);
+    final link = product.product.categoryLinks.firstWhereOrNull(
+      (l) => l.categoryId == product.category.id,
+    );
     if (link != null && link.isOnPromotion && link.promotionalPrice != null) {
       // ✅ Preço original (sem desconto) + variantes
       return link.price + product.variantsPrice;
@@ -103,8 +104,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
   }
 
   int? _getPromotionalPrice(CartProduct product) {
-    final link = product.product.categoryLinks
-        .firstWhereOrNull((l) => l.categoryId == product.category.id);
+    final link = product.product.categoryLinks.firstWhereOrNull(
+      (l) => l.categoryId == product.category.id,
+    );
     if (link != null && link.isOnPromotion && link.promotionalPrice != null) {
       // ✅ Preço promocional + variantes (se houver)
       return link.promotionalPrice! + product.variantsPrice;
@@ -121,7 +123,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final promotionalPrice = _getPromotionalPrice(product);
 
     // ✅ Verifica disponibilidade
-    final isAvailable = AvailabilityService.isProductAvailableNow(product.product);
+    final isAvailable = AvailabilityService.isProductAvailableNow(
+      product.product,
+    );
 
     // ✅ Layout: 50/50 e mais largo
     return ConstrainedBox(
@@ -149,14 +153,20 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                  ),
+                  placeholder:
+                      (context, url) => Container(
+                        color: Colors.grey.shade200,
+                        child: const Center(child: CircularProgressIndicator()),
+                      ),
+                  errorWidget:
+                      (context, url, error) => Container(
+                        color: Colors.grey.shade200,
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          size: 50,
+                          color: Colors.grey,
+                        ),
+                      ),
                 ),
               ),
             ),
@@ -195,7 +205,10 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 0,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -251,7 +264,8 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                 ],
                               ),
                             ),
-                          ] else if (product.product.description != null && product.product.description!.isNotEmpty) ...[
+                          ] else if (product.product.description != null &&
+                              product.product.description!.isNotEmpty) ...[
                             // Mostra descrição normal para outros produtos
                             Padding(
                               padding: const EdgeInsets.only(bottom: 20),
@@ -276,15 +290,21 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.red.shade200),
+                                  border: Border.all(
+                                    color: Colors.red.shade200,
+                                  ),
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.info_outline, color: Colors.red),
+                                    const Icon(
+                                      Icons.info_outline,
+                                      color: Colors.red,
+                                    ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           const Text(
                                             'Produto indisponível no momento',
@@ -293,10 +313,16 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                          if (product.product.availabilityType == AvailabilityType.scheduled)
+                                          if (product
+                                                  .product
+                                                  .availabilityType ==
+                                              AvailabilityType.scheduled)
                                             const Text(
                                               'Verifique os horários de funcionamento.',
-                                              style: TextStyle(color: Colors.red, fontSize: 12),
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                                fontSize: 12,
+                                              ),
                                             ),
                                         ],
                                       ),
@@ -307,29 +333,44 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             ),
 
                           // ✅ TAGS ALIMENTARES E DE BEBIDAS
-                          if (product.product.dietaryTags.isNotEmpty || product.product.beverageTags.isNotEmpty) ...[
+                          if (product.product.dietaryTags.isNotEmpty ||
+                              product.product.beverageTags.isNotEmpty) ...[
                             Padding(
                               padding: const EdgeInsets.only(bottom: 16),
                               child: Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  ...product.product.dietaryTags.map((tag) => Chip(
-                                    label: Text(foodTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
-                                    backgroundColor: Colors.green.shade50,
-                                    labelStyle: TextStyle(color: Colors.green.shade800),
-                                    side: BorderSide.none,
-                                    visualDensity: VisualDensity.compact,
-                                    padding: EdgeInsets.zero,
-                                  )),
-                                  ...product.product.beverageTags.map((tag) => Chip(
-                                    label: Text(beverageTagNames[tag] ?? '', style: const TextStyle(fontSize: 12)),
-                                    backgroundColor: Colors.blue.shade50,
-                                    labelStyle: TextStyle(color: Colors.blue.shade800),
-                                    side: BorderSide.none,
-                                    visualDensity: VisualDensity.compact,
-                                    padding: EdgeInsets.zero,
-                                  )),
+                                  ...product.product.dietaryTags.map(
+                                    (tag) => Chip(
+                                      label: Text(
+                                        foodTagNames[tag] ?? '',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      backgroundColor: Colors.green.shade50,
+                                      labelStyle: TextStyle(
+                                        color: Colors.green.shade800,
+                                      ),
+                                      side: BorderSide.none,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ),
+                                  ...product.product.beverageTags.map(
+                                    (tag) => Chip(
+                                      label: Text(
+                                        beverageTagNames[tag] ?? '',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      backgroundColor: Colors.blue.shade50,
+                                      labelStyle: TextStyle(
+                                        color: Colors.blue.shade800,
+                                      ),
+                                      side: BorderSide.none,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -341,7 +382,8 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                if (promotionalPrice != null && originalPrice != null) ...[
+                                if (promotionalPrice != null &&
+                                    originalPrice != null) ...[
                                   // Preço promocional (verde) - já inclui variantes
                                   Text(
                                     (promotionalPrice / 100.0).toCurrency(),
@@ -363,7 +405,8 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                   ),
                                 ] else ...[
                                   // ✅ Para pizzas: mostra "A partir de" antes de selecionar sabores
-                                  if (product.category.isCustomizable && product.totalPrice == 0) ...[
+                                  if (product.category.isCustomizable &&
+                                      product.totalPrice == 0) ...[
                                     Text(
                                       'A partir de ${product.startingPrice.toCurrency}',
                                       style: TextStyle(
@@ -430,25 +473,33 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                 return VariantWidget(
                                   key: _variantKeys[variant.id],
                                   onOptionUpdated: (v, o, nq) {
-                                    context.read<ProductPageCubit>().updateOption(
-                                      v, 
-                                      o, 
-                                      nq,
-                                      onUpdateComplete: _scrollToNextRequiredVariant,
-                                    );
+                                    context
+                                        .read<ProductPageCubit>()
+                                        .updateOption(
+                                          v,
+                                          o,
+                                          nq,
+                                          onUpdateComplete:
+                                              _scrollToNextRequiredVariant,
+                                        );
                                   },
                                   variant: variant,
-                                  onScrollToNextRequired: _scrollToNextRequiredVariant,
+                                  onScrollToNextRequired:
+                                      _scrollToNextRequiredVariant,
                                 );
                               },
-                              separatorBuilder: (_, __) => const SizedBox(height: 32),
+                              separatorBuilder:
+                                  (_, __) => const SizedBox(height: 32),
                             ),
                             const SizedBox(height: 24),
                           ],
                           // ✅ Campo de observação
                           const Text(
                             'Alguma observação no produto?',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           TextField(
@@ -457,14 +508,19 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             maxLines: 4,
                             minLines: 3,
                             decoration: InputDecoration(
-                              hintText: 'Ex: tirar a cebola, maionese à parte etc.',
+                              hintText:
+                                  'Ex: tirar a cebola, maionese à parte etc.',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade300,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: theme.primaryColor),
+                                borderSide: BorderSide(
+                                  color: theme.primaryColor,
+                                ),
                               ),
                               contentPadding: const EdgeInsets.all(12),
                             ),
@@ -484,7 +540,11 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     );
   }
 
-  Widget _buildActionBar(BuildContext context, DsTheme theme, bool isAvailable) {
+  Widget _buildActionBar(
+    BuildContext context,
+    DsTheme theme,
+    bool isAvailable,
+  ) {
     final productState = context.watch<ProductPageCubit>().state;
     final product = productState.product!;
 
@@ -505,15 +565,22 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
             child: BlocBuilder<CartCubit, CartState>(
               builder: (context, cartState) {
                 final isEditMode = productState.isEditMode;
-                final buttonText = isEditMode
-                    ? 'Salvar ${product.totalPrice.toCurrency}'
-                    : 'Adicionar ${product.totalPrice.toCurrency}';
 
                 return DsPrimaryButton(
-                  onPressed: cartState.isUpdating || !product.isValid || !isAvailable
-                      ? null
-                      : () => _onConfirm(context, productState),
-                  child: cartState.isUpdating ? const DotLoading() : Text(buttonText),
+                  onPressed:
+                      cartState.isUpdating || !product.isValid || !isAvailable
+                          ? null
+                          : () => _onConfirm(context, productState),
+                  child:
+                      cartState.isUpdating
+                          ? const DotLoading()
+                          : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(isEditMode ? 'Salvar' : 'Adicionar'),
+                              Text(product.totalPrice.toCurrency),
+                            ],
+                          ),
                 );
               },
             ),
@@ -529,26 +596,41 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final product = productState.product!;
 
     final payload = UpdateCartItemPayload(
-      cartItemId: productState.isEditMode ? productState.originalCartItemId : null,
+      cartItemId:
+          productState.isEditMode ? productState.originalCartItemId : null,
       productId: product.product.id!,
       categoryId: product.category.id!,
       quantity: product.quantity,
       note: widget.observationController.text.trim(),
       sizeName: product.selectedSize?.name,
-      variants: product.selectedVariants.map((cartVariant) {
-        final selectedOptions = cartVariant.cartOptions.where((option) => option.quantity > 0).toList();
-        if (selectedOptions.isEmpty) return null;
-        return CartItemVariant(
-          variantId: cartVariant.id,
-          name: cartVariant.name,
-          options: selectedOptions.map((option) => CartItemVariantOption(
-            variantOptionId: option.id,
-            quantity: option.quantity,
-            name: option.name,
-            price: option.price,
-          )).toList(),
-        );
-      }).whereType<CartItemVariant>().toList(),
+      sizeImageUrl:
+          product.selectedSize?.image?.url, // ✅ NOVO: Envia imagem da pizza
+      variants:
+          product.selectedVariants
+              .map((cartVariant) {
+                final selectedOptions =
+                    cartVariant.cartOptions
+                        .where((option) => option.quantity > 0)
+                        .toList();
+                if (selectedOptions.isEmpty) return null;
+                return CartItemVariant(
+                  variantId: cartVariant.id,
+                  name: cartVariant.name,
+                  options:
+                      selectedOptions
+                          .map(
+                            (option) => CartItemVariantOption(
+                              variantOptionId: option.id,
+                              quantity: option.quantity,
+                              name: option.name,
+                              price: option.price,
+                            ),
+                          )
+                          .toList(),
+                );
+              })
+              .whereType<CartItemVariant>()
+              .toList(),
     );
 
     Future<void> updateAndPop() async {
@@ -558,17 +640,17 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         context: context,
         productStoreId: productStoreId,
       );
-      
+
       if (!canProceed) {
         return; // Usuário cancelou, não adiciona
       }
-      
+
       await cartCubit.updateItem(payload);
       if (context.mounted) {
         if (context.canPop()) {
           context.pop();
         }
-        
+
         // ✅ LÓGICA DE REDIRECT INTELIGENTE
         // Verifica se veio do carrinho (via query params)
         final uri = GoRouterState.of(context).uri;
@@ -583,19 +665,19 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     }
 
     final isLoggedIn = authState.customer != null;
-    
+
     if (isLoggedIn) {
       await updateAndPop();
     } else {
       await PendingCartService.savePendingCartItem(payload);
-      
+
       try {
         final loginSuccess = await showResponsiveSidePanel<bool>(
           context,
           const OnboardingPage(),
           useFullScreenOnDesktop: true,
         );
-        
+
         if (loginSuccess == true && context.mounted) {
           await Future.delayed(const Duration(milliseconds: 500));
           if (context.canPop()) {
@@ -615,8 +697,12 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       }
     }
   }
-  
-  Widget _buildIntegerQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+
+  Widget _buildIntegerQuantityInput(
+    BuildContext context,
+    DsTheme theme,
+    CartProduct product,
+  ) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -626,9 +712,12 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         children: [
           IconButton(
             icon: Icon(Icons.remove, color: theme.primaryColor),
-            onPressed: product.quantity > 1
-                ? () => context.read<ProductPageCubit>().updateQuantity(product.quantity - 1)
-                : null,
+            onPressed:
+                product.quantity > 1
+                    ? () => context.read<ProductPageCubit>().updateQuantity(
+                      product.quantity - 1,
+                    )
+                    : null,
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -636,18 +725,25 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           ),
           IconButton(
             icon: Icon(Icons.add, color: theme.primaryColor),
-            onPressed: () => context.read<ProductPageCubit>().updateQuantity(product.quantity + 1),
+            onPressed:
+                () => context.read<ProductPageCubit>().updateQuantity(
+                  product.quantity + 1,
+                ),
           ),
         ],
       ),
     );
   }
-  
-  Widget _buildWeightQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+
+  Widget _buildWeightQuantityInput(
+    BuildContext context,
+    DsTheme theme,
+    CartProduct product,
+  ) {
     final cubit = context.read<ProductPageCubit>();
     final currentWeight = product.weightQuantity ?? 0.5;
     final unitName = product.product.unit.displayName;
-    
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -659,21 +755,31 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         children: [
           IconButton(
             icon: Icon(Icons.remove, color: theme.primaryColor),
-            onPressed: currentWeight > 0.1
-                ? () => cubit.updateWeightQuantity((currentWeight - 0.1).clamp(0.1, 100.0))
-                : null,
+            onPressed:
+                currentWeight > 0.1
+                    ? () => cubit.updateWeightQuantity(
+                      (currentWeight - 0.1).clamp(0.1, 100.0),
+                    )
+                    : null,
           ),
           SizedBox(
             width: 80,
             child: TextField(
-              controller: TextEditingController(text: currentWeight.toStringAsFixed(2)),
+              controller: TextEditingController(
+                text: currentWeight.toStringAsFixed(2),
+              ),
               textAlign: TextAlign.center,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 suffixText: unitName,
-                suffixStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                suffixStyle: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
               ),
               onSubmitted: (value) {
                 final parsed = double.tryParse(value.replaceAll(',', '.'));
@@ -685,7 +791,10 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           ),
           IconButton(
             icon: Icon(Icons.add, color: theme.primaryColor),
-            onPressed: () => cubit.updateWeightQuantity((currentWeight + 0.1).clamp(0.1, 100.0)),
+            onPressed:
+                () => cubit.updateWeightQuantity(
+                  (currentWeight + 0.1).clamp(0.1, 100.0),
+                ),
           ),
         ],
       ),
@@ -709,7 +818,8 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       );
 
       final shareUrl = response.data['share_url'] as String;
-      final shareMessage = 'Confira este produto: ${product.product.name}\n$shareUrl';
+      final shareMessage =
+          'Confira este produto: ${product.product.name}\n$shareUrl';
 
       final shareResult = await Share.share(
         shareMessage,
@@ -734,14 +844,16 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
 
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
         // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
-        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
-        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
-        final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
+        final productSlug = product.product.name
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl =
+            '$baseUrl/product/$productSlug/${product.product.id}';
+        final shareMessage =
+            'Confira este produto: ${product.product.name}\n$productUrl';
 
-        await Share.share(
-          shareMessage,
-          subject: product.product.name,
-        );
+        await Share.share(shareMessage, subject: product.product.name);
       } catch (e2) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
