@@ -23,7 +23,9 @@ import '../../models/update_cart_payload.dart';
 import '../../services/pending_cart_service.dart';
 import '../cart/cart_cubit.dart';
 import '../../cubit/store_cubit.dart';
-import '../../cubit/store_state.dart';
+
+import '../../cubit/catalog_cubit.dart';
+import '../../cubit/catalog_state.dart';
 import '../cart/cart_state.dart' as CartCubitState;
 
 import '../../core/helpers/side_panel.dart';
@@ -78,13 +80,13 @@ class _ProductPageState extends State<ProductPage> {
   Widget build(BuildContext context) {
     final DsTheme theme = context.watch<DsThemeSwitcher>().theme;
 
-    return BlocListener<StoreCubit, StoreState>(
-      listener: (context, storeState) {
+    return BlocListener<CatalogCubit, CatalogState>(
+      listener: (context, catalogState) {
         final productPageState = context.read<ProductPageCubit>().state;
         if (productPageState.status is PageStatusSuccess &&
-            storeState.products != null) {
+            catalogState.products != null) {
           try {
-            final updatedSourceProduct = storeState.products!.firstWhere(
+            final updatedSourceProduct = catalogState.products!.firstWhere(
               (p) => p.id == productPageState.product!.product.id,
             );
             context.read<ProductPageCubit>().updateWithNewSourceProduct(

@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
+import 'package:totem/models/option_group.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:totem/models/product.dart';
+import 'package:totem/helpers/enums/product_status.dart';
 import 'package:totem/models/store.dart';
 import 'package:totem/models/category.dart' as models;
 import 'package:totem/models/payment_method.dart';
@@ -15,6 +19,7 @@ import 'package:totem/models/scheduled_pause.dart';
 import 'package:totem/models/store_operation_config.dart';
 import 'package:totem/models/coupon.dart';
 import 'package:totem/models/delivery_fee_rule.dart';
+import 'package:totem/models/variant.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
@@ -64,6 +69,28 @@ class RealtimeRepository {
 
   final BehaviorSubject<List<Product>> productsController =
       BehaviorSubject<List<Product>>();
+
+  /// ✅ NOVO: Stream separado para catálogo de categorias
+  /// Desacoplado do storeController para evitar rebuilds desnecessários
+  final BehaviorSubject<List<models.Category>> categoriesController =
+      BehaviorSubject<List<models.Category>>();
+
+  /// ✅ FIX CASCATA: Debounce para eventos rápidos de categorias
+  /// Colapsa múltiplos updates em < 300ms em uma única emissão
+  Timer? _categoryDebounceTimer;
+  List<models.Category>? _pendingCategories;
+
+  /// Emite categorias com debounce de 300ms para evitar cascata de rebuilds
+  void _debouncedCategoryEmit(List<models.Category> categories) {
+    _pendingCategories = categories;
+    _categoryDebounceTimer?.cancel();
+    _categoryDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (_pendingCategories != null) {
+        categoriesController.add(_pendingCategories!);
+        _pendingCategories = null;
+      }
+    });
+  }
 
   final BehaviorSubject<List<BannerModel>> bannersController =
       BehaviorSubject<List<BannerModel>>();
@@ -296,19 +323,6 @@ class RealtimeRepository {
     // ✅ P1: EVENTOS DE DADOS DO BACKEND com suporte a delta updates
     // ✅ CORREÇÃO: Escuta 'products_updated' (plural) ou 'product_updated' (singular se for full payload)
     _socket.on('products_updated', (data) => _handleProductsUpdated(data));
-
-    // ✅ SUPORTE A REFACTURE: Alguns ambientes mandam tudo por 'product_updated'
-    _socket.on('product_updated', (data) {
-      if (data is Map && data.containsKey('products')) {
-        AppLogger.d(
-          '📦 [COMPAT] Full catalog received via product_updated (singular)',
-        );
-        _handleProductsUpdated(data);
-      } else {
-        AppLogger.d('📦 [GRANULAR] Produto atualizado recebido');
-        _handleGranularProductEvent(data, 'updated');
-      }
-    });
 
     // ✅ CORREÇÃO: Nome do evento alinhado com backend (banners_updated)
     _socket.on('banners_updated', (data) {
@@ -794,7 +808,7 @@ class RealtimeRepository {
       AppLogger.d('🏠 [GRANULAR] Endereço criado recebido');
       try {
         getIt<AddressCubit>().onRealtimeAddressEvent(
-          data as Map<String, dynamic>,
+          _convertToStringDynamicMap(data),
         );
       } catch (e) {
         AppLogger.e('❌ Erro ao processar address_created: $e');
@@ -805,7 +819,7 @@ class RealtimeRepository {
       AppLogger.d('🏠 [GRANULAR] Endereço atualizado recebido');
       try {
         getIt<AddressCubit>().onRealtimeAddressEvent(
-          data as Map<String, dynamic>,
+          _convertToStringDynamicMap(data),
         );
       } catch (e) {
         AppLogger.e('❌ Erro ao processar address_updated: $e');
@@ -816,7 +830,7 @@ class RealtimeRepository {
       AppLogger.d('🏠 [GRANULAR] Endereço deletado recebido');
       try {
         getIt<AddressCubit>().onRealtimeAddressEvent(
-          data as Map<String, dynamic>,
+          _convertToStringDynamicMap(data),
         );
       } catch (e) {
         AppLogger.e('❌ Erro ao processar address_deleted: $e');
@@ -841,60 +855,94 @@ class RealtimeRepository {
 
   /// ✅ HELPER: Converte recursivamente um Map para Map<String, dynamic>
   /// ULTRA-ROBUSTO: Garante que o resultado seja um Map dart puro, sem proxies de JS
-  Map<String, dynamic> _convertToStringDynamicMap(dynamic data) {
-    if (data == null) return {};
-
-    final Map<String, dynamic> result = {};
-    try {
-      // Tenta tratar como Map genérico
-      if (data is Map) {
-        for (final key in data.keys) {
-          if (key != null) {
-            result[key.toString()] = _convertValue(data[key]);
-          }
-        }
-      } else {
-        // Tenta fallback para interop dinâmico se tiver keys
-        try {
-          final dynamic dynData = data;
-          if (dynData.keys != null) {
-            for (final key in dynData.keys) {
-              result[key.toString()] = _convertValue(dynData[key]);
-            }
-          }
-        } catch (_) {
-          // Ignora se não for possível iterar
-        }
-      }
-    } catch (e) {
-      AppLogger.e('❌ Erro fatal ao converter Map (JS Interop): $e');
-    }
-    return result;
-  }
-
   /// ✅ HELPER: Converte valores recursivamente (para listas e maps aninhados)
   dynamic _convertValue(dynamic value) {
     if (value == null) return null;
 
-    // Tipos primitivos retornam direto
+    // Se já é um tipo primitivo Dart, retorna direto
     if (value is String || value is num || value is bool) {
       return value;
     }
 
-    // Tratamento de lista
-    if (value is List) {
+    // Se é uma lista, converte cada item
+    if (value is Iterable) {
       return value.map((item) => _convertValue(item)).toList();
     }
 
-    // Se chegou aqui, assume que é um objeto/mapa e tenta converter
-    // Isso captura objetos JS que não passam no teste 'is Map' mas têm estrutura
+    // Se é um Map Dart ou objeto JS proxy, tenta converter para Map<String, dynamic>
+    // Usamos uma técnica agressiva de conversão para evitar proxies JS no DDC
     return _convertToStringDynamicMap(value);
+  }
+
+  /// ✅ DEEP CONVERT: Converte qualquer objeto (incluindo JS Proxy) para
+  /// Map<String, dynamic> puro do Dart via ponte JSON.
+  /// IMPORTANTE: No DDC (Flutter Web), objetos JS passam `is Map<String, dynamic>`
+  /// mas seus filhos NÃO são Maps puros. Por isso SEMPRE fazemos a ponte JSON.
+  Map<String, dynamic> _deepConvertToJson(dynamic data) {
+    if (data == null) return {};
+    try {
+      final encoded = jsonEncode(data);
+      final decoded = jsonDecode(encoded);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (e) {
+      AppLogger.w('⚠️ Ponte JSON falhou para _deepConvertToJson: $e');
+    }
+    // Fallback: tenta conversão manual recursiva
+    return _convertToStringDynamicMap(data);
+  }
+
+  /// ✅ Converte objetos JS Proxy para Map<String, dynamic> (conversão manual recursiva)
+  /// Usado como fallback quando a ponte JSON falha.
+  Map<String, dynamic> _convertToStringDynamicMap(dynamic data) {
+    if (data == null) return {};
+
+    // NOTA: NÃO fazemos shortcut com `is Map<String, dynamic>` aqui!
+    // No DDC, JS Proxy passa esse teste mas filhos continuam como proxy.
+
+    // Tenta ponte JSON primeiro
+    try {
+      final encoded = jsonEncode(data);
+      final decoded = jsonDecode(encoded);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Ponte falhou, tenta conversão manual
+    }
+
+    final Map<String, dynamic> result = {};
+    try {
+      if (data is Map) {
+        data.forEach((key, value) {
+          result[key.toString()] = _convertValue(value);
+        });
+      } else {
+        // Fallback final via interop dinâmico de chaves
+        final dynamic dynData = data;
+        try {
+          final List? keys = dynData.keys as List?;
+          if (keys != null) {
+            for (final key in keys) {
+              result[key.toString()] = _convertValue(dynData[key]);
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      AppLogger.e('❌ Erro na conversão manual de Map: $e');
+    }
+
+    return result;
   }
 
   /// Handler para eventos granulares de produtos
   void _handleGranularProductEvent(dynamic data, String action) {
     try {
-      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      // ✅ CORREÇÃO CRÍTICA: Converte o objeto JS proxy para um Map Dart puro
+      // antes de qualquer operação, evitando NoSuchMethodError no DDC/Flutter Web
+      final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       final storeId = payload['store_id'] as int?;
 
       // Verifica se o evento é para a loja atual
@@ -922,10 +970,22 @@ class RealtimeRepository {
           if (rawProductData != null) {
             try {
               // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
-              // Isso remove qualquer vestígio de Proxy JS que causa crash no DDC
-              final Map<String, dynamic> productData = jsonDecode(
-                jsonEncode(rawProductData),
-              );
+              var decoded = jsonDecode(jsonEncode(rawProductData));
+
+              // Se for uma lista (ex: [{...}]), pega o primeiro item
+              if (decoded is List && decoded.isNotEmpty) {
+                decoded = decoded.first;
+              }
+
+              if (decoded is! Map) {
+                AppLogger.e(
+                  '❌ [GRANULAR] Payload decodificado não é um Map: $decoded',
+                );
+                break;
+              }
+
+              final Map<String, dynamic> productData =
+                  Map<String, dynamic>.from(decoded);
               final newProduct = Product.fromJson(productData);
 
               // Verifica se já existe (para evitar duplicatas)
@@ -963,9 +1023,22 @@ class RealtimeRepository {
           if (rawProductDataUpdated != null) {
             try {
               // ✅ NUCLEAR OPTION: Serializa e deserializa para garantir Map Dart puro
-              final Map<String, dynamic> productData = jsonDecode(
-                jsonEncode(rawProductDataUpdated),
-              );
+              var decoded = jsonDecode(jsonEncode(rawProductDataUpdated));
+
+              // Se for uma lista (ex: [{...}]), pega o primeiro item
+              if (decoded is List && decoded.isNotEmpty) {
+                decoded = decoded.first;
+              }
+
+              if (decoded is! Map) {
+                AppLogger.e(
+                  '❌ [GRANULAR] Payload decodificado não é um Map: $decoded',
+                );
+                break;
+              }
+
+              final Map<String, dynamic> productData =
+                  Map<String, dynamic>.from(decoded);
               var updatedProduct = Product.fromJson(productData);
 
               final existingIndex = currentProducts.indexWhere(
@@ -1010,8 +1083,36 @@ class RealtimeRepository {
                 );
               }
 
-              // ✅ CORREÇÃO: Usa o produto atualizado diretamente (o backend já filtra se deve ou não aparecer)
-              if (existingIndex != -1) {
+              // ✅ CORREÇÃO: Verifica visibilidade do produto antes de adicionar/atualizar
+              // 1. Status global: se não for ACTIVE, remove do cardápio
+              // 2. CategoryLinks: se TODOS tiverem is_available=false, remove do cardápio
+              final bool isGloballyActive =
+                  updatedProduct.status == ProductStatus.ACTIVE;
+              final bool hasAnyCategoryAvailable =
+                  updatedProduct.categoryLinks.isEmpty ||
+                  updatedProduct.categoryLinks.any((link) => link.isAvailable);
+              final bool shouldBeVisible =
+                  isGloballyActive && hasAnyCategoryAvailable;
+
+              if (!shouldBeVisible) {
+                // Produto pausado/inativo — remover da lista do totem
+                if (existingIndex != -1) {
+                  final removedProduct = currentProducts.removeAt(
+                    existingIndex,
+                  );
+                  productsController.add(currentProducts);
+                  AppLogger.d(
+                    '⏸️ [GRANULAR] Produto ${removedProduct.name} removido do cardápio '
+                    '(status: ${updatedProduct.status.name}, '
+                    'links disponíveis: $hasAnyCategoryAvailable)',
+                  );
+                } else {
+                  AppLogger.d(
+                    '⏸️ [GRANULAR] Produto ${updatedProduct.name} ignorado '
+                    '(não visível e não estava na lista)',
+                  );
+                }
+              } else if (existingIndex != -1) {
                 currentProducts[existingIndex] = updatedProduct;
                 productsController.add(currentProducts);
                 AppLogger.d(
@@ -1072,136 +1173,186 @@ class RealtimeRepository {
   /// Handler para eventos granulares de categorias
   void _handleGranularCategoryEvent(dynamic data, String action) {
     try {
-      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      // ✅ DEEP CONVERT: Converte o objeto JS proxy para um Map Dart puro (recursivamente)
+      final Map<String, dynamic> payload = _deepConvertToJson(data);
       final storeId = payload['store_id'] as int?;
 
-      if (!storeController.hasValue) {
-        AppLogger.d('⚠️ [GRANULAR] Store não inicializada ainda');
-        return;
-      }
-
-      final currentStore = storeController.value;
-      if (storeId != null && currentStore.id != storeId) {
+      if (storeId != null &&
+          storeController.hasValue &&
+          storeController.value.id != storeId) {
         AppLogger.d(
           '⚠️ [GRANULAR] Evento de categoria para outra loja (ignorado)',
         );
         return;
       }
 
+      // ✅ REFACTOR: Usa categoriesController como fonte de verdade (não storeController)
       final currentCategories = List<models.Category>.from(
-        currentStore.categories,
+        categoriesController.hasValue ? categoriesController.value : [],
       );
 
       switch (action) {
         case 'created':
-          // ✅ CORREÇÃO: Backend envia 'category', não 'item'
-          final rawCategoryDataCreated = payload['category'];
-          AppLogger.d(
-            '🔍 [GRANULAR] Payload criação: ${payload.keys.toList()}',
-          );
+          var rawCategoryDataCreated = payload['category'];
 
           if (rawCategoryDataCreated != null) {
             try {
-              // ✅ NUCLEAR OPTION: Sanitização via JSON
-              final Map<String, dynamic> categoryDataCreated = jsonDecode(
-                jsonEncode(rawCategoryDataCreated),
-              );
-              final newCategory = models.Category.fromJson(categoryDataCreated);
+              // Se vier como lista de 1 item, pega o primeiro
+              if (rawCategoryDataCreated is List &&
+                  rawCategoryDataCreated.isNotEmpty) {
+                rawCategoryDataCreated = rawCategoryDataCreated.first;
+              }
+
+              // ✅ DEEP CONVERT: Garante que todo o grafo de objetos
+              // seja Map/List/String/num/bool puros do Dart (sem JS Proxy)
+              final Map<String, dynamic> categoryDataCreated =
+                  _deepConvertToJson(rawCategoryDataCreated);
+
+              if (categoryDataCreated.isEmpty) {
+                AppLogger.e('❌ [GRANULAR] Categoria vazia após conversão');
+                break;
+              }
+
+              var newCategory = models.Category.fromJson(categoryDataCreated);
+
+              // ✅ FIX PIZZA: Reconstroi productOptionGroups se necessário
+              newCategory = _rebuildProductOptionGroups(newCategory);
+
               final existingIndex = currentCategories.indexWhere(
                 (c) => c.id == newCategory.id,
               );
               if (existingIndex == -1) {
                 currentCategories.add(newCategory);
-                final updatedStore = currentStore.copyWith(
-                  categories: currentCategories,
-                );
-                storeController.add(updatedStore);
+                // ✅ REFACTOR: Publica em categoriesController (não em storeController)
+                _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
                   '✅ [GRANULAR] Categoria ${newCategory.name} adicionada',
                 );
               }
             } catch (e, stackTrace) {
               AppLogger.e(
-                '❌ [GRANULAR] Erro ao converter/processar categoria criada: $e',
+                '❌ [GRANULAR] Erro ao processar categoria criada: $e',
               );
               AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
             AppLogger.d(
-              '⚠️ [GRANULAR] Payload sem campo "category" válido para criação. Keys: ${payload.keys.toList()}',
+              '⚠️ [GRANULAR] Payload sem "category". Keys: ${payload.keys.toList()}',
             );
           }
           break;
 
         case 'updated':
-          // ✅ CORREÇÃO: Backend envia 'category', não 'item'
-          final rawCategoryData = payload['category'];
+          var rawCategoryData = payload['category'];
 
           if (rawCategoryData != null) {
             try {
-              // ✅ NUCLEAR OPTION
-              final Map<String, dynamic> categoryData = jsonDecode(
-                jsonEncode(rawCategoryData),
+              // Se vier como lista de 1 item, pega o primeiro
+              if (rawCategoryData is List && rawCategoryData.isNotEmpty) {
+                rawCategoryData = rawCategoryData.first;
+              }
+
+              // ✅ DEEP CONVERT: Garante que todo o grafo de objetos
+              // seja Map/List/String/num/bool puros do Dart (sem JS Proxy)
+              final Map<String, dynamic> categoryData = _deepConvertToJson(
+                rawCategoryData,
               );
+
+              if (categoryData.isEmpty) {
+                AppLogger.e('❌ [GRANULAR] Categoria vazia após conversão');
+                break;
+              }
+
               var updatedCategory = models.Category.fromJson(categoryData);
+
+              AppLogger.d(
+                '🔍 [GRANULAR] Categoria: ${updatedCategory.name} (id: ${updatedCategory.id}), isActive: ${updatedCategory.isActive}',
+              );
+
+              // ✅ FIX: Se a categoria voltou ativa mas não estava na lista (re-ativação)
+              // OU se está inativa → remove da lista (tratamento duplo de segurança)
+              if (!updatedCategory.isActive) {
+                final existingIdx = currentCategories.indexWhere(
+                  (c) => c.id == updatedCategory.id,
+                );
+                if (existingIdx != -1) {
+                  final removedCategory = currentCategories.removeAt(
+                    existingIdx,
+                  );
+                  _debouncedCategoryEmit(currentCategories);
+                  AppLogger.d(
+                    '⏸️ [GRANULAR] Categoria ${removedCategory.name} removida (is_active=false via update)',
+                  );
+                } else {
+                  AppLogger.d(
+                    '⚠️ [GRANULAR] Categoria ${updatedCategory.name} inativa, não estava na lista',
+                  );
+                }
+                break;
+              }
 
               final existingIndex = currentCategories.indexWhere(
                 (c) => c.id == updatedCategory.id,
               );
               if (existingIndex != -1) {
                 final oldCategory = currentCategories[existingIndex];
-
                 // ✅ SMART MERGE: Preserva campos complexos se não vierem no payload
-                // Isso evita que updates parciais (ex: só mudou o nome) apaguem as opções/preços
+                bool optionGroupsUpdated = false;
                 if (!categoryData.containsKey('option_groups')) {
                   updatedCategory = updatedCategory.copyWith(
                     optionGroups: oldCategory.optionGroups,
                   );
+                } else {
+                  optionGroupsUpdated = true;
                 }
+
                 if (!categoryData.containsKey('product_option_groups')) {
-                  updatedCategory = updatedCategory.copyWith(
-                    productOptionGroups: oldCategory.productOptionGroups,
-                  );
+                  // Se os grupos de opções mudaram, precisamos reconstruir o mapa!
+                  if (optionGroupsUpdated) {
+                    updatedCategory = _rebuildProductOptionGroups(
+                      updatedCategory,
+                    );
+                  } else {
+                    updatedCategory = updatedCategory.copyWith(
+                      productOptionGroups: oldCategory.productOptionGroups,
+                    );
+                  }
                 }
+
                 if (!categoryData.containsKey('product_links')) {
                   updatedCategory = updatedCategory.copyWith(
                     productLinks: oldCategory.productLinks,
                   );
                 }
-
                 currentCategories[existingIndex] = updatedCategory;
-                final updatedStore = currentStore.copyWith(
-                  categories: currentCategories,
-                );
-                storeController.add(updatedStore);
+                // ✅ REFACTOR: Publica em categoriesController
+                _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
-                  '✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (com merge inteligente)',
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (smart merge)',
                 );
               } else {
+                // ✅ FIX PIZZA: Categoria não existia (foi removida anteriormente via category_deleted)
+                // Precisamos reconstruir productOptionGroups a partir dos option_groups recebidos.
+                updatedCategory = _rebuildProductOptionGroups(updatedCategory);
+
                 currentCategories.add(updatedCategory);
-                final updatedStore = currentStore.copyWith(
-                  categories: currentCategories,
-                );
-                storeController.add(updatedStore);
+                _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
-                  '✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada (update para nova)',
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada via update',
                 );
               }
             } catch (e, stackTrace) {
-              AppLogger.e(
-                '❌ [GRANULAR] Erro ao converter/processar categoria: $e',
-              );
+              AppLogger.e('❌ [GRANULAR] Erro ao processar categoria: $e');
               AppLogger.e('📍 StackTrace: $stackTrace');
             }
           } else {
             AppLogger.d(
-              '⚠️ [GRANULAR] Payload sem campo \"category\" válido para atualização. Payload keys: ${payload.keys.toList()}',
+              '⚠️ [GRANULAR] Payload sem "category". Keys: ${payload.keys.toList()}',
             );
           }
           break;
 
         case 'deleted':
-          // ✅ CORREÇÃO: Backend envia 'category_id', não 'item_id'
           final categoryId = payload['category_id'] as int?;
           if (categoryId != null) {
             final existingIndex = currentCategories.indexWhere(
@@ -1209,18 +1360,18 @@ class RealtimeRepository {
             );
             if (existingIndex != -1) {
               final removedCategory = currentCategories.removeAt(existingIndex);
-              final updatedStore = currentStore.copyWith(
-                categories: currentCategories,
-              );
-              storeController.add(updatedStore);
+              // ✅ FIX CASCATA: Debounced emit para colapsar eventos duplicados
+              _debouncedCategoryEmit(currentCategories);
               AppLogger.d(
-                '✅ [GRANULAR] Categoria ${removedCategory.name} removida',
+                '✅ [GRANULAR] Categoria ${removedCategory.name} removida (pausa/delete)',
+              );
+            } else {
+              AppLogger.d(
+                '⚠️ [GRANULAR] Categoria $categoryId não encontrada na lista local',
               );
             }
           } else {
-            AppLogger.d(
-              '⚠️ [GRANULAR] Payload sem campo "category_id" para deleção',
-            );
+            AppLogger.d('⚠️ [GRANULAR] Payload sem "category_id"');
           }
           break;
       }
@@ -1230,11 +1381,73 @@ class RealtimeRepository {
     }
   }
 
+  /// ✅ Reconstroi o mapa productOptionGroups (necessário para Pizzas no Totem)
+  /// O backend envia grupos globais, então mapeamos cada tamanho para seus respectivos escolhas.
+  ///
+  /// IMPORTANTE: A chave do mapa deve ser o OptionItem.id do grupo SIZE (ou linkedProductId),
+  /// pois é assim que o PizzaAdapter faz o lookup:
+  ///   `final sizeProductId = size.linkedProductId ?? size.id;`
+  models.Category _rebuildProductOptionGroups(models.Category category) {
+    if (!category.isCustomizable ||
+        category.productOptionGroups != null ||
+        category.optionGroups.isEmpty) {
+      return category;
+    }
+
+    // Pega todos os grupos que NÃO são de tamanhos (sabores, bordas, massas, etc)
+    final nonSizeGroups =
+        category.optionGroups
+            .where((g) => g.groupType != OptionGroupType.size)
+            .toList();
+
+    if (nonSizeGroups.isEmpty) return category;
+
+    // Constrói o mapa sizeKey -> List<OptionGroup>
+    final Map<int, List<OptionGroup>> rebuiltMap = {};
+
+    // ✅ PRIORIDADE 1: Usa os OptionItems do grupo SIZE como chave
+    // O PizzaAdapter busca por size.linkedProductId ?? size.id
+    // Então a chave DEVE ser o OptionItem.id (ou linkedProductId) do grupo SIZE
+    final sizeGroup = category.optionGroups.firstWhereOrNull(
+      (g) => g.groupType == OptionGroupType.size,
+    );
+    if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+      for (final item in sizeGroup.items) {
+        // Usa linkedProductId se disponível, senão o id do OptionItem
+        final key = item.linkedProductId ?? item.id;
+        if (key != null) {
+          rebuiltMap[key] = nonSizeGroups;
+        }
+      }
+    }
+
+    // ✅ FALLBACK: Se não houver grupo SIZE, tenta product_links
+    if (rebuiltMap.isEmpty) {
+      for (final link in category.productLinks) {
+        final pid = link.productId;
+        if (pid != null) {
+          rebuiltMap[pid] = nonSizeGroups;
+        }
+      }
+    }
+
+    if (rebuiltMap.isNotEmpty) {
+      AppLogger.d(
+        '🔧 [REBUILD] productOptionGroups reconstruído para ${category.name}: '
+        'keys=${rebuiltMap.keys.toList()} (${rebuiltMap.length} tamanhos × ${nonSizeGroups.length} grupos)',
+      );
+      return category.copyWith(productOptionGroups: rebuiltMap);
+    }
+
+    return category;
+  }
+
   /// Handler para eventos granulares de variantes (complementos)
-  /// Nota: Variantes são associadas a produtos, então precisamos atualizar os produtos
+  /// ✅ BUG#3 FIX: Implementação real — atualiza produtos que usam a variante modificada
   void _handleGranularVariantEvent(dynamic data, String action) {
     try {
-      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      // ✅ CORREÇÃO CRÍTICA: Converte o objeto JS proxy para um Map Dart puro
+      final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       final storeId = payload['store_id'] as int?;
 
       if (storeId != null &&
@@ -1246,28 +1459,128 @@ class RealtimeRepository {
         return;
       }
 
-      // ✅ CORREÇÃO: Backend envia 'variant', não 'item'
+      if (!productsController.hasValue) {
+        AppLogger.d('⚠️ [GRANULAR] Lista de produtos não inicializada ainda');
+        return;
+      }
+
       AppLogger.d('🧩 [GRANULAR] Evento de variante processado: $action');
 
-      // Variantes afetam produtos, então precisamos recarregar os produtos afetados
-      // Por enquanto, logamos o evento. Em uma implementação futura, podemos
-      // atualizar apenas os produtos específicos que usam essa variante
-      final variantData = payload['variant'] as Map<String, dynamic>?;
-      final variantId = payload['variant_id'] as int?;
+      switch (action) {
+        case 'created':
+          // Variante criada: não há produtos vinculados ainda, nada a atualizar
+          AppLogger.d(
+            '🧩 [GRANULAR] Variante criada — aguardando vínculo por produto_updated',
+          );
+          break;
 
-      if (variantData != null) {
-        AppLogger.d(
-          '🧩 [GRANULAR] Variante recebida: ${variantData['id'] ?? variantId}',
-        );
-        // TODO: Implementar atualização granular de produtos que usam esta variante
-        // Por enquanto, o evento é processado mas não atualiza produtos automaticamente
-        // Isso pode ser implementado se necessário no futuro
-      } else if (variantId != null && action == 'deleted') {
-        AppLogger.d('🧩 [GRANULAR] Variante $variantId deletada');
-      } else {
-        AppLogger.d(
-          '⚠️ [GRANULAR] Payload sem campo "variant" ou "variant_id"',
-        );
+        case 'updated':
+          final variantRaw = payload['variant'];
+          if (variantRaw == null) {
+            AppLogger.d('⚠️ [GRANULAR] variant_updated sem campo "variant"');
+            break;
+          }
+
+          try {
+            // ✅ Sanitiza e parseia a variante
+            final variantDecoded = jsonDecode(jsonEncode(variantRaw));
+            if (variantDecoded is! Map) break;
+
+            final variantData = Map<String, dynamic>.from(variantDecoded);
+            final updatedVariant = Variant.fromJson(variantData);
+            final updatedVariantId = updatedVariant.id;
+
+            if (updatedVariantId == null) break;
+
+            // ✅ Atualiza todos os produtos que referenciam esta variante
+            final currentProducts = List<Product>.from(
+              productsController.value,
+            );
+            bool changed = false;
+
+            for (int i = 0; i < currentProducts.length; i++) {
+              final product = currentProducts[i];
+              final updatedLinks =
+                  product.variantLinks.map((link) {
+                    if (link.variant.id == updatedVariantId) {
+                      return link.copyWith(variant: updatedVariant);
+                    }
+                    return link;
+                  }).toList();
+
+              // Verifica se houve alguma mudança
+              final hasChanges = updatedLinks.any(
+                (link) => link.variant.id == updatedVariantId,
+              );
+
+              if (hasChanges) {
+                currentProducts[i] = product.copyWith(
+                  variantLinks: updatedLinks,
+                );
+                changed = true;
+                AppLogger.d(
+                  '✅ [GRANULAR] Produto "${product.name}" atualizado com variante ${updatedVariant.name}',
+                );
+              }
+            }
+
+            if (changed) {
+              productsController.add(currentProducts);
+              AppLogger.d(
+                '✅ [GRANULAR] variant_updated: produtos sincronizados com variante ${updatedVariant.name} (ID: $updatedVariantId)',
+              );
+            } else {
+              AppLogger.d(
+                '⚠️ [GRANULAR] variant_updated: nenhum produto usa a variante $updatedVariantId',
+              );
+            }
+          } catch (e, stackTrace) {
+            AppLogger.e('❌ [GRANULAR] Erro ao processar variant_updated: $e');
+            AppLogger.e('📍 StackTrace: $stackTrace');
+          }
+          break;
+
+        case 'deleted':
+          final variantId = payload['variant_id'] as int?;
+          if (variantId == null) {
+            AppLogger.d('⚠️ [GRANULAR] variant_deleted sem campo "variant_id"');
+            break;
+          }
+
+          // ✅ Remove o link da variante deletada de todos os produtos
+          final currentProducts = List<Product>.from(productsController.value);
+          bool changed = false;
+
+          for (int i = 0; i < currentProducts.length; i++) {
+            final product = currentProducts[i];
+            final originalLength = product.variantLinks.length;
+            final filteredLinks =
+                product.variantLinks
+                    .where((link) => link.variant.id != variantId)
+                    .toList();
+
+            if (filteredLinks.length != originalLength) {
+              currentProducts[i] = product.copyWith(
+                variantLinks: filteredLinks,
+              );
+              changed = true;
+              AppLogger.d(
+                '✅ [GRANULAR] Variante $variantId removida do produto "${product.name}"',
+              );
+            }
+          }
+
+          if (changed) {
+            productsController.add(currentProducts);
+            AppLogger.d(
+              '✅ [GRANULAR] variant_deleted: variante $variantId removida dos produtos afetados',
+            );
+          } else {
+            AppLogger.d(
+              '⚠️ [GRANULAR] variant_deleted: nenhum produto usava a variante $variantId',
+            );
+          }
+          break;
       }
     } catch (e, stackTrace) {
       AppLogger.e('❌ [GRANULAR] Erro ao processar evento de variante: $e');
@@ -1278,7 +1591,8 @@ class RealtimeRepository {
   /// Handler para eventos granulares de opções de variante
   void _handleGranularVariantOptionEvent(dynamic data, String action) {
     try {
-      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      // ✅ CORREÇÃO CRÍTICA: Converte o objeto JS proxy para um Map Dart puro
+      final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       final storeId = payload['store_id'] as int?;
 
       if (storeId != null &&
@@ -1325,8 +1639,13 @@ class RealtimeRepository {
 
   void dispose() {
     _heartbeatManager?.stop();
+    // ✅ FIX: Cancela timer de debounce para evitar emit após dispose
+    _categoryDebounceTimer?.cancel();
+    _categoryDebounceTimer = null;
+    _pendingCategories = null;
     storeController.close();
     productsController.close();
+    categoriesController.close();
     bannersController.close();
     orderController.close();
     _socket.disconnect();
@@ -1613,38 +1932,49 @@ class RealtimeRepository {
 
   // ✅ Processa formato antigo de menu (compatibilidade com payload sem data.menu)
   void _processOldMenuFormat(Map<String, dynamic> payload) {
-    // Processa a loja
+    // Processa a loja (apenas configs, sem categorias)
     if (keyExists(payload, 'store')) {
-      AppLogger.d('🏪 Processando dados da loja...');
+      AppLogger.d('🏢 Processando dados da loja...');
       final storeData = payload['store'] as Map<String, dynamic>;
-      AppLogger.d('   ├─ Store raw data keys: ${storeData.keys.toList()}');
+      final Store store = Store.fromJson(storeData);
+      storeController.add(store);
+      AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
+    }
 
-      Store store = Store.fromJson(storeData);
-
-      // ✅ CORREÇÃO: Se categorias vierem no top-level (comum no Admin refatorado), anexa à Store
-      if (keyExists(payload, 'categories')) {
-        final List<dynamic> categoriesJson =
-            payload['categories'] as List<dynamic>;
-        final List<models.Category> categories =
-            categoriesJson
+    // ✅ REFACTOR: Categorias agora vão para categoriesController (separado do store)
+    if (keyExists(payload, 'categories')) {
+      AppLogger.d('📁 Processando categorias...');
+      final List<dynamic> categoriesJson =
+          payload['categories'] as List<dynamic>;
+      final List<models.Category> categories =
+          categoriesJson
+              .map(
+                (json) =>
+                    models.Category.fromJson(json as Map<String, dynamic>),
+              )
+              .toList();
+      categoriesController.add(categories);
+      AppLogger.d(
+        '✅ ${categories.length} categorias publicadas no categoriesController',
+      );
+    } else if (keyExists(payload, 'store')) {
+      // Fallback: categorias vêm dentro do objeto store
+      final storeData = payload['store'] as Map<String, dynamic>;
+      if (storeData['categories'] != null) {
+        final List<models.Category> cats =
+            (storeData['categories'] as List)
                 .map(
                   (json) =>
                       models.Category.fromJson(json as Map<String, dynamic>),
                 )
                 .toList();
-
-        store = store.copyWith(categories: categories);
-        AppLogger.d(
-          '   ├─ ✅ Categorias anexadas do top-level: ${categories.length}',
-        );
+        if (cats.isNotEmpty) {
+          categoriesController.add(cats);
+          AppLogger.d(
+            '✅ ${cats.length} categorias do store publicadas no categoriesController',
+          );
+        }
       }
-
-      storeController.add(store);
-
-      AppLogger.d('✅ Loja processada:');
-      AppLogger.d('   ├─ Nome: ${store.name}');
-      AppLogger.d('   ├─ ID: ${store.id}');
-      AppLogger.d('   └─ Categorias: ${store.categories.length}');
     }
 
     // Processa produtos
@@ -1654,7 +1984,6 @@ class RealtimeRepository {
           (payload['products'] as List).map((json) {
             return Product.fromJson(json as Map<String, dynamic>);
           }).toList();
-
       productsController.add(products);
       AppLogger.d('✅ Produtos processados: ${products.length}');
     }
@@ -1671,12 +2000,8 @@ class RealtimeRepository {
     }
   }
 
-  // ✅ NOVO: Processa novo formato de menu (com data.menu)
   void _processNewMenuFormat(Map<String, dynamic> payload) {
     try {
-      // ✅ CORREÇÃO: Primeiro processa o menu para obter categorias corretas
-      // Depois aplica as categorias à Store de uma só vez
-      // Usa tipos dinâmicos para evitar conflito de alias
       dynamic menuCategories;
       dynamic menuProducts;
 
@@ -1687,7 +2012,6 @@ class RealtimeRepository {
         if (dataPayload.containsKey('menu')) {
           AppLogger.d('📋 Processando menu no novo formato...');
 
-          // Cria MenuResponse do payload
           final menuResponseData = {
             'code': payload['code'] ?? '00',
             'message': payload['message'],
@@ -1702,153 +2026,90 @@ class RealtimeRepository {
             '   ├─ Total de categorias no menu: ${menuResponse.data.menu.length}',
           );
 
-          // Converte usando o adapter
           final adapterResult = MenuAdapter.convertMenuResponse(menuResponse);
-
           menuCategories = adapterResult.categories;
           menuProducts = adapterResult.products;
 
           AppLogger.d(
-            '═══════════════════════════════════════════════════════',
-          );
-          AppLogger.d('✅ [MENU ADAPTER] Menu convertido:');
-          AppLogger.d('   ├─ Categorias: ${adapterResult.categories.length}');
-          AppLogger.d('   ├─ Produtos: ${adapterResult.products.length}');
-
-          // ✅ DEBUG: Mostra categorias convertidas
-          for (var cat in adapterResult.categories) {
-            AppLogger.d(
-              '   📁 Categoria: "${cat.name}" (ID: ${cat.id}, type: ${cat.type})',
-            );
-            AppLogger.d('      └─ productLinks: ${cat.productLinks.length}');
-            for (var link in cat.productLinks.take(3)) {
-              AppLogger.d(
-                '         └─ Link: productId=${link.productId}, catId=${link.categoryId}',
-              );
-            }
-          }
-
-          // ✅ DEBUG: Mostra produtos convertidos
-          for (var prod in adapterResult.products.take(5)) {
-            AppLogger.d(
-              '   📦 Produto: "${prod.name}" (ID: ${prod.id}, primaryCatId: ${prod.primaryCategoryId})',
-            );
-            for (var link in prod.categoryLinks.take(2)) {
-              AppLogger.d('      └─ categoryLink: catId=${link.categoryId}');
-            }
-          }
-          AppLogger.d(
-            '═══════════════════════════════════════════════════════',
+            '✅ [MENU ADAPTER] Menu convertido: ${adapterResult.categories.length} cats, ${adapterResult.products.length} prods',
           );
         }
       }
 
-      // ✅ CORREÇÃO: Processa a loja COM as categorias corretas do menu
+      // Processa a loja (apenas configs, sem categorias embutidas)
       if (payload['store'] != null) {
-        AppLogger.d('🏪 Processando dados da loja...');
-        final storeData = payload['store'] as Map<String, dynamic>;
-
-        // Garante que as categorias não sejam perdidas se o backend mandou lista vazia no objeto store
-        Store store = Store.fromJson(storeData);
-        AppLogger.d(
-          '   ├─ Categorias no store JSON: ${store.categories.length}',
+        AppLogger.d('🏢 Processando dados da loja...');
+        final Store store = Store.fromJson(
+          payload['store'] as Map<String, dynamic>,
         );
-
-        // ✅ IMPORTANTE: Se temos categorias do menu, usa elas em vez das do store JSON
-        // As categorias do menu já têm os productLinks corretos
-        if (menuCategories != null) {
-          try {
-            final List<models.Category> categoriesList = [];
-            if (menuCategories is List<models.Category>) {
-              categoriesList.addAll(menuCategories);
-            } else if (menuCategories is List) {
-              categoriesList.addAll(menuCategories.cast<models.Category>());
-            }
-
-            if (categoriesList.isNotEmpty) {
-              AppLogger.d(
-                '🔄 Substituindo categorias do JSON pelas do MenuAdapter (${categoriesList.length} categorias)',
-              );
-              store = store.copyWith(categories: categoriesList);
-            } else {
-              AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
-            }
-          } catch (e) {
-            AppLogger.e('❌ Erro ao converter categorias do adapter: $e');
-          }
-        }
-
         storeController.add(store);
-        AppLogger.d(
-          '✅ Loja processada e enviada ao controller: ${store.name} com ${store.categories.length} categorias',
-        );
+        AppLogger.d('✅ Loja publicada: ${store.name}');
       }
 
-      // ✅ Adiciona produtos ao controller (usa os do menu se disponíveis)
+      // ✅ REFACTOR: Publica categorias no stream separado
+      if (menuCategories != null) {
+        try {
+          final List<models.Category> categoriesList = [];
+          if (menuCategories is List<models.Category>) {
+            categoriesList.addAll(menuCategories);
+          } else if (menuCategories is List) {
+            categoriesList.addAll(menuCategories.cast<models.Category>());
+          }
+          if (categoriesList.isNotEmpty) {
+            categoriesController.add(categoriesList);
+            AppLogger.d(
+              '✅ ${categoriesList.length} categorias publicadas no categoriesController',
+            );
+          } else {
+            AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
+          }
+        } catch (e) {
+          AppLogger.e('❌ Erro ao publicar categorias: $e');
+        }
+      }
+
+      // Publica produtos
       if (menuProducts != null && (menuProducts as List).isNotEmpty) {
-        final productsList = menuProducts as List<Product>;
-        productsController.add(productsList);
-        AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
+        productsController.add(menuProducts as List<Product>);
+        AppLogger.d(
+          '✅ ${(menuProducts as List).length} produtos do menu adicionados',
+        );
       }
 
-      // Processa banners (se presente)
+      // Processa banners
       if (payload['banners'] != null) {
-        AppLogger.d(
-          '🎨 Processando ${(payload['banners'] as List).length} banners...',
-        );
         final List<BannerModel> banners =
             (payload['banners'] as List)
                 .map((json) => BannerModel.fromJson(json))
                 .toList();
         bannersController.add(banners);
-        AppLogger.d('✅ Banners processados');
+        AppLogger.d('✅ Banners processados: ${banners.length}');
       }
     } catch (e, stackTrace) {
       AppLogger.e('❌ ERRO CRÍTICO no _processNewMenuFormat: $e');
       AppLogger.e('📍 StackTrace: $stackTrace');
 
-      // ✅ Fallback inteligente: Só tenta o formato antigo se não conseguimos processar nada
-      if (!storeController.hasValue ||
-          storeController.value.categories.isEmpty) {
-        AppLogger.d(
-          '🔄 Fallback: Tentando processar como formato antigo pois o menu está vazio...',
-        );
+      // Fallback: tenta formato antigo se não tem categorias ainda
+      if (!categoriesController.hasValue ||
+          categoriesController.value.isEmpty) {
+        AppLogger.d('🔄 Fallback: Tentando formato antigo...');
         _processOldMenuFormat(payload);
       } else {
-        AppLogger.w(
-          '⚠️ Erro no processamento, mas mantendo dados atuais para evitar menu vazio.',
-        );
+        AppLogger.w('⚠️ Erro no processamento, mantendo dados atuais.');
       }
     }
   }
 
-  // ✅ NOVO: Processa atualização da loja (extraído)
+  // ✅ Processa atualização da loja (apenas configs, sem categorias)
   void _handleStoreUpdate(dynamic data) {
     try {
       final Map<String, dynamic> payload = data as Map<String, dynamic>;
       if (payload['store'] != null) {
         final storeData = payload['store'] as Map<String, dynamic>;
-        final Store updatedStoreData = Store.fromJson(storeData);
-
-        // ✅ CORREÇÃO: Preserva categorias se não vierem no update (excluídas por performance no backend)
-        Store finalStore = updatedStoreData;
-        if (storeController.hasValue) {
-          final currentStore = storeController.value;
-          // Se o payload não contém a chave categories ou ela é null, mantém as anteriores
-          if (!storeData.containsKey('categories') ||
-              storeData['categories'] == null ||
-              (storeData['categories'] as List).isEmpty) {
-            finalStore = updatedStoreData.copyWith(
-              categories: currentStore.categories,
-            );
-            AppLogger.d(
-              '   ├─ Preservando ${currentStore.categories.length} categorias atuais (OMITIDAS NO PUSH)',
-            );
-          }
-        }
-
-        storeController.add(finalStore);
-        AppLogger.d('✅ Loja atualizada: ${finalStore.name}');
+        // Store agora não carrega categorias — elas ficam no categoriesController
+        final Store updatedStore = Store.fromJson(storeData);
+        storeController.add(updatedStore);
+        AppLogger.d('✅ Loja atualizada: ${updatedStore.name}');
       }
     } catch (e, stackTrace) {
       AppLogger.d('❌ Erro ao processar store_details_updated: $e');
@@ -1856,14 +2117,12 @@ class RealtimeRepository {
     }
   }
 
-  // ✅ NOVO: Handler unificado para atualização de catálogo
+  // ✅ Handler unificado para atualização de catálogo
   void _handleProductsUpdated(dynamic data) {
     AppLogger.d('📦 [_handleProductsUpdated] Processando catálogo...');
     try {
       if (data is Map && data.containsKey('products')) {
         final List<dynamic> productsJson = data['products'] as List<dynamic>;
-
-        // Atualiza Produtos
         final List<Product> products =
             productsJson
                 .map((json) {
@@ -1878,7 +2137,7 @@ class RealtimeRepository {
         productsController.add(products);
         AppLogger.d('   ├─ ✅ ${products.length} produtos atualizados');
 
-        // Atualiza Categorias na Store
+        // ✅ REFACTOR: Categorias vão para categoriesController (não mais na Store)
         if (data.containsKey('categories')) {
           final List<dynamic> categoriesJson =
               data['categories'] as List<dynamic>;
@@ -1895,19 +2154,10 @@ class RealtimeRepository {
                   })
                   .whereType<models.Category>()
                   .toList();
-
-          if (storeController.hasValue) {
-            final currentStore = storeController.value;
-            final updatedStore = currentStore.copyWith(categories: categories);
-            storeController.add(updatedStore);
-            AppLogger.d(
-              '   └─ ✅ ${categories.length} categorias atualizadas na Store',
-            );
-          } else {
-            AppLogger.w(
-              '   └─ ⚠️ Store não disponível para atualizar categorias',
-            );
-          }
+          categoriesController.add(categories);
+          AppLogger.d(
+            '   └─ ✅ ${categories.length} categorias publicadas no categoriesController',
+          );
         }
       } else if (data is List) {
         // Compatibilidade legado

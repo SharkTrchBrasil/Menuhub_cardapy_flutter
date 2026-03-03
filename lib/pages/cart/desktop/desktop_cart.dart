@@ -18,6 +18,7 @@ import 'package:totem/pages/main_tab/main_tab_controller.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/helpers/navigation_helper.dart';
 import 'package:totem/models/update_cart_payload.dart';
 import 'package:collection/collection.dart';
@@ -37,34 +38,36 @@ class DesktopCart extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
     final storeState = context.watch<StoreCubit>().state;
+    final catalogState = context.watch<CatalogCubit>().state;
     final store = storeState.store;
-    final allProducts = storeState.products ?? [];
-    final allCategories = storeState.categories ?? [];
+    final allProducts = catalogState.products ?? [];
+    final allCategories = catalogState.activeCategories;
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
     final minOrder = store?.getMinOrderForDelivery() ?? 0;
-
-
 
     return Scaffold(
       backgroundColor: theme.cartBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.cartBackgroundColor,
         elevation: 0,
-        title: const Text('CARRINHO DE COMPRAS',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'CARRINHO DE COMPRAS',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
         actions: [
           TextButton(
             style: ButtonStyle(
-                overlayColor:
-                    MaterialStateProperty.all(Colors.transparent)),
+              overlayColor: MaterialStateProperty.all(Colors.transparent),
+            ),
             onPressed: () => context.read<CartCubit>().clearCart(),
             child: Text(
               'Limpar carrinho',
               style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: theme.primaryColor),
+                fontWeight: FontWeight.w600,
+                color: theme.primaryColor,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -84,9 +87,10 @@ class DesktopCart extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: BlocBuilder<CartCubit, CartState>(
-            buildWhen: (previous, current) =>
-                previous.cart != current.cart ||
-                previous.status != current.status,
+            buildWhen:
+                (previous, current) =>
+                    previous.cart != current.cart ||
+                    previous.status != current.status,
             builder: (context, state) {
               if (state.status == CartStatus.loading && state.cart.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
@@ -99,8 +103,11 @@ class DesktopCart extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.shopping_cart_outlined,
-                          size: 80, color: Colors.grey.shade400),
+                      Icon(
+                        Icons.shopping_cart_outlined,
+                        size: 80,
+                        color: Colors.grey.shade400,
+                      ),
                       const SizedBox(height: 24),
                       Text(
                         'Seu carrinho está vazio',
@@ -132,7 +139,8 @@ class DesktopCart extends StatelessWidget {
                           showAddItemsButton: true,
                           onAddItemsPressed: () {
                             try {
-                              final tabController = context.read<MainTabController>();
+                              final tabController =
+                                  context.read<MainTabController>();
                               tabController.goToHome();
                             } catch (e) {
                               // Ignora se não encontrar o controller
@@ -140,7 +148,8 @@ class DesktopCart extends StatelessWidget {
                           },
                         ),
                         const SizedBox(height: 32),
-                        if (minOrder > 0 && (cart.subtotal / 100) < minOrder) ...[
+                        if (minOrder > 0 &&
+                            (cart.subtotal / 100) < minOrder) ...[
                           MinOrderNotice(minOrder: minOrder),
                           const SizedBox(height: 32),
                         ],
@@ -150,7 +159,8 @@ class DesktopCart extends StatelessWidget {
                           child: GestureDetector(
                             onTap: () {
                               try {
-                                final tabController = context.read<MainTabController>();
+                                final tabController =
+                                    context.read<MainTabController>();
                                 tabController.goToHome();
                               } catch (e) {
                                 // Ignora se não encontrar o controller
@@ -159,9 +169,10 @@ class DesktopCart extends StatelessWidget {
                             child: Text(
                               'Adicionar mais itens',
                               style: TextStyle(
-                                  fontSize: 18,
-                                  color: theme.primaryColor,
-                                  fontWeight: FontWeight.bold),
+                                fontSize: 18,
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
@@ -171,14 +182,16 @@ class DesktopCart extends StatelessWidget {
                           allCategories: allCategories,
                           itemsInCart: cart.items,
                           bebidaCategories: bebidaCategoryNames,
-                          onProductTap: (product) => _handleProductTap(context, product),
+                          onProductTap:
+                              (product) => _handleProductTap(context, product),
                         ),
                         const SizedBox(height: 40),
                         CouponSection(couponCode: cart.couponCode),
                         const SizedBox(height: 32),
                         FreeShippingProgress(
                           cartTotal: cart.subtotal / 100.0,
-                          threshold: store?.getFreeDeliveryThresholdForDelivery(),
+                          threshold:
+                              store?.getFreeDeliveryThresholdForDelivery(),
                         ),
                         const SizedBox(height: 48),
                         OrderSummaryCard(),
@@ -186,7 +199,9 @@ class DesktopCart extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const UnifiedCartBottomBar(variant: CartBottomBarVariant.cart),
+                  const UnifiedCartBottomBar(
+                    variant: CartBottomBarVariant.cart,
+                  ),
                 ],
               );
             },
@@ -212,7 +227,8 @@ class DesktopCart extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'Erro: ${product.name} não pertence a nenhuma categoria.'),
+                'Erro: ${product.name} não pertence a nenhuma categoria.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -243,7 +259,8 @@ class DesktopCart extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'Não foi possível adicionar ${product.name}. Tente novamente.'),
+                'Não foi possível adicionar ${product.name}. Tente novamente.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -270,10 +287,12 @@ class _RecommendedProductsSection extends StatefulWidget {
   });
 
   @override
-  State<_RecommendedProductsSection> createState() => _RecommendedProductsSectionState();
+  State<_RecommendedProductsSection> createState() =>
+      _RecommendedProductsSectionState();
 }
 
-class _RecommendedProductsSectionState extends State<_RecommendedProductsSection> {
+class _RecommendedProductsSectionState
+    extends State<_RecommendedProductsSection> {
   List<Product> _cachedRecommendations = [];
   List<int> _lastProductIds = []; // ✅ Lista ordenada para comparação estável
   int _lastAllProductsCount = 0; // ✅ NOVO: Rastreia quando allProducts muda
@@ -285,32 +304,36 @@ class _RecommendedProductsSectionState extends State<_RecommendedProductsSection
     _updateRecommendations(widget.itemsInCart, forceUpdate: true);
   }
 
-  void _updateRecommendations(List<CartItem> items, {bool forceUpdate = false}) {
+  void _updateRecommendations(
+    List<CartItem> items, {
+    bool forceUpdate = false,
+  }) {
     // ✅ Cria lista ordenada de IDs para comparação estável
-    final currentProductIds = items
-        .map((item) => item.product.id ?? 0)
-        .where((id) => id > 0)
-        .toList()
-      ..sort();
-    
+    final currentProductIds =
+        items.map((item) => item.product.id ?? 0).where((id) => id > 0).toList()
+          ..sort();
+
     final productsChanged = !_listEquals(_lastProductIds, currentProductIds);
-    final allProductsChanged = _lastAllProductsCount != widget.allProducts.length;
-    
+    final allProductsChanged =
+        _lastAllProductsCount != widget.allProducts.length;
+
     // ✅ CORREÇÃO: Recalcula se produtos do carrinho mudaram OU se allProducts foi carregada
     if (productsChanged || allProductsChanged || forceUpdate) {
       _lastProductIds = currentProductIds;
       _lastAllProductsCount = widget.allProducts.length;
-      _stableKey = '${currentProductIds.join('-')}_${widget.allProducts.length}';
-      
-      _cachedRecommendations = ProductRecommendationService.getRecommendedProducts(
-        allProducts: widget.allProducts,
-        allCategories: widget.allCategories,
-        itemsInCart: items,
-        maxItems: 10,
-      );
+      _stableKey =
+          '${currentProductIds.join('-')}_${widget.allProducts.length}';
+
+      _cachedRecommendations =
+          ProductRecommendationService.getRecommendedProducts(
+            allProducts: widget.allProducts,
+            allCategories: widget.allCategories,
+            itemsInCart: items,
+            maxItems: 10,
+          );
     }
   }
-  
+
   // ✅ Helper para comparar listas de forma segura
   bool _listEquals(List<int> a, List<int> b) {
     if (a.length != b.length) return false;
@@ -333,7 +356,7 @@ class _RecommendedProductsSectionState extends State<_RecommendedProductsSection
       onProductTap: widget.onProductTap,
     );
   }
-  
+
   @override
   void didUpdateWidget(covariant _RecommendedProductsSection oldWidget) {
     super.didUpdateWidget(oldWidget);

@@ -62,27 +62,11 @@ class ProductItem extends StatelessWidget {
       }
     } else {
       // 2. Lógica para categorias gerais (com suporte a promoção)
-      print('=== DEBUG PROMOTIONAL PRICES ===');
-      print('DEBUG: product=${product.name}');
-      print('DEBUG: productId=${product.id}');
-      print('DEBUG: categoryLinks count=${product.categoryLinks.length}');
-
       final link = product.categoryLinks.firstWhereOrNull(
         (l) => l.categoryId == category.id,
       );
 
-      print('DEBUG: searching for categoryId=${category.id}');
-      print('DEBUG: link found=${link != null}');
-
       if (link != null) {
-        print('DEBUG: link.price=${link.price} (${link.price.runtimeType})');
-        print(
-          'DEBUG: link.promotionalPrice=${link.promotionalPrice} (${link.promotionalPrice.runtimeType})',
-        );
-        print(
-          'DEBUG: link.isOnPromotion=${link.isOnPromotion} (${link.isOnPromotion.runtimeType})',
-        );
-
         // Usa diretamente price e promotional_price do link
         if (link.isOnPromotion &&
             link.promotionalPrice != null &&
@@ -90,58 +74,26 @@ class ProductItem extends StatelessWidget {
             link.promotionalPrice! < link.price) {
           displayPrice = link.promotionalPrice!; // preço com desconto
           originalPrice = link.price; // preço original para riscar
-
-          print('DEBUG: PROMOÇÃO ATIVADA!');
-          print('DEBUG: displayPrice=$displayPrice');
-          print('DEBUG: originalPrice=$originalPrice');
         } else {
           // Sem promoção no link: usa price normal do link
           displayPrice = link.price;
           originalPrice = null;
-
-          print('DEBUG: SEM PROMOÇÃO NO LINK - usando preço normal');
-          print('DEBUG: displayPrice=$displayPrice');
         }
       } else {
         // Fallback: Se não tem link para esta categoria, usa o preço base do produto
         displayPrice = product.price ?? 0;
         originalPrice = null;
-        print('DEBUG: LINK NULO - usando preço base do produto: $displayPrice');
       }
-
-      print('=== END DEBUG ===\n');
     }
-
     displayPrice ??= 0;
     final isAvailable = AvailabilityService.isProductAvailableNow(product);
 
-    print('DEBUG: CÁLCULO FINAL ===');
-    print('DEBUG: displayPrice=$displayPrice');
-    print('DEBUG: originalPrice=$originalPrice');
-    print('DEBUG: isAvailable=$isAvailable');
-
     final hasPromo = originalPrice != null && originalPrice > displayPrice;
-    print('DEBUG: hasPromo=$hasPromo');
 
     final discount =
         (hasPromo
             ? ((originalPrice - displayPrice) / originalPrice * 100).round()
             : 0);
-
-    print('DEBUG: discount=$discount%');
-
-    if (hasPromo) {
-      print('DEBUG: UI FORMATADA ===');
-      print(
-        'DEBUG: Preco original: R' + (originalPrice / 100).toStringAsFixed(2),
-      );
-      print(
-        'DEBUG: Preco promocional: R' + (displayPrice / 100).toStringAsFixed(2),
-      );
-      print('DEBUG: Desconto: ' + discount.toString() + '% OFF');
-    }
-
-    print('=== END DEBUG FINAL ===\n');
 
     return GestureDetector(
       onTap: isAvailable ? onTap : null,

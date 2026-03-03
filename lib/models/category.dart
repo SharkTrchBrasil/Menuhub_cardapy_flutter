@@ -26,7 +26,6 @@ enum CategoryType {
   String toApiString() => name;
 }
 
-
 class Category extends Equatable {
   final int? id;
   final String name;
@@ -107,9 +106,14 @@ class Category extends Equatable {
     List<ScheduleRule> schedules = [];
     try {
       if (json['schedules'] != null && json['schedules'] is List) {
-        schedules = (json['schedules'] as List<dynamic>)
-            .map((scheduleJson) => ScheduleRule.fromJson(scheduleJson as Map<String, dynamic>))
-            .toList();
+        schedules =
+            (json['schedules'] as List<dynamic>)
+                .map(
+                  (scheduleJson) => ScheduleRule.fromJson(
+                    scheduleJson as Map<String, dynamic>,
+                  ),
+                )
+                .toList();
       }
     } catch (e) {
       // Ignora erro de parse
@@ -124,9 +128,10 @@ class Category extends Equatable {
     } catch (e) {
       // Mantem general
     }
-    
+
     // ✅ Se não tiver tipo definido, tenta detectar pelo nome (para compatibilidade com formato antigo)
-    if (categoryType == CategoryType.UNKNOWN || categoryType == CategoryType.GENERAL) {
+    if (categoryType == CategoryType.UNKNOWN ||
+        categoryType == CategoryType.GENERAL) {
       final categoryName = (json['name']?.toString() ?? '').toLowerCase();
       // Detecta categorias de pizza pelo nome
       if (categoryName.contains('pizza') || categoryName.contains('pizzas')) {
@@ -138,42 +143,96 @@ class Category extends Equatable {
     ImageModel? imageModel;
     if (json['image'] != null && json['image'] is Map) {
       imageModel = ImageModel.fromJson(json['image']);
-    } else if (json['image_path'] != null && json['image_path'].toString().isNotEmpty) {
+    } else if (json['image_path'] != null &&
+        json['image_path'].toString().isNotEmpty) {
       imageModel = ImageModel(url: json['image_path'].toString());
     }
 
     // ✅ Parse de productOptionGroups
     Map<int, List<OptionGroup>>? productOptionGroups;
     try {
-      if (json['product_option_groups'] != null && json['product_option_groups'] is Map) {
+      if (json['product_option_groups'] != null &&
+          json['product_option_groups'] is Map) {
         productOptionGroups = {};
         (json['product_option_groups'] as Map).forEach((key, value) {
-            final productId = int.tryParse(key.toString());
-            if (productId != null && value is List) {
-                productOptionGroups![productId] = (value as List)
-                    .map((v) => OptionGroup.fromJson(v))
-                    .toList();
-            }
+          final productId = int.tryParse(key.toString());
+          if (productId != null && value is List) {
+            productOptionGroups![productId] =
+                (value as List).map((v) => OptionGroup.fromJson(v)).toList();
+          }
         });
       }
     } catch (e) {
       // Ignora erro de parse
     }
 
+    // ✅ Parse de option_groups com guard por item (proteção contra JS Proxy)
+    final List<OptionGroup> parsedOptionGroups = [];
+    try {
+      final rawGroups = json['option_groups'];
+      if (rawGroups is List) {
+        for (final groupJson in rawGroups) {
+          try {
+            if (groupJson is Map<String, dynamic>) {
+              parsedOptionGroups.add(OptionGroup.fromJson(groupJson));
+            } else if (groupJson is Map) {
+              // JS Proxy remnant — tenta converter
+              final converted = Map<String, dynamic>.from(
+                groupJson.map((k, v) => MapEntry(k.toString(), v)),
+              );
+              parsedOptionGroups.add(OptionGroup.fromJson(converted));
+            }
+          } catch (e) {
+            // Skip individual bad group
+          }
+        }
+      }
+    } catch (e) {
+      // Ignora erro de parse dos grupos
+    }
+
+    // ✅ Parse de product_links com guard por item
+    final List<ProductCategoryLink> parsedProductLinks = [];
+    try {
+      final rawLinks = json['product_links'];
+      if (rawLinks is List) {
+        for (final linkJson in rawLinks) {
+          try {
+            if (linkJson is Map<String, dynamic>) {
+              parsedProductLinks.add(ProductCategoryLink.fromJson(linkJson));
+            } else if (linkJson is Map) {
+              final converted = Map<String, dynamic>.from(
+                linkJson.map((k, v) => MapEntry(k.toString(), v)),
+              );
+              parsedProductLinks.add(ProductCategoryLink.fromJson(converted));
+            }
+          } catch (e) {
+            // Skip individual bad link
+          }
+        }
+      }
+    } catch (e) {
+      // Ignora erro de parse dos links
+    }
+
     return Category(
-      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0'),
+      id:
+          json['id'] is int
+              ? json['id']
+              : int.tryParse(json['id']?.toString() ?? '0'),
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString(),
-      priority: json['priority'] is int ? json['priority'] : (int.tryParse(json['priority']?.toString() ?? '0') ?? 0),
-      isActive: json['is_active'] == true || json['is_active'] == 1, // Suporte a bool ou int
+      priority:
+          json['priority'] is int
+              ? json['priority']
+              : (int.tryParse(json['priority']?.toString() ?? '0') ?? 0),
+      isActive:
+          json['is_active'] == true ||
+          json['is_active'] == 1, // Suporte a bool ou int
       type: categoryType,
       image: imageModel,
-      optionGroups: (json['option_groups'] as List<dynamic>? ?? [])
-          .map((groupJson) => OptionGroup.fromJson(groupJson))
-          .toList(),
-      productLinks: (json['product_links'] as List<dynamic>? ?? [])
-          .map((linkJson) => ProductCategoryLink.fromJson(linkJson))
-          .toList(),
+      optionGroups: parsedOptionGroups,
+      productLinks: parsedProductLinks,
       availabilityType: availabilityType,
       schedules: schedules,
       productOptionGroups: productOptionGroups,
@@ -181,19 +240,29 @@ class Category extends Equatable {
   }
 
   const Category.empty()
-      : id = 0,
-        name = '',
-        description = null,
-        priority = 0,
-        isActive = false,
-        type = CategoryType.UNKNOWN,
-        image = null,
-        optionGroups = const [],
-        productLinks = const [],
-        availabilityType = AvailabilityType.always,
-        schedules = const [],
-        productOptionGroups = null;
+    : id = 0,
+      name = '',
+      description = null,
+      priority = 0,
+      isActive = false,
+      type = CategoryType.UNKNOWN,
+      image = null,
+      optionGroups = const [],
+      productLinks = const [],
+      availabilityType = AvailabilityType.always,
+      schedules = const [],
+      productOptionGroups = null;
 
   @override
-  List<Object?> get props => [id, name, type, isActive, optionGroups, productLinks, availabilityType, schedules, productOptionGroups];
+  List<Object?> get props => [
+    id,
+    name,
+    type,
+    isActive,
+    optionGroups,
+    productLinks,
+    availabilityType,
+    schedules,
+    productOptionGroups,
+  ];
 }

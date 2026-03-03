@@ -4,12 +4,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
 import 'package:totem/core/helpers/side_panel.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/pages/order/order_details_page.dart';
 import 'package:totem/pages/profile/profile_cubit.dart';
+import 'package:totem/core/services/timezone_service.dart';
 
 import '../../core/di.dart';
 import '../../cubit/auth_cubit.dart';
@@ -63,10 +63,27 @@ class _OrderHistoryContent extends StatelessWidget {
           }
 
           // Agrupa pedidos por status e data
-          final inProgressOrders = orders.where((o) => 
-              !['delivered', 'finalized', 'canceled'].contains(o.orderStatus.toLowerCase())).toList();
-          final historyOrders = orders.where((o) => 
-              ['delivered', 'finalized', 'canceled'].contains(o.orderStatus.toLowerCase())).toList();
+          final inProgressOrders =
+              orders
+                  .where(
+                    (o) =>
+                        ![
+                          'delivered',
+                          'finalized',
+                          'canceled',
+                        ].contains(o.orderStatus.toLowerCase()),
+                  )
+                  .toList();
+          final historyOrders =
+              orders
+                  .where(
+                    (o) => [
+                      'delivered',
+                      'finalized',
+                      'canceled',
+                    ].contains(o.orderStatus.toLowerCase()),
+                  )
+                  .toList();
 
           return CustomScrollView(
             slivers: [
@@ -77,33 +94,37 @@ class _OrderHistoryContent extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
-                      children: inProgressOrders.map((order) => 
-                        _InProgressOrderCard(order: order)).toList(),
+                      children:
+                          inProgressOrders
+                              .map(
+                                (order) => _InProgressOrderCard(order: order),
+                              )
+                              .toList(),
                     ),
                   ),
                 )
               else
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Text(
                       'Sem pedidos recentes por aqui',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                     ),
                   ),
                 ),
-              
+
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              
+
               // ✅ Seção "Histórico" agrupado por data
               if (historyOrders.isNotEmpty) ...[
                 _buildSectionTitle('Histórico'),
                 ..._buildHistoryByDate(context, historyOrders),
               ],
-              
+
               // Espaço extra no final
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
@@ -180,46 +201,52 @@ class _OrderHistoryContent extends StatelessWidget {
     );
   }
 
-
-
   List<Widget> _buildHistoryByDate(BuildContext context, List<Order> orders) {
     // Agrupa por data
     final Map<String, List<Order>> groupedOrders = {};
-    final dateFormat = DateFormat("EEEE, dd/MM/yyyy", 'pt_BR');
-    
+    final timezone =
+        context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo";
+
     for (final order in orders) {
       // Usa a data do pedido para agrupar
-      final dateKey = dateFormat.format(order.createdAt.toLocal());
+      final dateKey = TimezoneService.formatStoreDateTime(
+        order.createdAt,
+        timezone,
+        format: "EEEE, dd/MM/yyyy",
+      );
       groupedOrders.putIfAbsent(dateKey, () => []).add(order);
     }
 
     final widgets = <Widget>[];
-    
+
     groupedOrders.forEach((date, dateOrders) {
       // Título da data
-      widgets.add(SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            date,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
+      widgets.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              date,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
           ),
         ),
-      ));
-      
+      );
+
       // Pedidos dessa data
-      widgets.add(SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: dateOrders.map((order) => 
-              _HistoryOrderCard(order: order)).toList(),
+      widgets.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children:
+                  dateOrders
+                      .map((order) => _HistoryOrderCard(order: order))
+                      .toList(),
+            ),
           ),
         ),
-      ));
+      );
     });
 
     return widgets;
@@ -238,7 +265,7 @@ class _InProgressOrderCard extends StatelessWidget {
     final now = DateTime.now();
     final estimatedMin = now.add(const Duration(minutes: 15));
     final estimatedMax = now.add(const Duration(minutes: 25));
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -287,9 +314,9 @@ class _InProgressOrderCard extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Barra de progresso
           Row(
             children: [
@@ -306,7 +333,7 @@ class _InProgressOrderCard extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
           LinearProgressIndicator(
             value: 0.4, // TODO: Calcular progresso real
@@ -314,9 +341,9 @@ class _InProgressOrderCard extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation(Theme.of(context).primaryColor),
             borderRadius: BorderRadius.circular(4),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Botões
           Row(
             children: [
@@ -363,27 +390,26 @@ class _InProgressOrderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         color: Colors.grey[200],
       ),
-      child: logoUrl != null && logoUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: logoUrl,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Icon(Icons.store, color: Colors.grey[400]),
-              ),
-            )
-          : Icon(Icons.store, color: Colors.grey[400]),
+      child:
+          logoUrl != null && logoUrl.isNotEmpty
+              ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: logoUrl,
+                  fit: BoxFit.cover,
+                  errorWidget:
+                      (_, __, ___) =>
+                          Icon(Icons.store, color: Colors.grey[400]),
+                ),
+              )
+              : Icon(Icons.store, color: Colors.grey[400]),
     );
   }
 
   void _openOrderDetails(BuildContext context, Order order) {
     showResponsiveSidePanel(
       context,
-      OrderDetailsPage(
-        order: order,
-        showActions: false,
-        showRating: false,
-      ),
+      OrderDetailsPage(order: order, showActions: false, showRating: false),
       useFullScreenOnDesktop: false,
     );
   }
@@ -399,7 +425,7 @@ class _HistoryOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.read<StoreCubit>().state.store;
     final isCanceled = order.orderStatus.toLowerCase() == 'canceled';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -450,56 +476,66 @@ class _HistoryOrderCard extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Itens
-          ...order.items.take(2).map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '${item.quantity}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item.name,
-                    style: const TextStyle(fontSize: 14),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // Imagem do produto
-                if (item.imageUrl != null)
-                  Container(
-                    width: 40,
-                    height: 40,
-                    margin: const EdgeInsets.only(left: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: CachedNetworkImage(
-                        imageUrl: item.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const SizedBox(),
+          ...order.items
+              .take(2)
+              .map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${item.quantity}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Imagem do produto
+                      if (item.imageUrl != null)
+                        Container(
+                          width: 40,
+                          height: 40,
+                          margin: const EdgeInsets.only(left: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: CachedNetworkImage(
+                              imageUrl: item.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => const SizedBox(),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          )),
-          
-          if (order.items.length > 2) 
+                ),
+              ),
+
+          if (order.items.length > 2)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
@@ -507,9 +543,9 @@ class _HistoryOrderCard extends StatelessWidget {
                 style: TextStyle(fontSize: 13, color: Colors.grey[600]),
               ),
             ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Botões
           Row(
             children: [
@@ -556,16 +592,19 @@ class _HistoryOrderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         color: Colors.grey[200],
       ),
-      child: logoUrl != null && logoUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: logoUrl,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Icon(Icons.store, color: Colors.grey[400]),
-              ),
-            )
-          : Icon(Icons.store, color: Colors.grey[400]),
+      child:
+          logoUrl != null && logoUrl.isNotEmpty
+              ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: logoUrl,
+                  fit: BoxFit.cover,
+                  errorWidget:
+                      (_, __, ___) =>
+                          Icon(Icons.store, color: Colors.grey[400]),
+                ),
+              )
+              : Icon(Icons.store, color: Colors.grey[400]),
     );
   }
 
@@ -584,54 +623,78 @@ class _HistoryOrderCard extends StatelessWidget {
 
 String _getStatusLabel(String status) {
   switch (status.toLowerCase()) {
-    case 'pending': return 'Pendente';
-    case 'confirmed': return 'Confirmado';
-    case 'preparing': return 'Em preparo';
-    case 'ready': return 'Pronto para entrega';
+    case 'pending':
+      return 'Pendente';
+    case 'confirmed':
+      return 'Confirmado';
+    case 'preparing':
+      return 'Em preparo';
+    case 'ready':
+      return 'Pronto para entrega';
     case 'dispatched':
     case 'on_route':
-    case 'out_for_delivery': return 'Em entrega';
+    case 'out_for_delivery':
+      return 'Em entrega';
     case 'delivered':
     case 'finalized':
-    case 'concluded': return 'Finalizado';
+    case 'concluded':
+      return 'Finalizado';
     case 'canceled':
-    case 'cancelled': return 'Cancelado';
-    default: return status;
+    case 'cancelled':
+      return 'Cancelado';
+    default:
+      return status;
   }
 }
 
 Color _getStatusColor(String status) {
   switch (status.toLowerCase()) {
-    case 'pending': return Colors.orange;
-    case 'confirmed': return Colors.blue;
-    case 'preparing': return Colors.purple;
-    case 'ready': return Colors.cyan;
+    case 'pending':
+      return Colors.orange;
+    case 'confirmed':
+      return Colors.blue;
+    case 'preparing':
+      return Colors.purple;
+    case 'ready':
+      return Colors.cyan;
     case 'dispatched':
     case 'on_route':
-    case 'out_for_delivery': return Colors.indigo;
+    case 'out_for_delivery':
+      return Colors.indigo;
     case 'delivered':
     case 'finalized':
-    case 'concluded': return Colors.green;
+    case 'concluded':
+      return Colors.green;
     case 'canceled':
-    case 'cancelled': return Colors.red;
-    default: return Colors.grey;
+    case 'cancelled':
+      return Colors.red;
+    default:
+      return Colors.grey;
   }
 }
 
 IconData _getStatusIcon(String status) {
   switch (status.toLowerCase()) {
     case 'canceled':
-    case 'cancelled': return Icons.cancel;
+    case 'cancelled':
+      return Icons.cancel;
     case 'delivered':
     case 'finalized':
-    case 'concluded': return Icons.check_circle;
+    case 'concluded':
+      return Icons.check_circle;
     case 'dispatched':
     case 'on_route':
-    case 'out_for_delivery': return Icons.delivery_dining;
-    case 'preparing': return Icons.restaurant;
-    case 'ready': return Icons.check_circle_outline;
-    case 'confirmed': return Icons.check;
-    case 'pending': return Icons.access_time;
-    default: return Icons.info_outline;
+    case 'out_for_delivery':
+      return Icons.delivery_dining;
+    case 'preparing':
+      return Icons.restaurant;
+    case 'ready':
+      return Icons.check_circle_outline;
+    case 'confirmed':
+      return Icons.check;
+    case 'pending':
+      return Icons.access_time;
+    default:
+      return Icons.info_outline;
   }
 }

@@ -25,6 +25,7 @@ import '../../core/utils/app_logger.dart';
 import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../cubit/store_state.dart';
+import '../../cubit/catalog_cubit.dart';
 import '../../models/delivery_type.dart';
 import '../../models/store.dart';
 import '../../repositories/customer_repository.dart';
@@ -1748,9 +1749,9 @@ class _CheckoutUpsellSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<CartCubit, CartState>(
       builder: (context, cartState) {
-        final storeState = context.watch<StoreCubit>().state;
-        final allProducts = storeState.products ?? [];
-        final allCategories = storeState.categories;
+        final catalogState = context.watch<CatalogCubit>().state;
+        final allProducts = catalogState.products ?? [];
+        final allCategories = catalogState.activeCategories;
         final itemsInCart = cartState.cart.items;
 
         // Se não tem produtos ou carrinho vazio, não mostra upsell

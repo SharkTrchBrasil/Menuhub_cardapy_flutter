@@ -6,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 import 'package:totem/core/responsive_builder.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page.dart';
@@ -27,7 +28,6 @@ import '../pages/checkout/desktop_checkout_page.dart';
 import '../pages/coupon/coupon_page.dart';
 import '../pages/not_found/error_505_Page.dart';
 import '../pages/order/order_confirmation_page.dart';
-import '../pages/order/order_tracking_page.dart';
 import '../pages/product/product_page_adaptive.dart';
 import '../pages/product/product_page_cubit.dart';
 import '../pages/signin/signin_page.dart';
@@ -79,10 +79,11 @@ GoRouter createGoRouter() {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (_, state) => BlocProvider(
-          create: (_) => SplashPageCubit(),
-          child: const SplashPage(),
-        ),
+        builder:
+            (_, state) => BlocProvider(
+              create: (_) => SplashPageCubit(),
+              child: const SplashPage(),
+            ),
       ),
       GoRoute(path: '/not-found', builder: (_, state) => const NotFoundPage()),
 
@@ -92,7 +93,7 @@ GoRouter createGoRouter() {
         path: '/onboarding',
         builder: (context, state) => const OnboardingPage(),
       ),
-      
+
       // ✅ NOVO: Rota de onboarding de endereço obrigatório
       GoRoute(
         path: '/address-onboarding',
@@ -101,56 +102,61 @@ GoRouter createGoRouter() {
 
       ShellRoute(
         builder: (context, state, child) {
-          return BlocProvider.value(
-            value: storeCubit,
-            child: child,
-          );
+          return BlocProvider.value(value: storeCubit, child: child);
         },
         routes: [
           // ✅ ROTAS PRINCIPAIS (nível superior para URLs funcionarem no navegador)
           // Essas rotas são navegáveis diretamente e aparecem na barra de endereço
-          
+
           // 🛒 CARRINHO - /cart
           GoRoute(
             path: '/cart',
             pageBuilder: (context, state) {
               final isMobile = MediaQuery.of(context).size.width < 768;
               final page = const CartPage();
-              
+
               if (isMobile) {
                 // ✅ Mobile: Slide-up animation (vindo de baixo)
                 return CustomTransitionPage(
                   key: state.pageKey,
                   child: page,
                   opaque: true, // Página completa, não overlay
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                    context,
+                    animation,
+                    secondaryAnimation,
+                    child,
+                  ) {
                     final offsetAnimation = Tween<Offset>(
                       begin: const Offset(0, 1), // Começa de baixo
                       end: Offset.zero,
-                    ).animate(CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ));
-                    return SlideTransition(position: offsetAnimation, child: child);
+                    ).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    );
+                    return SlideTransition(
+                      position: offsetAnimation,
+                      child: child,
+                    );
                   },
                   transitionDuration: const Duration(milliseconds: 300),
                 );
               } else {
                 // Desktop: usa wrapper com navegação
-                return MaterialPage(
-                  child: DesktopPageWrapper(child: page),
-                );
+                return MaterialPage(child: DesktopPageWrapper(child: page));
               }
             },
           ),
-          
+
           // 🛒 CARRINHO ABANDONADO (deep link) - /cart/:cartId
           GoRoute(
             path: '/cart/:cartId',
             redirect: (context, state) async {
               final token = state.uri.queryParameters['token'];
               final cartIdStr = state.pathParameters['cartId'];
-              
+
               if (token != null && cartIdStr != null) {
                 final cartId = int.tryParse(cartIdStr);
                 if (cartId != null) {
@@ -161,29 +167,39 @@ GoRouter createGoRouter() {
               return '/';
             },
           ),
-          
-          // 📍 SELEÇÃO DE ENDEREÇO - /address  
+
+          // 📍 SELEÇÃO DE ENDEREÇO - /address
           GoRoute(
             path: '/address',
             pageBuilder: (context, state) {
               final isMobile = MediaQuery.of(context).size.width < 768;
               final page = const AddressPage();
-              
+
               if (isMobile) {
                 // ✅ Mobile: Slide-up animation
                 return CustomTransitionPage(
                   key: state.pageKey,
                   child: page,
                   opaque: true,
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                    context,
+                    animation,
+                    secondaryAnimation,
+                    child,
+                  ) {
                     final offsetAnimation = Tween<Offset>(
                       begin: const Offset(0, 1),
                       end: Offset.zero,
-                    ).animate(CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ));
-                    return SlideTransition(position: offsetAnimation, child: child);
+                    ).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    );
+                    return SlideTransition(
+                      position: offsetAnimation,
+                      child: child,
+                    );
                   },
                   transitionDuration: const Duration(milliseconds: 300),
                 );
@@ -192,7 +208,7 @@ GoRouter createGoRouter() {
               }
             },
           ),
-          
+
           // 📍 SELEÇÃO DE ENDEREÇO (gerenciamento) - /select-address
           GoRoute(
             path: '/select-address',
@@ -200,21 +216,31 @@ GoRouter createGoRouter() {
               final isManagement = state.extra as bool? ?? false;
               final isMobile = MediaQuery.of(context).size.width < 768;
               final page = AddressSelectionPage(isManagement: isManagement);
-              
+
               if (isMobile) {
                 return CustomTransitionPage(
                   key: state.pageKey,
                   child: page,
                   opaque: true,
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder: (
+                    context,
+                    animation,
+                    secondaryAnimation,
+                    child,
+                  ) {
                     final offsetAnimation = Tween<Offset>(
                       begin: const Offset(0, 1),
                       end: Offset.zero,
-                    ).animate(CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ));
-                    return SlideTransition(position: offsetAnimation, child: child);
+                    ).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    );
+                    return SlideTransition(
+                      position: offsetAnimation,
+                      child: child,
+                    );
                   },
                   transitionDuration: const Duration(milliseconds: 300),
                 );
@@ -223,71 +249,87 @@ GoRouter createGoRouter() {
               }
             },
           ),
-          
+
           // 💳 CHECKOUT - /checkout
           GoRoute(
             path: '/checkout',
             pageBuilder: (context, state) {
               final isDesktop = MediaQuery.of(context).size.width >= 768;
-              
+
               if (isDesktop) {
                 return MaterialPage(
                   child: DesktopPageWrapper(child: const DesktopCheckoutPage()),
                 );
               }
-              
+
               // ✅ Mobile: Slide-up animation
               return CustomTransitionPage(
                 key: state.pageKey,
                 child: const CheckoutPage(),
                 opaque: true,
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                transitionsBuilder: (
+                  context,
+                  animation,
+                  secondaryAnimation,
+                  child,
+                ) {
                   final offsetAnimation = Tween<Offset>(
                     begin: const Offset(0, 1),
                     end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                  ));
-                  return SlideTransition(position: offsetAnimation, child: child);
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  );
+                  return SlideTransition(
+                    position: offsetAnimation,
+                    child: child,
+                  );
                 },
                 transitionDuration: const Duration(milliseconds: 300),
               );
             },
           ),
-          
+
           // ⏳ SUBMISSÃO DE PEDIDO (animação) - /order/submitting
           GoRoute(
             path: '/order/submitting',
             builder: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
               final checkoutCubit = extra?['checkoutCubit'] as CheckoutCubit?;
-              
+
               if (checkoutCubit != null) {
                 return BlocProvider.value(
                   value: checkoutCubit,
                   child: const OrderSubmissionPage(),
                 );
               }
-              
+
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (context.mounted) context.go('/checkout');
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             },
           ),
-          
+
           // ✅ SUCESSO - /success (simplificado de /order/success)
           GoRoute(
             path: '/success',
             builder: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
               final order = extra?['order'] as Order?;
-              final paymentMethod = extra?['paymentMethod'] as PlatformPaymentMethod?;
-              return OrderConfirmationPage(order: order, paymentMethod: paymentMethod);
+              final paymentMethod =
+                  extra?['paymentMethod'] as PlatformPaymentMethod?;
+              return OrderConfirmationPage(
+                order: order,
+                paymentMethod: paymentMethod,
+              );
             },
           ),
-          
+
           // 🏠 HOME - /
           GoRoute(
             path: '/',
@@ -303,14 +345,16 @@ GoRouter createGoRouter() {
               // Subrotas que ainda fazem sentido estar aninhadas na home
               GoRoute(
                 path: 'add-coupon',
-                pageBuilder: (context, __) => CustomTransitionPage(
-                  child: const CouponPage(),
-                  opaque: false,
-                  barrierDismissible: true,
-                  barrierColor: Colors.black45,
-                  transitionsBuilder: (_, animation, __, child) =>
-                      FadeTransition(opacity: animation, child: child),
-                ),
+                pageBuilder:
+                    (context, __) => CustomTransitionPage(
+                      child: const CouponPage(),
+                      opaque: false,
+                      barrierDismissible: true,
+                      barrierColor: Colors.black45,
+                      transitionsBuilder:
+                          (_, animation, __, child) =>
+                              FadeTransition(opacity: animation, child: child),
+                    ),
               ),
               GoRoute(
                 path: 'store-details',
@@ -321,8 +365,9 @@ GoRouter createGoRouter() {
                     opaque: false,
                     barrierDismissible: true,
                     barrierColor: Colors.black45,
-                    transitionsBuilder: (_, animation, __, child) =>
-                        FadeTransition(opacity: animation, child: child),
+                    transitionsBuilder:
+                        (_, animation, __, child) =>
+                            FadeTransition(opacity: animation, child: child),
                   );
                 },
               ),
@@ -330,18 +375,28 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'category/:slug/:categoryId',
                 pageBuilder: (context, state) {
-                  final categoryId = int.tryParse(state.pathParameters['categoryId'] ?? '');
-                  final sizeId = int.tryParse(state.uri.queryParameters['size'] ?? '');
+                  final categoryId = int.tryParse(
+                    state.pathParameters['categoryId'] ?? '',
+                  );
+                  final sizeId = int.tryParse(
+                    state.uri.queryParameters['size'] ?? '',
+                  );
                   var category = state.extra as Category?;
-                  
-                  // Se não veio no extra, tenta buscar no StoreCubit
+
+                  // Se não veio no extra, tenta buscar no CatalogCubit
                   if (category == null && categoryId != null) {
-                     final storeState = context.read<StoreCubit>().state;
-                     category = storeState.categories.firstWhereOrNull((c) => c.id == categoryId);
+                    final catalogState = context.read<CatalogCubit>().state;
+                    category = catalogState.categories?.firstWhereOrNull(
+                      (c) => c.id == categoryId,
+                    );
                   }
 
                   if (categoryId == null || category == null) {
-                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Categoria não encontrada"))));
+                    return const MaterialPage(
+                      child: Scaffold(
+                        body: Center(child: Text("Categoria não encontrada")),
+                      ),
+                    );
                   }
 
                   // Cria produto virtual para o Cubit
@@ -350,25 +405,36 @@ GoRouter createGoRouter() {
                     name: category.name,
                     description: category.description,
                     images: category.image != null ? [category.image!] : [],
-                    prices: [], 
-                    categoryLinks: [ProductCategoryLink(productId: 0, categoryId: category.id!, price: 0)], // ✅ Corrigido: productId=0, sem position
+                    prices: [],
+                    categoryLinks: [
+                      ProductCategoryLink(
+                        productId: 0,
+                        categoryId: category.id!,
+                        price: 0,
+                      ),
+                    ], // ✅ Corrigido: productId=0, sem position
                     status: ProductStatus.ACTIVE,
                     storeId: 0,
-                    productType: ProductType.INDIVIDUAL, // ✅ Corrigido: INDIVIDUAL
-                    availabilityType: AvailabilityType.always, // ✅ Corrigido: always (minúsculo)
+                    productType:
+                        ProductType.INDIVIDUAL, // ✅ Corrigido: INDIVIDUAL
+                    availabilityType:
+                        AvailabilityType
+                            .always, // ✅ Corrigido: always (minúsculo)
                   );
 
                   final isDesktop = MediaQuery.of(context).size.width >= 768;
 
                   final pageContent = BlocProvider<ProductPageCubit>(
-                    create: (context) => ProductPageCubit(
-                      productId: 0,
-                      repository: getIt<StoreRepository>(),
-                      storeCubit: context.read<StoreCubit>(),
-                    )..loadProduct(
-                      initialProduct: virtualProduct,
-                      sizeId: sizeId,
-                    ),
+                    create:
+                        (context) => ProductPageCubit(
+                          productId: 0,
+                          repository: getIt<StoreRepository>(),
+                          storeCubit: context.read<StoreCubit>(),
+                          catalogCubit: context.read<CatalogCubit>(),
+                        )..loadProduct(
+                          initialProduct: virtualProduct,
+                          sizeId: sizeId,
+                        ),
                     child: const ProductPageAdaptive(),
                   );
 
@@ -380,12 +446,20 @@ GoRouter createGoRouter() {
                       barrierColor: Colors.black.withOpacity(0.6),
                       opaque: false,
                       transitionDuration: const Duration(milliseconds: 200),
-                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                      ) {
                         return FadeTransition(opacity: animation, child: child);
                       },
                     );
                   } else {
-                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                    return MaterialPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                    );
                   }
                 },
               ),
@@ -396,20 +470,24 @@ GoRouter createGoRouter() {
                 pageBuilder: (context, state) {
                   final encodedSlug = state.pathParameters['encodedSlug'] ?? '';
                   final shareToken = state.uri.queryParameters['t'];
-                  
+
                   if (encodedSlug.isEmpty) {
-                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
+                    return const MaterialPage(
+                      child: Scaffold(
+                        body: Center(child: Text("Produto não encontrado")),
+                      ),
+                    );
                   }
-                  
+
                   final isDesktop = MediaQuery.of(context).size.width >= 768;
-                  
+
                   // Widget que resolve o ID e carrega o produto
                   final pageContent = _ProductResolver(
                     encodedSlug: encodedSlug,
                     shareToken: shareToken,
                     isDesktop: isDesktop,
                   );
-                  
+
                   if (isDesktop) {
                     return CustomTransitionPage<void>(
                       key: state.pageKey,
@@ -418,12 +496,20 @@ GoRouter createGoRouter() {
                       barrierColor: Colors.black.withOpacity(0.6),
                       opaque: false,
                       transitionDuration: const Duration(milliseconds: 200),
-                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                      ) {
                         return FadeTransition(opacity: animation, child: child);
                       },
                     );
                   } else {
-                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                    return MaterialPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                    );
                   }
                 },
               ),
@@ -432,32 +518,43 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'product/:productSlugWithId',
                 pageBuilder: (context, state) {
-                  final slugWithId = state.pathParameters['productSlugWithId'] ?? '';
-                  
+                  final slugWithId =
+                      state.pathParameters['productSlugWithId'] ?? '';
+
                   // Importa o ofuscador
                   final productId = _decodeProductId(slugWithId);
-                  
+
                   if (productId == null) {
-                    return const MaterialPage(child: Scaffold(body: Center(child: Text("Produto não encontrado"))));
+                    return const MaterialPage(
+                      child: Scaffold(
+                        body: Center(child: Text("Produto não encontrado")),
+                      ),
+                    );
                   }
 
                   // ✅ Extrai sizeId da query string (para pizzas)
-                  final sizeId = int.tryParse(state.uri.queryParameters['size'] ?? '');
+                  final sizeId = int.tryParse(
+                    state.uri.queryParameters['size'] ?? '',
+                  );
 
-                  final initialProduct = state.extra is Product ? state.extra as Product : null;
-                  final cartItemToEdit = state.extra is CartItem ? state.extra as CartItem : null;
+                  final initialProduct =
+                      state.extra is Product ? state.extra as Product : null;
+                  final cartItemToEdit =
+                      state.extra is CartItem ? state.extra as CartItem : null;
                   final isDesktop = MediaQuery.of(context).size.width >= 768;
 
                   final pageContent = BlocProvider<ProductPageCubit>(
-                    create: (context) => ProductPageCubit(
-                      productId: productId,
-                      repository: getIt<StoreRepository>(),
-                      storeCubit: context.read<StoreCubit>(),
-                    )..loadProduct(
-                      initialProduct: initialProduct,
-                      cartItemToEdit: cartItemToEdit,
-                      sizeId: sizeId, // ✅ Passa o sizeId para o cubit
-                    ),
+                    create:
+                        (context) => ProductPageCubit(
+                          productId: productId,
+                          repository: getIt<StoreRepository>(),
+                          storeCubit: context.read<StoreCubit>(),
+                          catalogCubit: context.read<CatalogCubit>(),
+                        )..loadProduct(
+                          initialProduct: initialProduct,
+                          cartItemToEdit: cartItemToEdit,
+                          sizeId: sizeId, // ✅ Passa o sizeId para o cubit
+                        ),
                     child: const ProductPageAdaptive(),
                   );
 
@@ -469,12 +566,20 @@ GoRouter createGoRouter() {
                       barrierColor: Colors.black.withOpacity(0.6),
                       opaque: false,
                       transitionDuration: const Duration(milliseconds: 200),
-                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                      ) {
                         return FadeTransition(opacity: animation, child: child);
                       },
                     );
                   } else {
-                    return MaterialPage<void>(key: state.pageKey, child: pageContent);
+                    return MaterialPage<void>(
+                      key: state.pageKey,
+                      child: pageContent,
+                    );
                   }
                 },
               ),
@@ -484,7 +589,8 @@ GoRouter createGoRouter() {
                   // ✅ CORREÇÃO: Recebe order e paymentMethod do extra
                   final extra = state.extra as Map<String, dynamic>?;
                   final order = extra?['order'] as Order?;
-                  final paymentMethod = extra?['paymentMethod'] as PlatformPaymentMethod?;
+                  final paymentMethod =
+                      extra?['paymentMethod'] as PlatformPaymentMethod?;
                   return OrderConfirmationPage(
                     order: order,
                     paymentMethod: paymentMethod,
@@ -501,9 +607,11 @@ GoRouter createGoRouter() {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (context.mounted) context.go('/');
                     });
-                    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
                   }
-                  
+
                   return PixPaymentPage(
                     totalCents: extra['totalCents'] as int? ?? 0,
                     pixKey: extra['pixKey'] as String? ?? '',
@@ -512,7 +620,9 @@ GoRouter createGoRouter() {
                     storeCity: extra['storeCity'] as String? ?? '',
                     orderNumber: extra['orderNumber'] as String?,
                     orderId: extra['orderId'] as int?,
-                    order: extra['order'] as Order?, // ✅ NOVO: Order completo para navegação
+                    order:
+                        extra['order']
+                            as Order?, // ✅ NOVO: Order completo para navegação
                   );
                 },
               ),
@@ -521,7 +631,7 @@ GoRouter createGoRouter() {
                 builder: (context, state) {
                   final isMobile = MediaQuery.of(context).size.width < 768;
                   final page = const ProfileScreen();
-                  
+
                   if (isMobile) {
                     return page;
                   } else {
@@ -539,7 +649,7 @@ GoRouter createGoRouter() {
                 builder: (context, state) {
                   final isMobile = MediaQuery.of(context).size.width < 768;
                   final page = const OrderHistoryPage();
-                  
+
                   if (isMobile) {
                     return page;
                   } else {
@@ -553,16 +663,22 @@ GoRouter createGoRouter() {
                 builder: (context, state) {
                   // ✅ OTIMIZADO: Recebe Order via extra, sem fazer GET
                   final order = state.extra as Order?;
-                  
+
                   if (order == null) {
                     // Fallback: se não recebeu o Order, volta para histórico
                     return Scaffold(
-                      appBar: AppBar(title: const Text('Pedido não encontrado')),
+                      appBar: AppBar(
+                        title: const Text('Pedido não encontrado'),
+                      ),
                       body: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.error_outline, size: 64, color: Colors.orange),
+                            const Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: Colors.orange,
+                            ),
                             const SizedBox(height: 16),
                             const Text('Pedido não encontrado.'),
                             const SizedBox(height: 16),
@@ -575,22 +691,14 @@ GoRouter createGoRouter() {
                       ),
                     );
                   }
-                  
-                  return OrderTrackingPage(order: order);
+
+                  return OrderDetailsPage(
+                    order: order,
+                    showActions: true,
+                    showRating: false,
+                  );
                 },
                 routes: [
-                  GoRoute(
-                    path: 'summary',
-                    builder: (context, state) {
-                      final order = state.extra as Order?;
-                      if (order == null) return const SizedBox();
-                      return OrderDetailsPage(
-                        order: order,
-                        showActions: false,
-                        showRating: false,
-                      );
-                    },
-                  ),
                   GoRoute(
                     path: 'evaluate',
                     builder: (context, state) {
@@ -606,18 +714,22 @@ GoRouter createGoRouter() {
                 builder: (context, state) {
                   final publicId = state.pathParameters['publicId'] ?? '';
                   if (publicId.isEmpty) {
-                    return const Scaffold(body: Center(child: Text('ID inválido')));
+                    return const Scaffold(
+                      body: Center(child: Text('ID inválido')),
+                    );
                   }
                   return OrderReviewPage(orderPublicId: publicId);
                 },
               ),
               GoRoute(
                 path: 'auth/signin',
-                builder: (context, state) => const EmailAuthPage(isSignUp: false),
+                builder:
+                    (context, state) => const EmailAuthPage(isSignUp: false),
               ),
               GoRoute(
                 path: 'auth/signup',
-                builder: (context, state) => const EmailAuthPage(isSignUp: true),
+                builder:
+                    (context, state) => const EmailAuthPage(isSignUp: true),
               ),
               GoRoute(
                 path: 'reset-password',
@@ -631,9 +743,13 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'stores/:storeId/settings/hours',
                 builder: (context, state) {
-                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  final storeId = int.tryParse(
+                    state.pathParameters['storeId'] ?? '',
+                  );
                   if (storeId == null) {
-                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                    return const Scaffold(
+                      body: Center(child: Text('ID da loja inválido')),
+                    );
                   }
                   // Redireciona para store-details na aba de informações (onde há horários)
                   return const StoreDetails(initialTabIndex: 1);
@@ -642,9 +758,13 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'stores/:storeId/settings/shipping',
                 builder: (context, state) {
-                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  final storeId = int.tryParse(
+                    state.pathParameters['storeId'] ?? '',
+                  );
                   if (storeId == null) {
-                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                    return const Scaffold(
+                      body: Center(child: Text('ID da loja inválido')),
+                    );
                   }
                   // Redireciona para store-details na aba de informações (onde há configurações de entrega)
                   return const StoreDetails(initialTabIndex: 1);
@@ -653,9 +773,13 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'stores/:storeId/delivery-persons',
                 builder: (context, state) {
-                  final storeId = int.tryParse(state.pathParameters['storeId'] ?? '');
+                  final storeId = int.tryParse(
+                    state.pathParameters['storeId'] ?? '',
+                  );
                   if (storeId == null) {
-                    return const Scaffold(body: Center(child: Text('ID da loja inválido')));
+                    return const Scaffold(
+                      body: Center(child: Text('ID da loja inválido')),
+                    );
                   }
                   return DeliveryPersonsPage(storeId: storeId);
                 },
@@ -667,16 +791,24 @@ GoRouter createGoRouter() {
     ],
     redirect: (context, state) async {
       // 🕵️‍♂️ DEBUG PRINT: Este é o nosso "dedo-duro" de navegação.
-      print("🔀 [GoRouter] Redirect sendo verificado. Localização atual: ${state.matchedLocation}. Tentando ir para: ${state.uri}");
+      print(
+        "🔀 [GoRouter] Redirect sendo verificado. Localização atual: ${state.matchedLocation}. Tentando ir para: ${state.uri}",
+      );
 
-      final initialized = getIt.isRegistered<bool>(instanceName: 'isInitialized') && getIt.get<bool>(instanceName: 'isInitialized');
+      final initialized =
+          getIt.isRegistered<bool>(instanceName: 'isInitialized') &&
+          getIt.get<bool>(instanceName: 'isInitialized');
       final isSplash = state.matchedLocation == '/splash';
 
       if (!initialized) {
-        print("🔀 [GoRouter] App não inicializado. Redirecionando para /splash.");
-        return isSplash ? null : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
+        print(
+          "🔀 [GoRouter] App não inicializado. Redirecionando para /splash.",
+        );
+        return isSplash
+            ? null
+            : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
       }
-      
+
       if (isSplash) {
         // ✅ CORRIGIDO: Verifica se usuário está logado sem endereço
         // Agora aguarda o carregamento dos endereços antes de decidir
@@ -684,60 +816,83 @@ GoRouter createGoRouter() {
           final authCubit = getIt<AuthCubit>();
           final addressCubit = getIt<AddressCubit>();
           final customer = authCubit.state.customer;
-          
+
           if (customer != null && customer.id != null) {
-            print("📍 [GoRouter] Usuário logado (${customer.name}). Verificando endereços...");
-            
+            print(
+              "📍 [GoRouter] Usuário logado (${customer.name}). Verificando endereços...",
+            );
+
             // ✅ CORREÇÃO: Sempre carrega endereços e AGUARDA se ainda não carregou
-            if (addressCubit.state.status == AddressStatus.initial || 
-                (addressCubit.state.addresses.isEmpty && addressCubit.state.status != AddressStatus.success)) {
+            if (addressCubit.state.status == AddressStatus.initial ||
+                (addressCubit.state.addresses.isEmpty &&
+                    addressCubit.state.status != AddressStatus.success)) {
               print("📍 [GoRouter] Carregando endereços do servidor...");
               await addressCubit.loadAddresses(customer.id!);
-              print("📍 [GoRouter] Endereços carregados: ${addressCubit.state.addresses.length}");
+              print(
+                "📍 [GoRouter] Endereços carregados: ${addressCubit.state.addresses.length}",
+              );
             }
-            
+
             // ✅ CORREÇÃO: Só verifica após o carregamento ter sido concluído (success ou error)
             final hasAddresses = addressCubit.state.addresses.isNotEmpty;
-            
-            if (!hasAddresses && addressCubit.state.status == AddressStatus.success) {
+
+            if (!hasAddresses &&
+                addressCubit.state.status == AddressStatus.success) {
               // ✅ CORREÇÃO: Só redireciona se os endereços foram carregados com sucesso E a lista está vazia
-              print("📍 [GoRouter] Usuário SEM endereço (confirmado). Redirecionando para /address-onboarding");
+              print(
+                "📍 [GoRouter] Usuário SEM endereço (confirmado). Redirecionando para /address-onboarding",
+              );
               return '/address-onboarding';
             }
-            
-            print("✅ [GoRouter] Usuário tem ${addressCubit.state.addresses.length} endereço(s). Indo para home.");
+
+            print(
+              "✅ [GoRouter] Usuário tem ${addressCubit.state.addresses.length} endereço(s). Indo para home.",
+            );
           } else {
             // ✅ CORREÇÃO: Usuário não logado não precisa de endereço obrigatório
-            print("👤 [GoRouter] Usuário não está logado. Indo para home (sem exigir endereço).");
+            print(
+              "👤 [GoRouter] Usuário não está logado. Indo para home (sem exigir endereço).",
+            );
           }
         } catch (e) {
-          print("❌ [GoRouter] Erro ao verificar endereços: $e. Indo para home.");
+          print(
+            "❌ [GoRouter] Erro ao verificar endereços: $e. Indo para home.",
+          );
         }
-        
+
         final redirectTo = state.uri.queryParameters['redirectTo'] ?? '/';
-        print("_ [GoRouter] Saindo do Splash. Redirecionando para: $redirectTo");
+        print(
+          "_ [GoRouter] Saindo do Splash. Redirecionando para: $redirectTo",
+        );
         return redirectTo;
       }
 
-      print("🔀 [GoRouter] Nenhuma regra de redirect foi aplicada. Continuando navegação normal.");
+      print(
+        "🔀 [GoRouter] Nenhuma regra de redirect foi aplicada. Continuando navegação normal.",
+      );
       return null; // Nenhuma outra regra de redirecionamento
     },
 
-    errorPageBuilder: (context, state) => const MaterialPage(child: NotFoundPage()),
+    errorPageBuilder:
+        (context, state) => const MaterialPage(child: NotFoundPage()),
   );
 }
 
 /// ✅ NOVO: Valida token de deep link de carrinho e navega para o carrinho
-Future<void> _validateAndOpenCart(BuildContext context, int cartId, String token) async {
+Future<void> _validateAndOpenCart(
+  BuildContext context,
+  int cartId,
+  String token,
+) async {
   try {
     final dio = GetIt.I<Dio>();
-    
+
     // Valida token no backend
     final response = await dio.get(
       '/cart/$cartId/validate-token',
       queryParameters: {'token': token},
     );
-    
+
     if (response.statusCode == 200 && response.data['valid'] == true) {
       // Token válido - navega para o carrinho
       // O CartCubit já vai carregar o carrinho automaticamente
@@ -755,7 +910,9 @@ Future<void> _validateAndOpenCart(BuildContext context, int cartId, String token
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Link expirado ou inválido. Por favor, adicione os produtos novamente ao carrinho.'),
+            content: Text(
+              'Link expirado ou inválido. Por favor, adicione os produtos novamente ao carrinho.',
+            ),
             backgroundColor: Colors.orange,
           ),
         );
@@ -768,7 +925,9 @@ Future<void> _validateAndOpenCart(BuildContext context, int cartId, String token
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Erro ao acessar o carrinho. Por favor, tente novamente.'),
+          content: Text(
+            'Erro ao acessar o carrinho. Por favor, tente novamente.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -782,13 +941,13 @@ class _ProductResolver extends StatefulWidget {
   final String encodedSlug;
   final String? shareToken;
   final bool isDesktop;
-  
+
   const _ProductResolver({
     required this.encodedSlug,
     this.shareToken,
     required this.isDesktop,
   });
-  
+
   @override
   State<_ProductResolver> createState() => _ProductResolverState();
 }
@@ -796,30 +955,34 @@ class _ProductResolver extends StatefulWidget {
 class _ProductResolverState extends State<_ProductResolver> {
   bool _isLoading = true;
   String? _error;
-  
+
   @override
   void initState() {
     super.initState();
     _resolveProduct();
   }
-  
+
   Future<void> _resolveProduct() async {
     try {
       final dio = GetIt.I<Dio>();
-      
+
       // Chama API para resolver o ID criptografado
       final response = await dio.get(
         '/products/resolve/${widget.encodedSlug}',
-        queryParameters: widget.shareToken != null ? {'t': widget.shareToken} : null,
+        queryParameters:
+            widget.shareToken != null ? {'t': widget.shareToken} : null,
       );
-      
+
       if (response.statusCode == 200) {
         final productId = response.data['product_id'] as int;
         final productName = response.data['product_name'] as String;
-        
+
         // ✅ ENTERPRISE: Usa ID ofuscado na URL
-        final productUrl = IdObfuscator.createProductUrl(productName, productId);
-        
+        final productUrl = IdObfuscator.createProductUrl(
+          productName,
+          productId,
+        );
+
         // Redireciona para a rota existente com ID ofuscado
         if (mounted) {
           context.go('/product/$productUrl');
@@ -838,7 +1001,7 @@ class _ProductResolverState extends State<_ProductResolver> {
       });
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -855,7 +1018,7 @@ class _ProductResolverState extends State<_ProductResolver> {
         ),
       );
     }
-    
+
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Produto')),
@@ -876,7 +1039,7 @@ class _ProductResolverState extends State<_ProductResolver> {
         ),
       );
     }
-    
+
     // Não deve chegar aqui (redirect acontece antes)
     return const SizedBox.shrink();
   }

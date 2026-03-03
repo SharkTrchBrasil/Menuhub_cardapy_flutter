@@ -12,6 +12,7 @@ import 'package:totem/pages/cart/widgets/free_shipping_progress.dart';
 import 'package:totem/pages/cart/widgets/min_order_info.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 import '../../helpers/navigation_helper.dart';
 import '../../models/cart_item.dart';
@@ -36,9 +37,10 @@ class CartPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
     final storeState = context.watch<StoreCubit>().state;
+    final catalogState = context.watch<CatalogCubit>().state;
     final store = storeState.store;
-    final allProducts = storeState.products ?? [];
-    final allCategories = storeState.categories ?? [];
+    final allProducts = catalogState.products ?? [];
+    final allCategories = catalogState.activeCategories;
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
     final minOrder = store?.getMinOrderForDelivery() ?? 0;

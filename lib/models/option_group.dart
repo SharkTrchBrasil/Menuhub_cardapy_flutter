@@ -6,14 +6,14 @@ import 'package:totem/models/option_item.dart';
 // ✅ ENUM: Define os tipos de grupos de opções
 // Mapeia com o backend: SIZE, TOPPING, CRUST, EDGE, GENERIC
 enum OptionGroupType {
-  size,       // Mapeia para "SIZE" do backend (Tamanhos)
-  topping,    // ✅ NOVO: Mapeia para "TOPPING" do backend (Sabores de pizza)
-  crust,      // ✅ NOVO: Mapeia para "CRUST" do backend (Tipos de massa)
-  edge,       // ✅ NOVO: Mapeia para "EDGE" do backend (Tipos de borda)
-  generic,    // Mapeia para "GENERIC" do backend (Outros)
-  flavor,     // ⚠️ DEPRECATED: Mantido para compatibilidade
+  size, // Mapeia para "SIZE" do backend (Tamanhos)
+  topping, // ✅ NOVO: Mapeia para "TOPPING" do backend (Sabores de pizza)
+  crust, // ✅ NOVO: Mapeia para "CRUST" do backend (Tipos de massa)
+  edge, // ✅ NOVO: Mapeia para "EDGE" do backend (Tipos de borda)
+  generic, // Mapeia para "GENERIC" do backend (Outros)
+  flavor, // ⚠️ DEPRECATED: Mantido para compatibilidade
   preference, // ⚠️ DEPRECATED: Mantido para compatibilidade
-  other;      // Fallback
+  other; // Fallback
 
   static OptionGroupType fromString(String? value) {
     switch (value?.toUpperCase()) {
@@ -35,7 +35,7 @@ enum OptionGroupType {
         return OptionGroupType.other;
     }
   }
-  
+
   // Converte para string do backend
   String toApiString() {
     switch (this) {
@@ -107,15 +107,41 @@ class OptionGroup extends Equatable {
   }
 
   factory OptionGroup.fromJson(Map<String, dynamic> json) {
+    // ✅ FIX: O backend envia `option_items`, mas o campo pode vir como `items` no formato legado.
+    // Aceita ambos para compatibilidade.
+    final rawItems =
+        (json['option_items'] as List<dynamic>?) ??
+        (json['items'] as List<dynamic>?) ??
+        [];
+
+    // ✅ FIX: O backend envia `min_selections`/`max_selections` (com 's'),
+    // mas o formato legado usa `min_selection`/`max_selection` (sem 's').
+    final minSelection =
+        (json['min_selections'] as int?) ??
+        (json['min_selection'] as int?) ??
+        0;
+    final maxSelection =
+        (json['max_selections'] as int?) ??
+        (json['max_selection'] as int?) ??
+        1;
+
+    // ✅ FIX: O backend envia `group_type` E `type` — aceita ambos.
+    final groupTypeRaw =
+        (json['group_type'] as String?) ?? (json['type'] as String?);
+
     return OptionGroup(
       id: json['id'] as int?,
       name: json['name'] as String? ?? '',
-      groupType: OptionGroupType.fromString(json['group_type']),
-      minSelection: json['min_selection'] as int? ?? 0,
-      maxSelection: json['max_selection'] as int? ?? 1,
-      items: (json['items'] as List<dynamic>? ?? [])
-          .map((itemJson) => OptionItem.fromJson(itemJson))
-          .toList(),
+      groupType: OptionGroupType.fromString(groupTypeRaw),
+      minSelection: minSelection,
+      maxSelection: maxSelection,
+      items:
+          rawItems
+              .map(
+                (itemJson) =>
+                    OptionItem.fromJson(itemJson as Map<String, dynamic>),
+              )
+              .toList(),
       displayOrder: json['display_order'] as int? ?? 0,
       isActive: json['is_active'] as bool? ?? true,
     );
@@ -135,5 +161,13 @@ class OptionGroup extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, groupType, minSelection, maxSelection, items, isActive];
+  List<Object?> get props => [
+    id,
+    name,
+    groupType,
+    minSelection,
+    maxSelection,
+    items,
+    isActive,
+  ];
 }

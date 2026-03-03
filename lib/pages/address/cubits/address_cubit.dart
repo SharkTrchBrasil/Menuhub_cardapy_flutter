@@ -18,7 +18,8 @@ import 'package:totem/models/store.dart';
 part 'address_state.dart';
 
 class AddressCubit extends Cubit<AddressState> {
-  AddressCubit({required this.customerRepository}) : super(const AddressState()) {
+  AddressCubit({required this.customerRepository})
+    : super(const AddressState()) {
     _subscribeToStoreChanges();
   }
 
@@ -36,7 +37,6 @@ class AddressCubit extends Cubit<AddressState> {
         // Só recalcula se o objeto Store for diferente (foi atualizado via Realtime)
         if (storeState.store != _lastStore) {
           _lastStore = storeState.store;
-          print('🔄 [AddressCubit] Loja atualizada via Real-time. Re-calculando todos os fretes...');
           _precalculateAllFees(state.addresses);
         }
       }
@@ -49,8 +49,6 @@ class AddressCubit extends Cubit<AddressState> {
     return super.close();
   }
 
-
-
   Future<void> loadAddresses(int customerId) async {
     emit(state.copyWith(status: AddressStatus.loading));
     try {
@@ -59,16 +57,20 @@ class AddressCubit extends Cubit<AddressState> {
       if (result.isLeft) {
         // ✅ CORREÇÃO: Emite estado de erro para não ficar em loading infinito
         // result.left é void, então usamos uma mensagem padrão
-        emit(state.copyWith(
-          status: AddressStatus.error,
-          errorMessage: 'Erro ao carregar endereços.',
-          addresses: const [], // Lista vazia em caso de erro
-        ));
+        emit(
+          state.copyWith(
+            status: AddressStatus.error,
+            errorMessage: 'Erro ao carregar endereços.',
+            addresses: const [], // Lista vazia em caso de erro
+          ),
+        );
       } else {
         final addresses = result.right;
         print('🔍 [AddressCubit] Endereços carregados: ${addresses.length}');
         for (var addr in addresses) {
-          print('   ├─ ID: ${addr.id}, Favorito: ${addr.isFavorite}, Rua: ${addr.street}');
+          print(
+            '   ├─ ID: ${addr.id}, Favorito: ${addr.isFavorite}, Rua: ${addr.street}',
+          );
         }
 
         // --- ✅ LÓGICA DE SELEÇÃO INTELIGENTE REFORÇADA ---
@@ -76,7 +78,7 @@ class AddressCubit extends Cubit<AddressState> {
         if (addresses.isNotEmpty) {
           // 1. Procura por endereços marcados como favorito
           final favorites = addresses.where((addr) => addr.isFavorite).toList();
-          
+
           if (favorites.isNotEmpty) {
             // Se houver múltiplos favoritos (erro de sync), pega o com maior ID (mais recente)
             favorites.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
@@ -88,31 +90,40 @@ class AddressCubit extends Cubit<AddressState> {
         }
         // --- Fim da Lógica ---
 
-        emit(state.copyWith(
-          status: AddressStatus.success,
-          addresses: addresses,
-          selectedAddress: selected,
-          addressFees: {}, // Reset
-        ));
-        
+        emit(
+          state.copyWith(
+            status: AddressStatus.success,
+            addresses: addresses,
+            selectedAddress: selected,
+            addressFees: {}, // Reset
+          ),
+        );
+
         // ✅ PRE-CÁLCULO DE FRETE
         _precalculateAllFees(addresses);
       }
     } catch (e) {
-      emit(state.copyWith(status: AddressStatus.error, errorMessage: 'Erro ao carregar endereços.'));
+      emit(
+        state.copyWith(
+          status: AddressStatus.error,
+          errorMessage: 'Erro ao carregar endereços.',
+        ),
+      );
     }
   }
 
   /// ✅ OTIMIZAÇÃO: Popula endereços diretamente a partir da resposta do login
   /// Evita chamada HTTP separada para /customer/{id}/addresses
   void setAddressesFromLogin(List<CustomerAddress> addresses) {
-    print('🔍 [AddressCubit] setAddressesFromLogin: recebidos ${addresses.length} endereços');
-    
+    print(
+      '🔍 [AddressCubit] setAddressesFromLogin: recebidos ${addresses.length} endereços',
+    );
+
     // --- ✅ LÓGICA DE SELEÇÃO INTELIGENTE REFORÇADA ---
     CustomerAddress? selected;
     if (addresses.isNotEmpty) {
       final favorites = addresses.where((addr) => addr.isFavorite).toList();
-      
+
       if (favorites.isNotEmpty) {
         favorites.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
         selected = favorites.first;
@@ -121,15 +132,17 @@ class AddressCubit extends Cubit<AddressState> {
       }
     }
     // --- Fim da Lógica ---
-    
-    emit(state.copyWith(
-      status: AddressStatus.success,
-      addresses: addresses,
-      selectedAddress: selected,
-      addressFees: {}, // Reset
-    ));
+
+    emit(
+      state.copyWith(
+        status: AddressStatus.success,
+        addresses: addresses,
+        selectedAddress: selected,
+        addressFees: {}, // Reset
+      ),
+    );
     print('✅ [AddressCubit] Status atualizado via dados de login');
-    
+
     // ✅ PRE-CÁLCULO DE FRETE
     _precalculateAllFees(addresses);
   }
@@ -147,7 +160,7 @@ class AddressCubit extends Cubit<AddressState> {
               address: addr,
               store: store,
               cartSubtotal: 0,
-              isSilent: true, 
+              isSilent: true,
               onResult: (fee, error) {
                 setAddressFee(addr.id!, fee, isOutOfArea: error != null);
               },
@@ -166,22 +179,21 @@ class AddressCubit extends Cubit<AddressState> {
     emit(state.copyWith(addressFees: newFees));
   }
 
-
   Future<void> selectAddress(CustomerAddress address) async {
     // Primeiro emite para a UI ficar rápida
     emit(state.copyWith(selectedAddress: address));
-    
+
     // Se o endereço já é favorito, não precisa fazer nada no backend
     if (address.isFavorite) return;
-    
+
     // Se tiver ID, marca como favorito no backend
     if (address.id != null) {
       try {
         final updatedAddress = address.copyWith(isFavorite: true);
         final customerId = getIt<CustomerController>().customer?.id;
-        
+
         if (customerId != null) {
-          // Fazemos o update de forma "silenciosa". 
+          // Fazemos o update de forma "silenciosa".
           // O Socket.IO se encarregará de atualizar a lista completa quando o servidor confirmar.
           customerRepository.updateCustomerAddress(
             customerId: customerId,
@@ -215,7 +227,7 @@ class AddressCubit extends Cubit<AddressState> {
       // Recarrega a lista para pegar o novo endereço com seu ID do banco
       await loadAddresses(customerId);
     } else {
-    //  emit(state.copyWith(status: AddressStatus.error, errorMessage: result.left));
+      //  emit(state.copyWith(status: AddressStatus.error, errorMessage: result.left));
     }
   }
 
@@ -229,53 +241,47 @@ class AddressCubit extends Cubit<AddressState> {
     if (result.isRight) {
       await loadAddresses(customerId);
     } else {
-     // emit(state.copyWith(status: AddressStatus.error, errorMessage: result.left));
+      // emit(state.copyWith(status: AddressStatus.error, errorMessage: result.left));
     }
   }
 
-
-
-
   void addAndSelectAddress(CustomerAddress newAddress, int customerId) {
     // Atualiza a UI imediatamente para uma melhor experiência
-    final updatedList = List<CustomerAddress>.from(state.addresses)..add(newAddress);
-    emit(state.copyWith(
-      addresses: updatedList,
-      selectedAddress: newAddress,
-    ));
+    final updatedList = List<CustomerAddress>.from(state.addresses)
+      ..add(newAddress);
+    emit(state.copyWith(addresses: updatedList, selectedAddress: newAddress));
     // Em segundo plano, recarrega a lista do servidor para garantir consistência
     loadAddresses(customerId);
   }
 
   Future<void> deleteAddress(int customerId, int addressId) async {
     // 1. Atualização Otimista: Remove da lista local imediatamente
-    final updatedList = state.addresses
-        .where((addr) => addr.id != addressId)
-        .toList();
+    final updatedList =
+        state.addresses.where((addr) => addr.id != addressId).toList();
 
     CustomerAddress? newSelected = state.selectedAddress;
     if (state.selectedAddress?.id == addressId) {
       if (updatedList.isNotEmpty) {
-        newSelected = updatedList.firstWhereOrNull((addr) => addr.isFavorite)
-            ?? updatedList.first;
+        newSelected =
+            updatedList.firstWhereOrNull((addr) => addr.isFavorite) ??
+            updatedList.first;
       } else {
         newSelected = null;
       }
     }
 
-    emit(state.copyWith(
-      addresses: updatedList,
-      selectedAddress: newSelected,
-      status: AddressStatus.success,
-    ));
+    emit(
+      state.copyWith(
+        addresses: updatedList,
+        selectedAddress: newSelected,
+        status: AddressStatus.success,
+      ),
+    );
 
     // 2. Envia para o servidor em background
     try {
-      await customerRepository.deleteCustomerAddress(
-        customerId,
-        addressId,
-      );
-      // O evento Socket.IO 'address_deleted' chegará para confirmar, 
+      await customerRepository.deleteCustomerAddress(customerId, addressId);
+      // O evento Socket.IO 'address_deleted' chegará para confirmar,
       // mas a UI já está atualizada.
     } catch (e) {
       print('❌ Erro ao excluir endereço no backend: $e');
@@ -291,33 +297,41 @@ class AddressCubit extends Cubit<AddressState> {
       final addressId = payload['address_id'] as int?;
 
       final currentAddresses = List<CustomerAddress>.from(state.addresses);
-      
+
       switch (action) {
         case 'created':
           if (addressData != null) {
             final newAddress = CustomerAddress.fromJson(addressData);
             if (!currentAddresses.any((a) => a.id == newAddress.id)) {
               currentAddresses.add(newAddress);
-              print('✅ [AddressCubit] Novo endereço adicionado via Real-time: ${newAddress.street}');
+              print(
+                '✅ [AddressCubit] Novo endereço adicionado via Real-time: ${newAddress.street}',
+              );
             }
           }
           break;
         case 'updated':
           if (addressData != null) {
             final updatedAddress = CustomerAddress.fromJson(addressData);
-            final index = currentAddresses.indexWhere((a) => a.id == updatedAddress.id);
+            final index = currentAddresses.indexWhere(
+              (a) => a.id == updatedAddress.id,
+            );
             if (index != -1) {
               currentAddresses[index] = updatedAddress;
-              print('✅ [AddressCubit] Endereço atualizado via Real-time: ${updatedAddress.street}');
+              print(
+                '✅ [AddressCubit] Endereço atualizado via Real-time: ${updatedAddress.street}',
+              );
             } else {
               currentAddresses.add(updatedAddress);
             }
-            
+
             // Se este endereço agora é o favorito, desmarca todos os outros localmente
             if (updatedAddress.isFavorite) {
               for (var i = 0; i < currentAddresses.length; i++) {
                 if (currentAddresses[i].id != updatedAddress.id) {
-                  currentAddresses[i] = currentAddresses[i].copyWith(isFavorite: false);
+                  currentAddresses[i] = currentAddresses[i].copyWith(
+                    isFavorite: false,
+                  );
                 }
               }
             }
@@ -326,7 +340,9 @@ class AddressCubit extends Cubit<AddressState> {
         case 'deleted':
           if (addressId != null) {
             currentAddresses.removeWhere((a) => a.id == addressId);
-            print('✅ [AddressCubit] Endereço $addressId removido via Real-time');
+            print(
+              '✅ [AddressCubit] Endereço $addressId removido via Real-time',
+            );
           }
           break;
       }
@@ -334,31 +350,34 @@ class AddressCubit extends Cubit<AddressState> {
       // Re-avalia endereço selecionado se houver mudanças que o afetem
       CustomerAddress? newSelected = state.selectedAddress;
       if (action == 'deleted' && state.selectedAddress?.id == addressId) {
-          if (currentAddresses.isNotEmpty) {
-            newSelected = currentAddresses.firstWhereOrNull((addr) => addr.isFavorite)
-                ?? currentAddresses.first;
-          } else {
-            newSelected = null;
-          }
+        if (currentAddresses.isNotEmpty) {
+          newSelected =
+              currentAddresses.firstWhereOrNull((addr) => addr.isFavorite) ??
+              currentAddresses.first;
+        } else {
+          newSelected = null;
+        }
       } else if (action == 'updated' && addressData != null) {
-          final updatedAddress = CustomerAddress.fromJson(addressData);
-          // Se o endereço atualizado foi marcado como favorito, ele torna-se o selecionado
-          if (updatedAddress.isFavorite) {
-            newSelected = updatedAddress;
-          } else if (state.selectedAddress?.id == updatedAddress.id) {
-            newSelected = updatedAddress;
-          }
+        final updatedAddress = CustomerAddress.fromJson(addressData);
+        // Se o endereço atualizado foi marcado como favorito, ele torna-se o selecionado
+        if (updatedAddress.isFavorite) {
+          newSelected = updatedAddress;
+        } else if (state.selectedAddress?.id == updatedAddress.id) {
+          newSelected = updatedAddress;
+        }
       }
 
-      emit(state.copyWith(
-        addresses: currentAddresses,
-        selectedAddress: newSelected,
-        status: AddressStatus.success,
-      ));
-      
+      emit(
+        state.copyWith(
+          addresses: currentAddresses,
+          selectedAddress: newSelected,
+          status: AddressStatus.success,
+        ),
+      );
+
       // ✅ Atualiza cálculos de frete para a nova lista se não foi deleção
       if (action != 'deleted') {
-         _precalculateAllFees(currentAddresses);
+        _precalculateAllFees(currentAddresses);
       }
     } catch (e) {
       print('❌ [AddressCubit] Erro ao processar evento real-time: $e');

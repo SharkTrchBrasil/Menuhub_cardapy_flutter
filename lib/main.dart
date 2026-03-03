@@ -9,6 +9,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:totem/core/services/timezone_service.dart';
 import 'package:provider/provider.dart';
 import 'package:totem/core/router.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
@@ -23,6 +24,7 @@ import 'controllers/customer_controller.dart';
 import 'controllers/menu_app_controller.dart';
 import 'core/di.dart';
 import 'cubit/auth_cubit.dart';
+import 'cubit/catalog_cubit.dart';
 import 'cubit/orders_cubit.dart';
 import 'cubit/store_cubit.dart';
 import 'cubit/store_state.dart';
@@ -91,6 +93,15 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         print('✅ Locale initialized');
       } catch (e) {
         print('⚠️ Locale initialization failed or timeout');
+      }
+
+      // 2.1 Timezone
+      try {
+        print('⏰ Initializing timezone...');
+        await TimezoneService.initialize();
+        print('✅ Timezone initialized');
+      } catch (e) {
+        print('⚠️ Timezone initialization failed: $e');
       }
 
       // 3. Performance
@@ -392,6 +403,7 @@ class MyApp extends StatelessWidget {
         BlocProvider<CartCubit>.value(value: getIt<CartCubit>()),
         BlocProvider<AuthCubit>.value(value: getIt<AuthCubit>()),
         BlocProvider<StoreCubit>.value(value: getIt<StoreCubit>()),
+        BlocProvider<CatalogCubit>.value(value: getIt<CatalogCubit>()),
         BlocProvider<AddressCubit>.value(value: getIt<AddressCubit>()),
         BlocProvider<DeliveryFeeCubit>.value(value: getIt<DeliveryFeeCubit>()),
         BlocProvider<OrdersCubit>.value(

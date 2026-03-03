@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/cubit/orders_cubit.dart';
-import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/core/extensions.dart';
@@ -309,8 +309,7 @@ class _OrderAgainCard extends StatelessWidget {
 
   Future<void> _addOrderToCart(BuildContext context) async {
     final cartCubit = context.read<CartCubit>();
-    final storeState = context.read<StoreCubit>().state;
-    final products = storeState.products ?? [];
+    final products = context.read<CatalogCubit>().state.products ?? [];
 
     int addedCount = 0;
 

@@ -12,6 +12,7 @@ import 'package:totem/pages/cart/widgets/min_order_info.dart';
 import 'package:totem/widgets/order_summary_card.dart';
 import 'package:totem/pages/cart/widgets/recommended_products.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/models/cart_item.dart';
 import 'package:totem/models/product.dart';
@@ -41,15 +42,9 @@ void showCartSidePanel(BuildContext context) {
       final slideAnimation = Tween<Offset>(
         begin: const Offset(1.0, 0.0), // Começa da direita
         end: Offset.zero, // Termina na posição normal
-      ).animate(CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOut,
-      ));
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
 
-      return SlideTransition(
-        position: slideAnimation,
-        child: child,
-      );
+      return SlideTransition(position: slideAnimation, child: child);
     },
   );
 }
@@ -85,7 +80,8 @@ class CartSidePanel extends StatelessWidget {
           child: BlocListener<CartCubit, CartState>(
             listener: (context, state) {
               // Fecha o sidepanel se o carrinho ficar vazio
-              if (state.status == CartStatus.success && state.cart.items.isEmpty) {
+              if (state.status == CartStatus.success &&
+                  state.cart.items.isEmpty) {
                 Navigator.of(context).pop();
               }
             },
@@ -93,7 +89,10 @@ class CartSidePanel extends StatelessWidget {
               children: [
                 // Header do SidePanel
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.cartBackgroundColor,
                     border: Border(
@@ -121,9 +120,7 @@ class CartSidePanel extends StatelessWidget {
                   ),
                 ),
                 // Conteúdo do carrinho (usa o CartPage sem AppBar)
-                Expanded(
-                  child: _CartContent(),
-                ),
+                Expanded(child: _CartContent()),
               ],
             ),
           ),
@@ -167,10 +164,7 @@ class _CartContent extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Adicione itens',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
             ),
           ],
         ),
@@ -191,14 +185,13 @@ class CartPageBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
     final storeState = context.watch<StoreCubit>().state;
+    final catalogState = context.watch<CatalogCubit>().state;
     final store = storeState.store;
-    final allProducts = storeState.products ?? [];
-    final allCategories = storeState.categories ?? [];
+    final allProducts = catalogState.products ?? [];
+    final allCategories = catalogState.activeCategories;
     final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
     final minOrder = store?.getMinOrderForDelivery() ?? 0;
-
-
 
     return BlocBuilder<CartCubit, CartState>(
       builder: (context, state) {
@@ -254,14 +247,16 @@ class CartPageBody extends StatelessWidget {
                       RecommendedProductsSection(
                         recommendedProducts: recommendedProducts,
                         allCategories: allCategories,
-                        onProductTap: (product) => _handleProductTap(context, product),
+                        onProductTap:
+                            (product) => _handleProductTap(context, product),
                       ),
                     const SizedBox(height: 34),
                     CouponSection(couponCode: cart.couponCode),
                     const SizedBox(height: 26),
                     FreeShippingProgress(
                       cartTotal: cart.subtotal / 100.0,
-                      threshold: store?.store_operation_config?.freeDeliveryThreshold,
+                      threshold:
+                          store?.store_operation_config?.freeDeliveryThreshold,
                     ),
                     const SizedBox(height: 40),
                     const OrderSummaryCard(),
@@ -296,7 +291,8 @@ class CartPageBody extends StatelessWidget {
 
     if (hasVariants) {
       // ✅ ENTERPRISE: Usa ID ofuscado na URL
-      final productUrl = '${product.name.toLowerCase().replaceAll(' ', '-')}-${_obfuscateId(product.id!)}';
+      final productUrl =
+          '${product.name.toLowerCase().replaceAll(' ', '-')}-${_obfuscateId(product.id!)}';
       context.push('/product/$productUrl');
     } else {
       final firstCategoryLink = product.categoryLinks.firstOrNull;
@@ -304,7 +300,9 @@ class CartPageBody extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Erro: ${product.name} não pertence a nenhuma categoria.'),
+              content: Text(
+                'Erro: ${product.name} não pertence a nenhuma categoria.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -334,7 +332,9 @@ class CartPageBody extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Não foi possível adicionar ${product.name}. Tente novamente.'),
+              content: Text(
+                'Não foi possível adicionar ${product.name}. Tente novamente.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -343,4 +343,3 @@ class CartPageBody extends StatelessWidget {
     }
   }
 }
-

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/cubit/store_state.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
+import 'package:totem/cubit/catalog_state.dart';
 import 'package:totem/themes/classic/mobile/home_body_mobile.dart';
 
 /// Mobile Menu Page
@@ -11,14 +11,15 @@ class MobileMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<StoreCubit, StoreState>(
-      buildWhen: (previous, current) =>
-          previous.products != current.products ||
-          previous.categories != current.categories ||
-          previous.selectedCategory != current.selectedCategory,
+    return BlocBuilder<CatalogCubit, CatalogState>(
+      buildWhen:
+          (previous, current) =>
+              previous.products != current.products ||
+              previous.categories != current.categories ||
+              previous.selectedCategory != current.selectedCategory,
       builder: (context, state) {
         final banners = state.banners ?? [];
-        final categories = state.categories ?? [];
+        final categories = state.activeCategories;
         final products = state.products ?? [];
         final selectedCategory = state.selectedCategory;
 
@@ -29,7 +30,7 @@ class MobileMenu extends StatelessWidget {
           selectedCategory: selectedCategory,
           onCategorySelected: (c) {
             if (c != null) {
-              context.read<StoreCubit>().selectCategory(c);
+              context.read<CatalogCubit>().selectCategory(c);
             }
           },
         );

@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/models/payment_method.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/widgets/store_closed_widgets.dart';
@@ -14,6 +15,7 @@ import 'package:totem/models/update_cart_payload.dart';
 import 'package:totem/models/cart_item.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/category.dart';
+import 'package:totem/core/services/timezone_service.dart';
 
 /// Página de detalhes do pedido completa - Estilo iFood
 /// ✅ Suporta pedidos cancelados, concluídos e avaliações
@@ -24,7 +26,7 @@ class OrderDetailsPage extends StatelessWidget {
   final bool showRating;
 
   const OrderDetailsPage({
-    super.key, 
+    super.key,
     required this.order,
     this.paymentMethod,
     this.showActions = true,
@@ -68,7 +70,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     _currentStatus = widget.order.lastStatus;
   }
 
-  bool get _isConcluded => _currentStatus.toUpperCase() == 'CONCLUDED' || widget.order.isConcluded;
+  bool get _isConcluded =>
+      _currentStatus.toUpperCase() == 'CONCLUDED' || widget.order.isConcluded;
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +81,11 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFEA1D2C), size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            color: Color(0xFFEA1D2C),
+            size: 20,
+          ),
           onPressed: () => context.pop(),
         ),
         title: const Text(
@@ -119,7 +126,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             _buildPaymentSection(),
             _buildAddressSection(),
             if (widget.showRating || _isConcluded) _buildReviewSection(context),
-            const SizedBox(height: 100), 
+            const SizedBox(height: 100),
           ],
         ),
       ),
@@ -127,8 +134,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildStoreHeader(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy • HH:mm', 'pt_BR');
-    
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -152,7 +157,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Pedido nº ${widget.order.sequentialId} • ${dateFormat.format(widget.order.createdAt)}',
+                      'Pedido nº ${widget.order.sequentialId} • ${TimezoneService.formatStoreDateTime(widget.order.createdAt, context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo", format: 'dd/MM/yyyy • HH:mm')}',
                       style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFF717171),
@@ -195,11 +200,16 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     Color iconColor = Colors.grey;
 
     if (widget.order.isCancelled) {
-      message = 'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?';
+      message =
+          'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?';
       icon = Icons.cancel;
       iconColor = Colors.black87;
     } else if (_isConcluded) {
-      final time = DateFormat('HH:mm').format(widget.order.closedAt ?? widget.order.updatedAt);
+      final time = TimezoneService.formatStoreDateTime(
+        widget.order.closedAt ?? widget.order.updatedAt,
+        context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo",
+        format: 'HH:mm',
+      );
       return Container(
         width: double.infinity,
         margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -226,10 +236,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             const SizedBox(height: 4),
             Text(
               'Pedido entregue às: $time',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF717171),
-              ),
+              style: const TextStyle(fontSize: 14, color: Color(0xFF717171)),
             ),
             const SizedBox(height: 16),
             TextButton(
@@ -285,7 +292,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
-        children: widget.order.items.map((item) => _buildProductItem(item)).toList(),
+        children:
+            widget.order.items.map((item) => _buildProductItem(item)).toList(),
       ),
     );
   }
@@ -341,7 +349,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                       ),
                     ),
                     Text(
-                      NumberFormat.simpleCurrency(locale: 'pt_BR').format(item.priceInReais),
+                      NumberFormat.simpleCurrency(
+                        locale: 'pt_BR',
+                      ).format(item.priceInReais),
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0xFF3F3E3E),
@@ -351,24 +361,26 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                 ),
                 const SizedBox(height: 8),
                 // Sub-itens
-                ...item.subItems.map((sub) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      _buildQuantityBox(sub.quantity),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          sub.name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF717171),
+                ...item.subItems.map(
+                  (sub) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        _buildQuantityBox(sub.quantity),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            sub.name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF717171),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                )),
+                ),
                 // Observações
                 if (item.hasNotes)
                   Padding(
@@ -426,8 +438,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           const SizedBox(height: 16),
           _buildSummaryRow('Subtotal', widget.order.subtotalAmount),
           _buildSummaryRow(
-            'Taxa de entrega', 
-            widget.order.deliveryFeeAmount, 
+            'Taxa de entrega',
+            widget.order.deliveryFeeAmount,
             isFree: widget.order.deliveryFeeAmount == 0,
           ),
           _buildSummaryRow('Taxa de serviço', serviceFee, hasHelp: true),
@@ -444,7 +456,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                 ),
               ),
               Text(
-                NumberFormat.simpleCurrency(locale: 'pt_BR').format(widget.order.totalAmount + serviceFee),
+                NumberFormat.simpleCurrency(
+                  locale: 'pt_BR',
+                ).format(widget.order.totalAmount + serviceFee),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -458,7 +472,12 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     );
   }
 
-  Widget _buildSummaryRow(String label, double value, {bool isFree = false, bool hasHelp = false}) {
+  Widget _buildSummaryRow(
+    String label,
+    double value, {
+    bool isFree = false,
+    bool hasHelp = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -468,10 +487,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF717171),
-                ),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF717171)),
               ),
               if (hasHelp) ...[
                 const SizedBox(width: 4),
@@ -480,7 +496,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             ],
           ),
           Text(
-            isFree ? 'Grátis' : NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
+            isFree
+                ? 'Grátis'
+                : NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
             style: TextStyle(
               fontSize: 14,
               color: isFree ? const Color(0xFF008E2F) : const Color(0xFF717171),
@@ -513,6 +531,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
   Future<void> _handleReorder(BuildContext context) async {
     final storeCubit = context.read<StoreCubit>();
+    final catalogCubit = context.read<CatalogCubit>();
     final cartCubit = context.read<CartCubit>();
     final store = storeCubit.state.store;
 
@@ -520,27 +539,21 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     final status = StoreStatusService.validateStoreStatus(store);
     if (!status.canReceiveOrders) {
       if (context.mounted) {
-        StoreClosedHelper.showModal(
-          context,
-          nextOpenTime: status.message,
-        );
+        StoreClosedHelper.showModal(context, nextOpenTime: status.message);
       }
       return;
     }
 
     try {
       // 2. Itera pelos itens do pedido e reconstrói payloads
-      // Usamos for-in loop para processar sequencialmente (ou Future.wait se preferir paralelo, mas sequencial é mais seguro para o socket do cart_cubit)
       for (final item in widget.order.items) {
-        // Tentamos encontrar o produto real no estado da loja para pegar o categoryId atualizado
-        // Se não acharmos, tentamos inferir do item
-        final product = storeCubit.state.products?.firstWhere(
+        final product = catalogCubit.state.products?.firstWhere(
           (p) => p.id.toString() == item.id,
           orElse: () => Product.empty().copyWith(id: int.tryParse(item.id)),
         );
 
         final categoryId = product?.primaryCategoryId ?? 0;
-        
+
         // Reconstrói variantes se existirem
         List<CartItemVariant>? variants;
         if (item.subItems.isNotEmpty) {
@@ -688,10 +701,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           const SizedBox(height: 4),
           const Text(
             'Confirme quando receber pra gente saber se deu tudo certo',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF717171),
-            ),
+            style: TextStyle(fontSize: 13, color: Color(0xFF717171)),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -745,7 +755,11 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               ),
               const SizedBox(height: 24),
               // Placeholder para a imagem do ícone do iFood/Entregador
-              const Icon(Icons.delivery_dining, size: 80, color: Color(0xFFEA1D2C)),
+              const Icon(
+                Icons.delivery_dining,
+                size: 80,
+                color: Color(0xFFEA1D2C),
+              ),
               const SizedBox(height: 24),
               const Text(
                 'Você pode confirmar que recebeu seu pedido?',
@@ -879,13 +893,20 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               const SizedBox(width: 12),
               Expanded(
                 child: Row(
-                  children: List.generate(5, (index) => GestureDetector(
-                    onTap: () => _startEvaluation(context),
-                    child: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(Icons.star_outline, color: Colors.grey, size: 36),
+                  children: List.generate(
+                    5,
+                    (index) => GestureDetector(
+                      onTap: () => _startEvaluation(context),
+                      child: const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Icon(
+                          Icons.star_outline,
+                          color: Colors.grey,
+                          size: 36,
+                        ),
+                      ),
                     ),
-                  )),
+                  ),
                 ),
               ),
             ],
@@ -909,15 +930,18 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         shape: BoxShape.circle,
       ),
       child: ClipOval(
-        child: logoUrl != null && logoUrl.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: _formatImageUrl(logoUrl),
-                fit: BoxFit.cover,
-                width: size,
-                height: size,
-                errorWidget: (_, __, ___) => const Icon(Icons.store, color: Colors.grey),
-              )
-            : const Icon(Icons.store, color: Colors.grey),
+        child:
+            logoUrl != null && logoUrl.isNotEmpty
+                ? CachedNetworkImage(
+                  imageUrl: _formatImageUrl(logoUrl),
+                  fit: BoxFit.cover,
+                  width: size,
+                  height: size,
+                  errorWidget:
+                      (_, __, ___) =>
+                          const Icon(Icons.store, color: Colors.grey),
+                )
+                : const Icon(Icons.store, color: Colors.grey),
       ),
     );
   }
@@ -932,15 +956,18 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: url != null && url.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: _formatImageUrl(url),
-                fit: BoxFit.cover,
-                width: 64,
-                height: 64,
-                errorWidget: (_, __, ___) => const Icon(Icons.restaurant, color: Colors.grey),
-              )
-            : const Icon(Icons.restaurant, color: Colors.grey),
+        child:
+            url != null && url.isNotEmpty
+                ? CachedNetworkImage(
+                  imageUrl: _formatImageUrl(url),
+                  fit: BoxFit.cover,
+                  width: 64,
+                  height: 64,
+                  errorWidget:
+                      (_, __, ___) =>
+                          const Icon(Icons.restaurant, color: Colors.grey),
+                )
+                : const Icon(Icons.restaurant, color: Colors.grey),
       ),
     );
   }

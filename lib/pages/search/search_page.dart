@@ -6,14 +6,11 @@ import 'package:collection/collection.dart';
 import 'package:totem/models/product.dart';
 import 'package:totem/models/category.dart';
 import 'package:totem/themes/classic/widgets/product_item.dart';
-import '../../cubit/store_state.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
+import 'package:totem/cubit/catalog_state.dart';
 import '../../helpers/navigation_helper.dart';
-import '../../cubit/store_cubit.dart';
 
 /// Tela de Busca Fullscreen no estilo Menuhub
-/// - Campo de busca no topo com botão Cancelar
-/// - Resultados agrupados por categoria (lista, não grid)
-/// - Ao clicar em um item, abre a tela de detalhes normal
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -30,7 +27,6 @@ class _SearchPageState extends State<SearchPage> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    // Foca automaticamente no campo de busca
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocus.requestFocus();
     });
@@ -50,7 +46,6 @@ class _SearchPageState extends State<SearchPage> {
     });
   }
 
-  /// Filtra produtos pelo termo de busca
   List<Product> _filterProducts(List<Product> products) {
     if (_searchQuery.isEmpty) return [];
 
@@ -62,7 +57,6 @@ class _SearchPageState extends State<SearchPage> {
     }).toList();
   }
 
-  /// Agrupa produtos por categoria
   Map<Category, List<Product>> _groupByCategory(
     List<Product> filteredProducts,
     List<Category> categories,
@@ -70,25 +64,18 @@ class _SearchPageState extends State<SearchPage> {
     final Map<Category, List<Product>> grouped = {};
 
     for (final product in filteredProducts) {
-      // Encontra a categoria do produto
       Category? category;
-
-      // Tenta encontrar pelo primaryCategoryId
       if (product.primaryCategoryId != null) {
         category = categories.firstWhereOrNull(
           (c) => c.id == product.primaryCategoryId,
         );
       }
-
-      // Tenta encontrar pelos categoryLinks
       if (category == null && product.categoryLinks.isNotEmpty) {
         final firstLinkCategoryId = product.categoryLinks.first.categoryId;
         category = categories.firstWhereOrNull(
           (c) => c.id == firstLinkCategoryId,
         );
       }
-
-      // Se encontrou categoria, adiciona ao grupo
       if (category != null) {
         grouped.putIfAbsent(category, () => []);
         grouped[category]!.add(product);
@@ -105,7 +92,6 @@ class _SearchPageState extends State<SearchPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // ✅ Header com campo de busca e botão Cancelar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -120,7 +106,6 @@ class _SearchPageState extends State<SearchPage> {
               ),
               child: Row(
                 children: [
-                  // Campo de busca
                   Expanded(
                     child: Container(
                       height: 40,
@@ -161,7 +146,6 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Botão Cancelar
                   GestureDetector(
                     onTap: () => context.pop(),
                     child: Text(
@@ -176,31 +160,24 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
-
-            // ✅ Conteúdo dos resultados
             Expanded(
-              child: BlocBuilder<StoreCubit, StoreState>(
+              child: BlocBuilder<CatalogCubit, CatalogState>(
                 builder: (context, state) {
                   final allProducts = state.products ?? [];
                   final categories = state.categories ?? [];
 
-                  // Se não há busca, mostra placeholder
                   if (_searchQuery.isEmpty) {
                     return _buildEmptySearchState();
                   }
 
-                  // Filtra produtos
                   final filtered = _filterProducts(allProducts);
 
-                  // Se não encontrou nada
                   if (filtered.isEmpty) {
                     return _buildNoResultsState();
                   }
 
-                  // Agrupa por categoria
                   final grouped = _groupByCategory(filtered, categories);
 
-                  // Constrói a lista
                   return SingleChildScrollView(
                     padding: const EdgeInsets.only(bottom: 24),
                     child: Column(
@@ -219,7 +196,6 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// Placeholder quando não há busca
   Widget _buildEmptySearchState() {
     return Center(
       child: Column(
@@ -240,7 +216,6 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// Quando não encontra resultados
   Widget _buildNoResultsState() {
     return Center(
       child: Column(
@@ -261,12 +236,10 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// Seção de categoria com produtos
   Widget _buildCategorySection(Category category, List<Product> products) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header da categoria
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
           child: Text(
@@ -278,7 +251,6 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
         ),
-        // Lista de produtos simplificada (Imagem 5)
         ...products.map((product) => _buildSearchResultItem(product, category)),
       ],
     );

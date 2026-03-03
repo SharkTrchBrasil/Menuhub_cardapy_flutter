@@ -14,21 +14,23 @@
 
 import 'package:intl/intl.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 
 class TimezoneService {
   /// Inicializa o sistema de timezones
   /// Deve ser chamado no main() antes de runApp()
   static Future<void> initialize() async {
-    // Não precisa de timezone data adicional, o package já vem com os dados
+    // Carrega dados de fuso horário
+    tz_data.initializeTimeZones();
   }
 
   /// Converte um DateTime UTC (do backend) para o timezone da loja
-  /// 
+  ///
   /// Exemplo:
   /// - Backend envia: "2026-01-03T13:00:00+00:00" (UTC)
   /// - Store timezone: "America/Sao_Paulo" (UTC-3)
   /// - Resultado: 2026-01-03 10:00:00 -03:00 (horário da loja)
-  /// 
+  ///
   /// ⚠️ NÃO use .toLocal() que converte para timezone do dispositivo!
   static DateTime parseUTCWithStoreTimezone(
     String utcString,
@@ -43,7 +45,9 @@ class TimezoneService {
       return tz.TZDateTime.from(utc, location);
     } catch (e) {
       // Fallback para São Paulo se timezone inválido
-      print('⚠️ Erro ao converter timezone: $e. Usando America/Sao_Paulo como fallback.');
+      print(
+        '⚠️ Erro ao converter timezone: $e. Usando America/Sao_Paulo como fallback.',
+      );
       final location = tz.getLocation('America/Sao_Paulo');
       final utc = DateTime.parse(utcString).toUtc();
       return tz.TZDateTime.from(utc, location);
@@ -59,14 +63,16 @@ class TimezoneService {
       final location = tz.getLocation(storeTimezone);
       return tz.TZDateTime.from(utc.toUtc(), location);
     } catch (e) {
-      print('⚠️ Erro ao converter timezone: $e. Usando America/Sao_Paulo como fallback.');
+      print(
+        '⚠️ Erro ao converter timezone: $e. Usando America/Sao_Paulo como fallback.',
+      );
       final location = tz.getLocation('America/Sao_Paulo');
       return tz.TZDateTime.from(utc.toUtc(), location);
     }
   }
 
   /// Formata DateTime UTC para exibição no timezone da loja
-  /// 
+  ///
   /// Exemplo:
   /// ```dart
   /// final display = TimezoneService.formatStoreDateTime(
@@ -92,7 +98,7 @@ class TimezoneService {
   }
 
   /// Converte um DateTime do timezone da loja para UTC (para enviar ao backend)
-  /// 
+  ///
   /// Usado quando o usuário seleciona uma data/hora no frontend e você
   /// precisa enviar ao backend
   static DateTime convertStoreTimezoneToUTC(

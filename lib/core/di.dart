@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/controllers/customer_controller.dart';
 import 'package:totem/controllers/menu_app_controller.dart';
@@ -220,5 +221,9 @@ Future<void> configureDependencies() async {
 
   getIt.registerLazySingleton<StoreCubit>(
     () => StoreCubit(getIt<RealtimeRepository>()),
+  );
+
+  getIt.registerLazySingleton<CatalogCubit>(
+    () => CatalogCubit(getIt<RealtimeRepository>()),
   );
 }

@@ -39,7 +39,6 @@ class Store {
     this.store_operation_config,
     this.ratingsSummary,
     this.cities = const [],
-    this.categories = const [],
     this.scheduledPauses = const [],
     this.coupons = const [],
     this.deliveryFeeRules = const [],
@@ -78,7 +77,6 @@ class Store {
   final StoreOperationConfig? store_operation_config;
   RatingsSummary? ratingsSummary;
   final List<StoreCity> cities;
-  final List<Category> categories;
   final List<ScheduledPause> scheduledPauses;
   final List<Coupon> coupons;
   final List<DeliveryFeeRule> deliveryFeeRules;
@@ -145,11 +143,6 @@ class Store {
               ?.map((e) => StoreCity.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      categories:
-          (json['categories'] as List<dynamic>?)
-              ?.map((e) => Category.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
       scheduledPauses:
           (json['scheduled_pauses'] as List<dynamic>?)
               ?.map((e) => ScheduledPause.fromJson(e as Map<String, dynamic>))
@@ -200,7 +193,6 @@ class Store {
     StoreOperationConfig? store_operation_config,
     RatingsSummary? ratingsSummary,
     List<StoreCity>? cities,
-    List<Category>? categories,
     List<ScheduledPause>? scheduledPauses,
     List<Coupon>? coupons,
     List<DeliveryFeeRule>? deliveryFeeRules,
@@ -237,7 +229,6 @@ class Store {
           store_operation_config ?? this.store_operation_config,
       ratingsSummary: ratingsSummary ?? this.ratingsSummary,
       cities: cities ?? this.cities,
-      categories: categories ?? this.categories,
       scheduledPauses: scheduledPauses ?? this.scheduledPauses,
       coupons: coupons ?? this.coupons,
       deliveryFeeRules: deliveryFeeRules ?? this.deliveryFeeRules,

@@ -381,30 +381,49 @@ class Product extends Equatable {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // Helper para parse de int seguro
+    int? asInt(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      return int.tryParse(value.toString());
+    }
+
+    // Helper para parse de bool seguro
+    bool asBool(dynamic value, {bool defaultValue = false}) {
+      if (value == null) return defaultValue;
+      if (value is bool) return value;
+      if (value is int) return value == 1;
+      final str = value.toString().toLowerCase();
+      return str == 'true' || str == '1' || str == 'yes';
+    }
+
     return Product(
-      id: json['id'],
-      name: json['name'] ?? '',
-      description: json['description'],
-      status: ProductStatus.fromString(json['status']),
-      ean: json['ean'],
-      externalCode: json['external_code'],
-      stockQuantity: json['stock_quantity'] ?? 0,
-      controlStock: json['control_stock'] ?? false,
-      minStock: json['min_stock'] ?? 0,
-      maxStock: json['max_stock'] ?? 0,
-      unit: ProductUnit.fromString(json['unit']),
-      priority: json['priority'] ?? 0,
-      featured: json['featured'] ?? false,
-      storeId: json['store_id'] ?? 0,
-      servesUpTo: json['serves_up_to'],
-      weight: json['weight'],
-      soldCount: json['sold_count'] ?? 0,
-      productType: ProductType.fromString(json['product_type']),
+      id: asInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
+      status: ProductStatus.fromString(json['status']?.toString()),
+      ean: json['ean']?.toString(),
+      externalCode: json['external_code']?.toString(),
+      stockQuantity: asInt(json['stock_quantity']) ?? 0,
+      controlStock: asBool(json['control_stock']),
+      minStock: asInt(json['min_stock']) ?? 0,
+      maxStock: asInt(json['max_stock']) ?? 0,
+      unit: ProductUnit.fromString(json['unit']?.toString()),
+      priority: asInt(json['priority']) ?? 0,
+      featured: asBool(json['featured']),
+      storeId: asInt(json['store_id']) ?? 0,
+      servesUpTo: asInt(json['serves_up_to']),
+      weight: asInt(json['weight']),
+      soldCount: asInt(json['sold_count']) ?? 0,
+      productType: ProductType.fromString(json['product_type']?.toString()),
 
       // Parse de category_links PRIMEIRO (para usar como fallback de preço)
       categoryLinks:
           (json['category_links'] as List<dynamic>? ?? [])
-              .map((link) => ProductCategoryLink.fromJson(link))
+              .map(
+                (link) =>
+                    ProductCategoryLink.fromJson(link as Map<String, dynamic>),
+              )
               .toList(),
 
       // ✅ CORREÇÃO: Se price é null, usa o preço do primeiro category_link
@@ -413,22 +432,28 @@ class Product extends Equatable {
           json['cost_price'] != null ? _parsePrice(json['cost_price']) : null,
       isOnPromotion: _getPromotionWithFallback(json),
       promotionalPrice: _getPromotionalPriceWithFallback(json),
-      primaryCategoryId: json['primary_category_id'],
-      hasMultiplePrices: json['has_multiple_prices'] ?? false,
+      primaryCategoryId: asInt(json['primary_category_id']),
+      hasMultiplePrices: asBool(json['has_multiple_prices']),
 
       // Parse de listas
       variantLinks:
           (json['variant_links'] as List<dynamic>? ?? [])
-              .map((link) => ProductVariantLink.fromJson(link))
+              .map(
+                (link) =>
+                    ProductVariantLink.fromJson(link as Map<String, dynamic>),
+              )
               .toList(),
       // categoryLinks já foi parseado acima
       prices:
           (json['prices'] as List<dynamic>? ?? [])
-              .map((p) => FlavorPrice.fromJson(p))
+              .map((p) => FlavorPrice.fromJson(p as Map<String, dynamic>))
               .toList(),
       images:
           (json['gallery_images'] as List<dynamic>? ?? [])
-              .map((imgJson) => ImageModel.fromJson(imgJson))
+              .map(
+                (imgJson) =>
+                    ImageModel.fromJson(imgJson as Map<String, dynamic>),
+              )
               .toList(),
 
       // Tags
@@ -442,35 +467,35 @@ class Product extends Equatable {
               .toList(),
 
       // Vídeo
-      videoUrl: json['video_url'],
+      videoUrl: json['video_url']?.toString(),
 
       // Disponibilidade
       availabilityType:
-          json['availability_type'] == 'SCHEDULED'
+          json['availability_type']?.toString().toUpperCase() == 'SCHEDULED'
               ? AvailabilityType.scheduled
               : AvailabilityType.always,
       schedules:
           (json['schedules'] as List<dynamic>? ?? [])
-              .map((s) => ScheduleRule.fromJson(s))
+              .map((s) => ScheduleRule.fromJson(s as Map<String, dynamic>))
               .toList(),
 
       // Mercado/Farmácia
-      packaging: json['packaging'],
-      quantity: json['quantity'],
-      sellingMinimum: json['selling_minimum'],
-      sellingIncremental: json['selling_incremental'],
-      averageUnit: json['average_unit'],
+      packaging: json['packaging']?.toString(),
+      quantity: asInt(json['quantity']),
+      sellingMinimum: asInt(json['selling_minimum']),
+      sellingIncremental: asInt(json['selling_incremental']),
+      averageUnit: asInt(json['average_unit']),
 
       // Campos adicionais
-      isIndustrialized: json['is_industrialized'] ?? false,
-      externalItemId: json['external_item_id'],
-      externalProductId: json['external_product_id'],
-      availabilityStatus: json['availability_status'],
-      stockStatus: json['stock_status'],
-      hasViolation: json['has_violation'] ?? false,
-      canEdit: json['can_edit'] ?? true,
-      violationCheckState: json['violation_check_state'],
-      sellingRank: json['selling_rank'] ?? 0,
+      isIndustrialized: asBool(json['is_industrialized']),
+      externalItemId: json['external_item_id']?.toString(),
+      externalProductId: json['external_product_id']?.toString(),
+      availabilityStatus: json['availability_status']?.toString(),
+      stockStatus: json['stock_status']?.toString(),
+      hasViolation: asBool(json['has_violation']),
+      canEdit: asBool(json['can_edit'], defaultValue: true),
+      violationCheckState: json['violation_check_state']?.toString(),
+      sellingRank: asInt(json['selling_rank']) ?? 0,
       promotionTags:
           (json['promotion_tags'] as List<dynamic>?)
               ?.map((tag) => tag.toString())
@@ -481,48 +506,48 @@ class Product extends Equatable {
               ?.map((c) => c.toString())
               .toList() ??
           const [],
+
       // ✅ CAMPOS ADICIONAIS DO CATÁLOGO
-      availability: json['availability'],
+      availability: json['availability']?.toString(),
       problems:
           json['problems'] != null
-              ? Map<String, dynamic>.from(json['problems'])
+              ? Map<String, dynamic>.from(json['problems'] as Map)
               : null,
-      productEan: json['product_ean'] ?? json['ean'], // Fallback para ean
-      sequence:
-          json['sequence'] ?? json['priority'] ?? 0, // Fallback para priority
+      productEan: (json['product_ean'] ?? json['ean'])?.toString(),
+      sequence: asInt(json['sequence']) ?? asInt(json['priority']) ?? 0,
       violation:
           json['violation'] != null
-              ? Map<String, dynamic>.from(json['violation'])
+              ? Map<String, dynamic>.from(json['violation'] as Map)
               : null,
       extensions:
           (json['extensions'] as List<dynamic>? ?? [])
-              .map((ext) => Map<String, dynamic>.from(ext))
+              .map((ext) => Map<String, dynamic>.from(ext as Map))
               .toList(),
-      suggestedCombo: json['suggested_combo'] ?? false,
+      suggestedCombo: asBool(json['suggested_combo']),
       itemPrice:
           json['item_price'] != null
-              ? Map<String, dynamic>.from(json['item_price'])
+              ? Map<String, dynamic>.from(json['item_price'] as Map)
               : null,
       available:
-          json['available'] ??
-          (json['status'] == 'ACTIVE' || json['status'] == 'AVAILABLE'),
+          asBool(json['available']) ||
+          (json['status']?.toString() == 'ACTIVE' ||
+              json['status']?.toString() == 'AVAILABLE'),
       statusByCatalog:
           json['status_by_catalog'] != null
               ? (json['status_by_catalog'] as List<dynamic>)
-                  .map((item) => Map<String, dynamic>.from(item))
+                  .map((item) => Map<String, dynamic>.from(item as Map))
                   .toList()
               : null,
       externalCodes:
           json['external_codes'] != null
               ? (json['external_codes'] as List<dynamic>)
-                  .map((item) => Map<String, dynamic>.from(item))
+                  .map((item) => Map<String, dynamic>.from(item as Map))
                   .toList()
               : null,
-      cashbackType: json['cashback_type'],
-      cashbackValue: json['cashback_value'] ?? 0,
-      masterProductId: json['master_product_id'],
-      linkedProductId:
-          json['linked_product_id'], // ✅ Leitura do linked_product_id
+      cashbackType: json['cashback_type']?.toString(),
+      cashbackValue: asInt(json['cashback_value']) ?? 0,
+      masterProductId: asInt(json['master_product_id']),
+      linkedProductId: asInt(json['linked_product_id']),
     );
   }
 
