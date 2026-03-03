@@ -536,7 +536,62 @@ class ProductPageCubit extends Cubit<ProductPageState> {
   void selectSize(OptionItem size) {
     if (state.product == null || !state.product!.category.isCustomizable)
       return;
-    final updatedProduct = state.product!.copyWith(selectedSize: size);
+
+    // ✅ FIX PIZZA PREÇO: Ao trocar de tamanho, recalcula os preços dos sabores
+    // usando prices_by_size do novo tamanho selecionado.
+    // Sem isso, os preços ficam congelados no valor do tamanho anterior (ou 0).
+    final category = state.product!.category;
+    final toppingGroupIds =
+        category.optionGroups
+            .where((g) => g.groupType == OptionGroupType.topping)
+            .map((g) => g.id)
+            .toSet();
+
+    final updatedVariants =
+        state.product!.selectedVariants.map((variant) {
+          // Só atualiza preços de grupos TOPPING
+          if (!toppingGroupIds.contains(variant.id)) return variant;
+
+          // Encontra o OptionGroup original para acessar pricesBySize
+          final originalGroup = category.optionGroups.firstWhereOrNull(
+            (g) => g.id == variant.id,
+          );
+          if (originalGroup == null) return variant;
+
+          final updatedOptions =
+              variant.cartOptions.map((cartOption) {
+                final originalItem = originalGroup.items.firstWhereOrNull(
+                  (item) => item.id == cartOption.id,
+                );
+                if (originalItem == null) return cartOption;
+
+                // Resolve preço via prices_by_size para o novo tamanho
+                final newPrice =
+                    originalItem.getPriceForSize(size.id) ??
+                    originalItem.getPriceForSize(size.linkedProductId) ??
+                    originalItem.price;
+
+                return cartOption.copyWith(
+                  price: newPrice > 0 ? newPrice : cartOption.price,
+                );
+              }).toList();
+
+          return CartVariant(
+            id: variant.id,
+            name: variant.name,
+            groupType: variant.groupType,
+            uiDisplayMode: variant.uiDisplayMode,
+            minSelectedOptions: variant.minSelectedOptions,
+            maxSelectedOptions: variant.maxSelectedOptions,
+            maxTotalQuantity: variant.maxTotalQuantity,
+            cartOptions: updatedOptions,
+          );
+        }).toList();
+
+    final updatedProduct = state.product!.copyWith(
+      selectedSize: size,
+      selectedVariants: updatedVariants,
+    );
     emit(
       state.copyWith(
         product: updatedProduct,

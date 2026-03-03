@@ -17,29 +17,32 @@ class OptionItem extends Equatable {
   final int? maxFlavors;
   final List<String> tags;
   final ImageModel? image;
-  
+
   // Referência ao OptionItem pai (ex: tamanho)
   final int? parentCustomizationOptionId;
-  
+
   // Preços por tamanho {nome_do_tamanho: preco_em_centavos}
   final Map<String, int>? pricesBySize;
-  
+
   // Campos adicionais
   final bool isIndustrialized;
   final bool? isShared;
   final String? externalProductId;
-  
+
   // ✅ NOVO: Product real vinculado (para tamanhos de pizza - igual ao Menuhub)
   // No carrinho, este ID deve ser usado como product_id
   final int? linkedProductId;
-  
+
   // ✅ CAMPOS ADICIONAIS DO CATÁLOGO (alinhados com estrutura completa)
-  final List<Map<String, dynamic>>? customizationModifiers; // Preços do sabor por tamanho
+  final List<Map<String, dynamic>>?
+  customizationModifiers; // Preços do sabor por tamanho
   final List<Map<String, dynamic>>? statusByCatalog; // Status por catálogo
   final List<Map<String, dynamic>>? priceByCatalog; // Preços por catálogo
-  final List<Map<String, dynamic>>? externalCodes; // Códigos externos por catálogo
-  final List<int>? fractions; // Número de sabores permitidos (ex: [2] = 2 sabores)
-  
+  final List<Map<String, dynamic>>?
+  externalCodes; // Códigos externos por catálogo
+  final List<int>?
+  fractions; // Número de sabores permitidos (ex: [2] = 2 sabores)
+
   // ✅ IDs reais para combos de pizza (Massa + Borda)
   final int? crustId;
   final int? edgeId;
@@ -87,8 +90,15 @@ class OptionItem extends Equatable {
     if (sizeIdentifier == null || pricesBySize == null) {
       return null;
     }
-    final key = sizeIdentifier is String ? sizeIdentifier : sizeIdentifier.toString();
-    return pricesBySize![key];
+    final key =
+        sizeIdentifier is String ? sizeIdentifier : sizeIdentifier.toString();
+    final result = pricesBySize![key];
+    if (result == null) {
+      print(
+        '⚠️ [getPriceForSize] Chave "$key" não encontrada. Chaves disponíveis: ${pricesBySize!.keys.toList()}',
+      );
+    }
+    return result;
   }
 
   factory OptionItem.fromJson(Map<String, dynamic> json) {
@@ -103,14 +113,25 @@ class OptionItem extends Equatable {
           ),
         );
       } else if (json['prices_by_size'] is List) {
-        // Formato alternativo: lista de objetos
+        // Formato do backend: lista de objetos com size_option_id e price
+        // O backend envia: {size_option_id: 511, size_option_name: "Pequena", price: {value: 1250}}
         pricesBySize = {};
         for (var item in (json['prices_by_size'] as List)) {
           if (item is Map) {
-            final sizeName = item['parent_option_name'] as String?;
-            // ✅ FIX: Use _parsePrice para lidar com int ou MoneyAmount object
             final priceValue = _parsePrice(item['price']);
-            if (sizeName != null && priceValue > 0) {
+            if (priceValue <= 0) continue;
+
+            // ✅ FIX CRÍTICO: Usa size_option_id como chave (compatível com getPriceForSize(sizeId))
+            final sizeOptionId =
+                item['size_option_id'] ?? item['parent_option_id'];
+            if (sizeOptionId != null) {
+              pricesBySize[sizeOptionId.toString()] = priceValue;
+            }
+
+            // ✅ FALLBACK: Também adiciona por nome para compatibilidade com formatos legados
+            final sizeName =
+                item['size_option_name'] ?? item['parent_option_name'];
+            if (sizeName != null && sizeName is String && sizeName.isNotEmpty) {
               pricesBySize[sizeName] = priceValue;
             }
           }
@@ -119,7 +140,7 @@ class OptionItem extends Equatable {
     }
 
     return OptionItem(
-      id: json['id'],
+      id: _parseInt(json['id']) ?? 0,
       name: json['name'] ?? '',
       description: json['description'],
       // Preço pode vir em reais (float) ou centavos (int)
@@ -129,45 +150,54 @@ class OptionItem extends Equatable {
       externalCode: json['external_code'],
       slices: json['slices'],
       maxFlavors: _parseInt(json['max_flavors']),
-      tags: (json['tags'] as List<dynamic>? ?? [])
-          .map((tag) => tag.toString())
-          .toList(),
-      image: json['image_path'] != null 
-          ? ImageModel(url: json['image_path']) 
-          : null,
+      tags:
+          (json['tags'] as List<dynamic>? ?? [])
+              .map((tag) => tag.toString())
+              .toList(),
+      image:
+          json['image_path'] != null
+              ? ImageModel(url: json['image_path'])
+              : null,
       parentCustomizationOptionId: json['parent_customization_option_id'],
       pricesBySize: pricesBySize,
       isIndustrialized: json['is_industrialized'] ?? false,
       isShared: json['is_shared'],
-      externalProductId: json['external_product_id'] ?? json['ifood_product_id'], // Compatibilidade
+      externalProductId:
+          json['external_product_id'] ??
+          json['ifood_product_id'], // Compatibilidade
 
       linkedProductId: json['linked_product_id'], // ✅ NOVO
       // ✅ CAMPOS ADICIONAIS DO CATÁLOGO
-      customizationModifiers: json['customization_modifiers'] != null
-          ? (json['customization_modifiers'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
-      statusByCatalog: json['status_by_catalog'] != null
-          ? (json['status_by_catalog'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
-      priceByCatalog: json['price_by_catalog'] != null
-          ? (json['price_by_catalog'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
-      externalCodes: json['external_codes'] != null
-          ? (json['external_codes'] as List<dynamic>)
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-          : null,
-      fractions: json['fractions'] != null
-          ? (json['fractions'] as List<dynamic>)
-              .map((item) => item is int ? item : (item as num).toInt())
-              .toList()
-          : null,
+      customizationModifiers:
+          json['customization_modifiers'] != null
+              ? (json['customization_modifiers'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
+      statusByCatalog:
+          json['status_by_catalog'] != null
+              ? (json['status_by_catalog'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
+      priceByCatalog:
+          json['price_by_catalog'] != null
+              ? (json['price_by_catalog'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
+      externalCodes:
+          json['external_codes'] != null
+              ? (json['external_codes'] as List<dynamic>)
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : null,
+      fractions:
+          json['fractions'] != null
+              ? (json['fractions'] as List<dynamic>)
+                  .map((item) => item is int ? item : (item as num).toInt())
+                  .toList()
+              : null,
       crustId: json['crust_id'],
       edgeId: json['edge_id'],
       crustName: json['crust_name'],
@@ -180,7 +210,7 @@ class OptionItem extends Equatable {
   /// Helper para parsear preço (pode vir em reais, centavos ou como MoneyAmount object)
   static int _parsePrice(dynamic value) {
     if (value == null) return 0;
-    
+
     // ✅ FIX: Se for um Map (MoneyAmount object), extrai o valor
     if (value is Map) {
       final priceValue = value['value'];
@@ -188,7 +218,7 @@ class OptionItem extends Equatable {
       if (priceValue is double) return priceValue.round();
       return 0;
     }
-    
+
     if (value is int) return value;
     if (value is double) {
       // Se for menor que 1000, provavelmente está em reais
@@ -275,7 +305,8 @@ class OptionItem extends Equatable {
       maxFlavors: maxFlavors ?? this.maxFlavors,
       tags: tags ?? this.tags,
       image: forceImageToNull ? null : (image ?? this.image),
-      parentCustomizationOptionId: parentCustomizationOptionId ?? this.parentCustomizationOptionId,
+      parentCustomizationOptionId:
+          parentCustomizationOptionId ?? this.parentCustomizationOptionId,
       pricesBySize: pricesBySize ?? this.pricesBySize,
       isIndustrialized: isIndustrialized ?? this.isIndustrialized,
       isShared: isShared ?? this.isShared,
@@ -283,7 +314,8 @@ class OptionItem extends Equatable {
 
       linkedProductId: linkedProductId ?? this.linkedProductId, // ✅ NOVO
       // ✅ CAMPOS ADICIONAIS DO CATÁLOGO
-      customizationModifiers: customizationModifiers ?? this.customizationModifiers,
+      customizationModifiers:
+          customizationModifiers ?? this.customizationModifiers,
       statusByCatalog: statusByCatalog ?? this.statusByCatalog,
       priceByCatalog: priceByCatalog ?? this.priceByCatalog,
       externalCodes: externalCodes ?? this.externalCodes,
@@ -332,5 +364,6 @@ class OptionItem extends Equatable {
   ];
 
   @override
-  String toString() => 'OptionItem(id: $id, name: $name, price: $price, isActive: $isActive)';
+  String toString() =>
+      'OptionItem(id: $id, name: $name, price: $price, isActive: $isActive)';
 }

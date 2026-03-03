@@ -7,6 +7,7 @@ import 'package:totem/models/option_item.dart';
 import 'package:totem/models/image_model.dart';
 import 'package:collection/collection.dart';
 import 'package:totem/helpers/enums/product_status.dart';
+import 'package:totem/core/utils/app_logger.dart';
 
 /// Resultado da adaptação de pizza
 class PizzaAdaptationResult {
@@ -27,15 +28,17 @@ class PizzaAdapterHelper {
   /// Formato esperado: /product/:slug/:productId?size=:sizeId
   static OptionItem? getSelectedSize(Category category, int? sizeId) {
     if (sizeId == null) return null;
-    
+
     // 1. Tenta encontrar o grupo explicitamente marcado como SIZE
     var sizeGroup = category.optionGroups.firstWhereOrNull(
       (g) => g.groupType == OptionGroupType.size,
     );
-    
+
     // 2. Fallback: Se não achar grupo SIZE, procura em qualquer grupo que contenha o item
     if (sizeGroup == null) {
-      print("⚠️ [PizzaAdapter] Grupo SIZE não encontrado. Procurando item $sizeId em outros grupos...");
+      print(
+        "⚠️ [PizzaAdapter] Grupo SIZE não encontrado. Procurando item $sizeId em outros grupos...",
+      );
       for (var group in category.optionGroups) {
         if (group.items.any((item) => item.id == sizeId)) {
           sizeGroup = group;
@@ -44,20 +47,22 @@ class PizzaAdapterHelper {
         }
       }
     }
-    
+
     if (sizeGroup == null) {
       print("❌ [PizzaAdapter] Tamanho $sizeId não encontrado em nenhum grupo.");
       return null;
     }
-    
-    final selectedSize = sizeGroup.items.firstWhereOrNull((item) => item.id == sizeId);
-    
+
+    final selectedSize = sizeGroup.items.firstWhereOrNull(
+      (item) => item.id == sizeId,
+    );
+
     if (selectedSize != null) {
       print("🔍 [PizzaAdapter] Tamanho encontrado: ${selectedSize.name}");
       print("   - OptionItem.id: ${selectedSize.id}");
       print("   - OptionItem.linkedProductId: ${selectedSize.linkedProductId}");
     }
-    
+
     return selectedSize;
   }
 
@@ -68,7 +73,7 @@ class PizzaAdapterHelper {
     if (size.maxFlavors != null && size.maxFlavors! > 0) {
       return size.maxFlavors!;
     }
-    
+
     // Caso contrário, extrai do nome
     final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
     final match = regex.firstMatch(size.name);
@@ -89,51 +94,62 @@ class PizzaAdapterHelper {
     final List<OptionGroup> flavorGroups = [];
 
     for (int i = 0; i < maxFlavors; i++) {
-      final groupName = i == 0
-          ? 'Escolha um sabor'
-          : i == 1
+      final groupName =
+          i == 0
+              ? 'Escolha um sabor'
+              : i == 1
               ? 'Escolha o segundo sabor'
               : i == 2
-                  ? 'Escolha o terceiro sabor'
-                  : 'Escolha o ${i + 1}º sabor';
+              ? 'Escolha o terceiro sabor'
+              : 'Escolha o ${i + 1}º sabor';
 
       // Cria OptionItems virtuais para cada sabor disponível e ATIVO
-      final flavorItems = availableFlavors.map((flavor) {
-        // ✅ VALIDAÇÃO 1: Verifica se o sabor (produto) está ativo
-        if (flavor.status != ProductStatus.ACTIVE) {
-          return null; // Sabor pausado/inativo, não inclui
-        }
-        
-        // Encontra o preço deste sabor para o tamanho selecionado
-        final flavorPrice = flavor.prices.firstWhereOrNull(
-          (fp) => fp.sizeOptionId == size.id,
-        );
+      final flavorItems =
+          availableFlavors
+              .map((flavor) {
+                // ✅ VALIDAÇÃO 1: Verifica se o sabor (produto) está ativo
+                if (flavor.status != ProductStatus.ACTIVE) {
+                  return null; // Sabor pausado/inativo, não inclui
+                }
 
-        // ✅ VALIDAÇÃO 2: Filtra sabores sem preço ou indisponíveis no tamanho (pausados)
-        if (flavorPrice == null || flavorPrice.id == null || !flavorPrice.isAvailable) {
-          return null;
-        }
+                // Encontra o preço deste sabor para o tamanho selecionado
+                final flavorPrice = flavor.prices.firstWhereOrNull(
+                  (fp) => fp.sizeOptionId == size.id,
+                );
 
-        // Formata o nome com fração (ex: "1/2 Calabresa")
-        final fraction = maxFlavors > 1 ? '1/$maxFlavors ' : '';
-        final displayName = '${fraction}${flavor.name}';
+                // ✅ VALIDAÇÃO 2: Filtra sabores sem preço ou indisponíveis no tamanho (pausados)
+                if (flavorPrice == null ||
+                    flavorPrice.id == null ||
+                    !flavorPrice.isAvailable) {
+                  return null;
+                }
 
-        // ✅ REGRA DO MAIS CARO: Mostra o preço fracionado para exibição
-        // Ex: Pizza Média R$ 39,99 com 2 sabores = exibe "+ R$ 19,99" por sabor
-        // Mas na hora de calcular o total, usa o MAIOR preço cheio
-        final displayPrice = maxFlavors > 1 
-            ? (flavorPrice.price / maxFlavors).round() 
-            : flavorPrice.price;
+                // Formata o nome com fração (ex: "1/2 Calabresa")
+                final fraction = maxFlavors > 1 ? '1/$maxFlavors ' : '';
+                final displayName = '${fraction}${flavor.name}';
 
-        return OptionItem(
-          id: flavor.id,
-          name: displayName,
-          description: flavor.description,
-          price: displayPrice, // ✅ Preço fracionado para exibição
-          isActive: true, // ✅ Já filtrado acima, sempre ativo aqui
-          image: flavor.imageUrl != null ? ImageModel(url: flavor.imageUrl!) : null,
-        );
-      }).whereType<OptionItem>().toList();
+                // ✅ REGRA DO MAIS CARO: Mostra o preço fracionado para exibição
+                // Ex: Pizza Média R$ 39,99 com 2 sabores = exibe "+ R$ 19,99" por sabor
+                // Mas na hora de calcular o total, usa o MAIOR preço cheio
+                final displayPrice =
+                    maxFlavors > 1
+                        ? (flavorPrice.price / maxFlavors).round()
+                        : flavorPrice.price;
+
+                return OptionItem(
+                  id: flavor.id,
+                  name: displayName,
+                  description: flavor.description,
+                  price: displayPrice, // ✅ Preço fracionado para exibição
+                  isActive: true, // ✅ Já filtrado acima, sempre ativo aqui
+                  image:
+                      flavor.imageUrl != null
+                          ? ImageModel(url: flavor.imageUrl!)
+                          : null,
+                );
+              })
+              .whereType<OptionItem>()
+              .toList();
 
       // ✅ Se não há sabores ativos, não cria o grupo
       if (flavorItems.isEmpty) continue;
@@ -149,6 +165,139 @@ class PizzaAdapterHelper {
       );
 
       flavorGroups.add(flavorGroup);
+    }
+
+    return flavorGroups;
+  }
+
+  /// ✅ Cria flavor groups diretamente dos OptionItems do backend (productOptionGroups).
+  /// Usado quando o backend envia os TOPPING groups com prices_by_size já populados.
+  /// Diferente de createFlavorGroups (que usa Products), este método trabalha com OptionItems
+  /// e busca o preço via getPriceForSize(size.id).
+  ///
+  /// Suporta dois cenários:
+  /// 1. **Carga inicial** (build_menu_format): OptionItems já vêm com price dividido e nome
+  ///    prefixado ("1/2 Sabor"). pricesBySize=null → usamos item.price/name direto.
+  /// 2. **category_updated**: OptionItems têm pricesBySize populado com preço cheio por tamanho.
+  ///    Dividimos e adicionamos prefixo de fração.
+  static List<OptionGroup> _createFlavorGroupsFromOptionItems(
+    List<OptionGroup> rawToppingGroups,
+    OptionItem size,
+    int maxFlavors,
+  ) {
+    // Coleta todos os OptionItems ativos de todos os grupos TOPPING
+    final allToppingItemsRaw =
+        rawToppingGroups
+            .expand((g) => g.items.where((i) => i.isActive))
+            .toList();
+
+    // ✅ FIX: Remove duplicatas por ID (caso o backend envie múltiplos grupos TOPPING com os mesmos sabores)
+    final seenIds = <int>{};
+    final allToppingItems =
+        allToppingItemsRaw.where((item) {
+          final itemId = item.id;
+          if (itemId == null) return false; // Ignora items sem ID
+          if (seenIds.contains(itemId)) {
+            return false; // Já vimos este sabor, pula
+          }
+          seenIds.add(itemId);
+          return true;
+        }).toList();
+
+    if (allToppingItems.isEmpty) return [];
+
+    // Detecta se estamos no cenário da carga inicial (preços já divididos, nomes com fração)
+    // Na carga inicial, pricesBySize é null em todos os items
+    final bool isPreFormatted = allToppingItems.every(
+      (item) => item.pricesBySize == null || item.pricesBySize!.isEmpty,
+    );
+
+    print(
+      '🔍 [FlavorGroups] isPreFormatted: $isPreFormatted, size.id: ${size.id}, maxFlavors: $maxFlavors',
+    );
+    print('   └─ allToppingItems: ${allToppingItems.length} items');
+    for (final item in allToppingItems) {
+      print(
+        '      - ${item.name}: price=${item.price}, pricesBySize=${item.pricesBySize?.length ?? 0}',
+      );
+    }
+
+    final List<OptionGroup> flavorGroups = [];
+
+    for (int i = 0; i < maxFlavors; i++) {
+      final groupName =
+          i == 0
+              ? 'Escolha um sabor'
+              : i == 1
+              ? 'Escolha o segundo sabor'
+              : i == 2
+              ? 'Escolha o terceiro sabor'
+              : 'Escolha o ${i + 1}º sabor';
+
+      final flavorItems =
+          allToppingItems
+              .map((item) {
+                if (isPreFormatted) {
+                  // Cenário 1: Carga inicial — item.price já dividido, item.name já com fração
+                  if (item.price <= 0) return null;
+                  return OptionItem(
+                    id: item.id,
+                    name: item.name,
+                    description: item.description,
+                    price: item.price,
+                    isActive: true,
+                    image: item.image,
+                  );
+                } else {
+                  // Cenário 2: category_updated — preço cheio em pricesBySize, precisa dividir
+                  final fullPrice = item.getPriceForSize(size.id) ?? item.price;
+                  print(
+                    '      🔍 Item "${item.name}": fullPrice=$fullPrice (size.id=${size.id})',
+                  );
+                  if (fullPrice <= 0) {
+                    print('         ❌ Ignorado: fullPrice <= 0');
+                    return null;
+                  }
+
+                  // Formata o nome com fração (ex: "1/2 Calabresa"), evitando prefixo duplicado
+                  final hasPrefix = RegExp(r'^\d+/\d+\s').hasMatch(item.name);
+                  final displayName =
+                      (maxFlavors > 1 && !hasPrefix)
+                          ? '1/$maxFlavors ${item.name}'
+                          : item.name;
+
+                  // Preço fracionado para exibição
+                  final displayPrice =
+                      maxFlavors > 1
+                          ? (fullPrice / maxFlavors).round()
+                          : fullPrice;
+
+                  return OptionItem(
+                    id: item.id,
+                    name: displayName,
+                    description: item.description,
+                    price: displayPrice,
+                    isActive: true,
+                    image: item.image,
+                    pricesBySize: item.pricesBySize,
+                  );
+                }
+              })
+              .whereType<OptionItem>()
+              .toList();
+
+      if (flavorItems.isEmpty) continue;
+
+      flavorGroups.add(
+        OptionGroup(
+          id: 1000 + i,
+          name: groupName,
+          groupType: OptionGroupType.flavor,
+          minSelection: 1,
+          maxSelection: 1,
+          items: flavorItems,
+        ),
+      );
     }
 
     return flavorGroups;
@@ -177,28 +326,31 @@ class PizzaAdapterHelper {
         if (cleanDoughName.toLowerCase().startsWith('massa ')) {
           cleanDoughName = cleanDoughName.substring(6);
         }
-        
+
         String cleanEdgeName = edge.name;
         while (cleanEdgeName.toLowerCase().startsWith('borda ')) {
           cleanEdgeName = cleanEdgeName.substring(6);
         }
-        
-        final comboName = 'Massa $cleanDoughName + Borda $cleanEdgeName';
-        final comboPrice = dough.price + edge.price; // Soma dos preços em centavos
 
-        combos.add(OptionItem(
-          id: dough.id, // ID virtual principal
-          name: comboName,
-          price: comboPrice,
-          isActive: true,
-          parentCustomizationOptionId: edge.id, // Fallback legacy
-          crustId: dough.id, // ID real da massa
-          edgeId: edge.id,   // ID real da borda
-          crustName: dough.name,
-          edgeName: edge.name,
-          crustPrice: dough.price,
-          edgePrice: edge.price,
-        ));
+        final comboName = 'Massa $cleanDoughName + Borda $cleanEdgeName';
+        final comboPrice =
+            dough.price + edge.price; // Soma dos preços em centavos
+
+        combos.add(
+          OptionItem(
+            id: dough.id, // ID virtual principal
+            name: comboName,
+            price: comboPrice,
+            isActive: true,
+            parentCustomizationOptionId: edge.id, // Fallback legacy
+            crustId: dough.id, // ID real da massa
+            edgeId: edge.id, // ID real da borda
+            crustName: dough.name,
+            edgeName: edge.name,
+            crustPrice: dough.price,
+            edgePrice: edge.price,
+          ),
+        );
       }
     }
 
@@ -207,9 +359,11 @@ class PizzaAdapterHelper {
     return OptionGroup(
       id: 999, // ID virtual único
       name: 'Escolha a sua Preferência',
-      groupType: OptionGroupType.generic, // Usa GENERIC ao invés de preference que não existe
+      groupType:
+          OptionGroupType
+              .generic, // Usa GENERIC ao invés de preference que não existe
       minSelection: 1, // Obrigatório
-      maxSelection: 1, 
+      maxSelection: 1,
       items: combos,
     );
   }
@@ -225,51 +379,95 @@ class PizzaAdapterHelper {
     // ✅ CORREÇÃO: Usa o linkedProductId do tamanho como chave
     // Cada tamanho (BROTO, GRANDE) tem seus próprios choices com preços específicos
     final sizeProductId = size.linkedProductId ?? size.id;
-    
+
     // ✅ NOVO: Usa os choices do backend se disponíveis
     List<OptionGroup> flavorGroups = [];
     if (category.productOptionGroups != null) {
-      print("🍕 [PizzaAdapter] productOptionGroups disponível com ${category.productOptionGroups!.length} tamanhos");
-      print("🍕 [PizzaAdapter] Buscando choices para sizeProductId: $sizeProductId (size: ${size.name})");
-      print("🍕 [PizzaAdapter] IDs disponíveis: ${category.productOptionGroups!.keys.toList()}");
-      
       if (category.productOptionGroups!.containsKey(sizeProductId)) {
         // Busca os optionGroups específicos deste tamanho
         final productGroups = category.productOptionGroups![sizeProductId]!;
-        print("✅ [PizzaAdapter] Encontrou ${productGroups.length} grupos para sizeProductId $sizeProductId");
-        print("   └─ Grupos encontrados:");
-        for (var group in productGroups) {
-          print("      - ${group.name} (type: ${group.groupType}, code: ${group.id})");
-        }
-        // Filtra apenas os grupos de sabores (TOPPING)
-        flavorGroups = productGroups.where((g) => g.groupType == OptionGroupType.topping).toList();
-        print("✅ [PizzaAdapter] ${flavorGroups.length} grupos de sabores (TOPPING) encontrados:");
-        for (var group in flavorGroups) {
-          print("      - ${group.name} (${group.items.length} itens)");
+
+        // Filtra e transforma os grupos de sabores (TOPPING)
+        final rawToppingGroups =
+            productGroups
+                .where((g) => g.groupType == OptionGroupType.topping)
+                .toList();
+
+        if (rawToppingGroups.isNotEmpty) {
+          final maxFlavors = getMaxFlavorsFromSize(size);
+          print(
+            '🍕 [PizzaAdapter] rawToppingGroups: ${rawToppingGroups.length} grupos, maxFlavors: $maxFlavors',
+          );
+          for (final g in rawToppingGroups) {
+            print('   └─ Grupo "${g.name}": ${g.items.length} items');
+          }
+
+          if (maxFlavors > 1) {
+            // ✅ FORMATO CANÔNICO: Sempre usa _createFlavorGroupsFromOptionItems
+            // O backend garante formato único (1 grupo TOPPING raw com prices_by_size)
+            // tanto na carga inicial quanto no category_updated.
+            // Esta função faz o split em N flavor groups com dedup por ID.
+            flavorGroups = _createFlavorGroupsFromOptionItems(
+              rawToppingGroups,
+              size,
+              maxFlavors,
+            );
+            print('   ✅ Criados ${flavorGroups.length} flavor groups');
+          } else {
+            // Se apenas 1 sabor, apenas formata o preço e nome do grupo único
+            flavorGroups =
+                rawToppingGroups.map((group) {
+                  return OptionGroup(
+                    id: group.id,
+                    name: group.name,
+                    groupType: OptionGroupType.flavor,
+                    minSelection: group.minSelection,
+                    maxSelection: group.maxSelection,
+                    items:
+                        group.items.map((item) {
+                          final priceForSize =
+                              item.getPriceForSize(size.id) ?? item.price;
+                          return OptionItem(
+                            id: item.id,
+                            name: item.name,
+                            description: item.description,
+                            price: priceForSize,
+                            isActive: item.isActive,
+                            image: item.image,
+                          );
+                        }).toList(),
+                  );
+                }).toList();
+          }
         }
       } else {
-        print("⚠️ [PizzaAdapter] sizeProductId $sizeProductId não encontrado no productOptionGroups");
+        AppLogger.w(
+          "⚠️ [PizzaAdapter] sizeProductId $sizeProductId não encontrado no productOptionGroups",
+        );
       }
     } else {
-      print("⚠️ [PizzaAdapter] productOptionGroups é null, usando fallback");
+      AppLogger.w(
+        "⚠️ [PizzaAdapter] productOptionGroups é null, usando fallback",
+      );
     }
-    
+
     // ✅ Fallback: Se não encontrou choices do backend, cria grupos virtuais (compatibilidade)
     if (flavorGroups.isEmpty) {
       print("⚠️ [PizzaAdapter] Usando fallback: criando grupos virtuais");
       flavorGroups = createFlavorGroups(category, size, availableFlavors);
     }
-    
+
     // ✅ NOVO: Busca grupos de preferências (MASSA e BORDA) dos choices do backend
     // ✅ ESTRATÉGIA: Combina MASSA e BORDA em um único grupo de "Preferência"
     // Os IDs são preservados: id = massa, parentCustomizationOptionId = borda
     List<OptionGroup> otherGroups = [];
     OptionGroup? preferencesGroup;
-    
-    if (category.productOptionGroups != null && category.productOptionGroups!.containsKey(sizeProductId)) {
+
+    if (category.productOptionGroups != null &&
+        category.productOptionGroups!.containsKey(sizeProductId)) {
       // Busca os optionGroups específicos deste tamanho
       final productGroups = category.productOptionGroups![sizeProductId]!;
-      
+
       // Busca grupos de MASSA e BORDA
       final doughGroup = productGroups.firstWhereOrNull(
         (g) => g.name.toLowerCase().contains('massa'),
@@ -277,11 +475,13 @@ class PizzaAdapterHelper {
       final edgeGroup = productGroups.firstWhereOrNull(
         (g) => g.name.toLowerCase().contains('borda'),
       );
-      
+
       // ✅ Se tem ambos, cria grupo combinado de preferências
       if (doughGroup != null && edgeGroup != null) {
-        print("🔀 [PizzaAdapter] Combinando grupos de Massa e Borda em um único grupo de Preferências");
-        
+        print(
+          "🔀 [PizzaAdapter] Combinando grupos de Massa e Borda em um único grupo de Preferências",
+        );
+
         final List<OptionItem> combos = [];
         for (var dough in doughGroup.items.where((item) => item.isActive)) {
           for (var edge in edgeGroup.items.where((item) => item.isActive)) {
@@ -292,33 +492,35 @@ class PizzaAdapterHelper {
             if (cleanDoughName.toLowerCase().startsWith('massa ')) {
               cleanDoughName = cleanDoughName.substring(6); // Remove "Massa "
             }
-            
+
             String cleanEdgeName = edge.name;
             // Remove múltiplos prefixos "Borda " se existirem
             while (cleanEdgeName.toLowerCase().startsWith('borda ')) {
               cleanEdgeName = cleanEdgeName.substring(6); // Remove "Borda "
             }
-            
+
             // ✅ Monta o nome combinado com prefixos corretos
             final comboName = 'Massa $cleanDoughName + Borda $cleanEdgeName';
             final comboPrice = dough.price + edge.price;
-            
-            combos.add(OptionItem(
-              id: dough.id,
-              name: comboName,
-              price: comboPrice,
-              isActive: true,
-              parentCustomizationOptionId: edge.id,
-              crustId: dough.id, // ID real da massa
-              edgeId: edge.id,   // ID real da borda
-              crustName: dough.name,
-              edgeName: edge.name,
-              crustPrice: dough.price,
-              edgePrice: edge.price,
-            ));
+
+            combos.add(
+              OptionItem(
+                id: dough.id,
+                name: comboName,
+                price: comboPrice,
+                isActive: true,
+                parentCustomizationOptionId: edge.id,
+                crustId: dough.id, // ID real da massa
+                edgeId: edge.id, // ID real da borda
+                crustName: dough.name,
+                edgeName: edge.name,
+                crustPrice: dough.price,
+                edgePrice: edge.price,
+              ),
+            );
           }
         }
-        
+
         if (combos.isNotEmpty) {
           preferencesGroup = OptionGroup(
             id: 999, // ID virtual único
@@ -328,79 +530,94 @@ class PizzaAdapterHelper {
             maxSelection: 1,
             items: combos,
           );
-          print("✅ [PizzaAdapter] Grupo de preferências criado com ${combos.length} combinações");
+          print(
+            "✅ [PizzaAdapter] Grupo de preferências criado com ${combos.length} combinações",
+          );
         }
       }
-      
+
       // ✅ Outros grupos que não são TOPPING, MASSA ou BORDA
-      otherGroups = productGroups.where((g) {
-        if (g.groupType == OptionGroupType.topping) return false;
-        if (g.name.toLowerCase().contains('massa')) return false;
-        if (g.name.toLowerCase().contains('borda')) return false;
-        return true;
-      }).toList();
-      
-      print("✅ [PizzaAdapter] Grupos extras encontrados: ${otherGroups.length}");
+      otherGroups =
+          productGroups.where((g) {
+            if (g.groupType == OptionGroupType.topping) return false;
+            if (g.name.toLowerCase().contains('massa')) return false;
+            if (g.name.toLowerCase().contains('borda')) return false;
+            return true;
+          }).toList();
+
+      print(
+        "✅ [PizzaAdapter] Grupos extras encontrados: ${otherGroups.length}",
+      );
     } else {
       print("⚠️ [PizzaAdapter] Usando fallback para preferências (bloco else)");
       // ✅ Fallback: Usa createPreferencesGroup da categoria original
       preferencesGroup = createPreferencesGroup(category);
-      
+
       // Outros grupos que não são SIZE, TOPPING, MASSA ou BORDA
-      otherGroups = category.optionGroups.where((g) {
-        if (g.groupType == OptionGroupType.size) return false;
-        if (g.groupType == OptionGroupType.topping) return false;
-        if (g.groupType == OptionGroupType.flavor) return false;
-        if (g.name.toLowerCase().contains('massa')) return false;
-        if (g.name.toLowerCase().contains('borda')) return false;
-        return true;
-      }).toList();
+      otherGroups =
+          category.optionGroups.where((g) {
+            if (g.groupType == OptionGroupType.size) return false;
+            if (g.groupType == OptionGroupType.topping) return false;
+            if (g.groupType == OptionGroupType.flavor) return false;
+            if (g.name.toLowerCase().contains('massa')) return false;
+            if (g.name.toLowerCase().contains('borda')) return false;
+            return true;
+          }).toList();
     }
 
     // ✅ MENUHUB STYLE: Ordem correta dos grupos
     // 1. Preferências (Massa + Borda) - PRIMEIRO
     // 2. Sabores
     // 3. Outros grupos extras
-    
+
     print("🛠️ [PizzaAdapter] Montando lista final de grupos...");
     final adaptedGroups = <OptionGroup>[];
-    
+
     if (preferencesGroup != null) {
-      print("   👉 [1] Adicionando Preferências (${preferencesGroup.items.length} itens)");
+      print(
+        "   👉 [1] Adicionando Preferências (${preferencesGroup.items.length} itens)",
+      );
       adaptedGroups.add(preferencesGroup);
     } else {
-       print("   ⚠️ [1] Preferências é NULL - não adicionado");
+      print("   ⚠️ [1] Preferências é NULL - não adicionado");
     }
-    
+
     if (flavorGroups.isNotEmpty) {
       print("   👉 [2] Adicionando ${flavorGroups.length} grupos de Sabores");
       adaptedGroups.addAll(flavorGroups);
     }
-    
+
     if (otherGroups.isNotEmpty) {
       print("   👉 [3] Adicionando ${otherGroups.length} grupos Extras");
       adaptedGroups.addAll(otherGroups);
     }
-    
+
     print("🏁 [PizzaAdapter] Total de grupos final: ${adaptedGroups.length}");
     for (var i = 0; i < adaptedGroups.length; i++) {
-        print("   [$i] ${adaptedGroups[i].name} (type: ${adaptedGroups[i].groupType})");
+      print(
+        "   [$i] ${adaptedGroups[i].name} (type: ${adaptedGroups[i].groupType})",
+      );
     }
 
     // ✅ REORDENAÇÃO FINAL FORÇADA (BALA DE PRATA)
     // Garante que o grupo "Escolha a sua preferência" fique SEMPRE no topo,
     // corrigindo casos onde ele pode ter entrado na lista errada (ex: vindo como flavorGroup)
-    final prefIndex = adaptedGroups.indexWhere((g) => g.name.toLowerCase().contains('preferência'));
-    if (prefIndex > 0) { // Se existe e não está na primeira posição
-        print("🔄 [PizzaAdapter] Grupo '${adaptedGroups[prefIndex].name}' encontrado na posição $prefIndex, movendo para o topo (posição 0).");
-        final prefGroup = adaptedGroups.removeAt(prefIndex);
-        adaptedGroups.insert(0, prefGroup);
-        
-        // Log da nova ordem
-        print("🏁 [PizzaAdapter] Nova ordem após correção:");
-        for (var i = 0; i < adaptedGroups.length; i++) {
-            print("   [$i] ${adaptedGroups[i].name}");
-        }
+    final prefIndex = adaptedGroups.indexWhere(
+      (g) => g.name.toLowerCase().contains('preferência'),
+    );
+    if (prefIndex > 0) {
+      // Se existe e não está na primeira posição
+      print(
+        "🔄 [PizzaAdapter] Grupo '${adaptedGroups[prefIndex].name}' encontrado na posição $prefIndex, movendo para o topo (posição 0).",
+      );
+      final prefGroup = adaptedGroups.removeAt(prefIndex);
+      adaptedGroups.insert(0, prefGroup);
+
+      // Log da nova ordem
+      print("🏁 [PizzaAdapter] Nova ordem após correção:");
+      for (var i = 0; i < adaptedGroups.length; i++) {
+        print("   [$i] ${adaptedGroups[i].name}");
+      }
     }
 
     // Cria uma nova categoria com os grupos adaptados
@@ -414,12 +631,27 @@ class PizzaAdapterHelper {
       image: category.image,
       optionGroups: adaptedGroups,
       productLinks: category.productLinks,
-      productOptionGroups: category.productOptionGroups, // ✅ Preserva productOptionGroups
+      productOptionGroups:
+          category.productOptionGroups, // ✅ Preserva productOptionGroups
     );
 
-    // ✅ TÍTULO: Usa o nome completo do tamanho (igual ao Menuhub)
-    // Ex: "GRANDE 3 SABORES (8 PEDAÇOS)" - sem limpeza
-    final displayName = size.name;
+    // ✅ TÍTULO: Constrói nome completo do tamanho (igual ao Menuhub)
+    // Na carga inicial já vem completo: "GRANDE 4 SABORES (8 PEDAÇOS)"
+    // No category_updated pode vir curto: "Grande" — então reconstrói a partir dos campos
+    String displayName = size.name;
+    if (!RegExp(r'SABORES?', caseSensitive: false).hasMatch(displayName)) {
+      final parts = <String>[displayName.toUpperCase()];
+      final mf = size.maxFlavors ?? getMaxFlavorsFromSize(size);
+      if (mf > 1) {
+        parts.add('$mf SABORES');
+      } else if (mf == 1) {
+        parts.add('1 SABOR');
+      }
+      if (size.slices != null && size.slices! > 0) {
+        parts.add('(${size.slices} PEDAÇOS)');
+      }
+      displayName = parts.join(' ');
+    }
 
     // ✅ IMAGEM: Prioriza imagem do tamanho > produto original > categoria
     List<ImageModel> displayImages = [];
@@ -428,33 +660,40 @@ class PizzaAdapterHelper {
       print("✅ [PizzaAdapter] Usando imagem do tamanho: ${size.image!.url}");
     } else if (originalProduct.images.isNotEmpty) {
       displayImages.addAll(originalProduct.images);
-      print("✅ [PizzaAdapter] Usando imagem do produto original: ${originalProduct.images.first.url}");
+      print(
+        "✅ [PizzaAdapter] Usando imagem do produto original: ${originalProduct.images.first.url}",
+      );
     } else if (category.image != null) {
       displayImages.add(category.image!);
-      print("✅ [PizzaAdapter] Usando imagem da categoria: ${category.image!.url}");
+      print(
+        "✅ [PizzaAdapter] Usando imagem da categoria: ${category.image!.url}",
+      );
     } else {
       print("⚠️ [PizzaAdapter] Nenhuma imagem encontrada para o produto");
     }
 
     // Cria produto adaptado com nome do tamanho completo
     // ✅ CRÍTICO: Usa o linkedProductId do tamanho se disponível, senão do produto original
-    final finalLinkedProductId = size.linkedProductId ?? originalProduct.linkedProductId;
-    
+    final finalLinkedProductId =
+        size.linkedProductId ?? originalProduct.linkedProductId;
+
     print("🔍 [PizzaAdapter] Adaptando produto:");
     print("   - originalProduct.id: ${originalProduct.id}");
-    print("   - originalProduct.linkedProductId: ${originalProduct.linkedProductId}");
+    print(
+      "   - originalProduct.linkedProductId: ${originalProduct.linkedProductId}",
+    );
     print("   - size.id: ${size.id}");
     print("   - size.linkedProductId: ${size.linkedProductId}");
     print("   - finalLinkedProductId: $finalLinkedProductId");
-    
+
     final adaptedProduct = Product(
       id: originalProduct.id,
       name: displayName, // ✅ Nome completo do tamanho (igual ao Menuhub)
       description: originalProduct.description,
       images: displayImages, // ✅ Imagem correta
-      prices: originalProduct.prices, 
+      prices: originalProduct.prices,
       categoryLinks: originalProduct.categoryLinks,
-      
+
       // Preenche os campos obrigatórios com valores do original
       status: originalProduct.status,
       storeId: originalProduct.storeId,
@@ -464,7 +703,8 @@ class PizzaAdapterHelper {
       schedules: originalProduct.schedules,
       dietaryTags: originalProduct.dietaryTags,
       beverageTags: originalProduct.beverageTags,
-      linkedProductId: finalLinkedProductId, // ✅ Usa linkedProductId do tamanho se disponível
+      linkedProductId:
+          finalLinkedProductId, // ✅ Usa linkedProductId do tamanho se disponível
     );
 
     return PizzaAdaptationResult(adaptedProduct, adaptedCategory);

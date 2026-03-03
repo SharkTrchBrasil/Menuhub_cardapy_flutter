@@ -80,10 +80,23 @@ class CartProduct extends Equatable {
                       // ✅ Auto-seleciona se grupo obrigatório tem apenas 1 opção
                       final shouldAutoSelect = isRequired && hasOnlyOneOption;
 
+                      // ✅ FIX PIZZA PREÇO: Para TOPPING groups, o backend envia price=0
+                      // com os preços reais em prices_by_size. Resolve o preço correto
+                      // usando o tamanho selecionado (defaultSize).
+                      int resolvedPrice = item.price;
+                      if (resolvedPrice == 0 &&
+                          group.groupType == OptionGroupType.topping &&
+                          defaultSize?.id != null &&
+                          item.pricesBySize != null &&
+                          item.pricesBySize!.isNotEmpty) {
+                        resolvedPrice =
+                            item.getPriceForSize(defaultSize!.id) ?? 0;
+                      }
+
                       return CartVariantOption(
                         id: item.id ?? 0,
                         name: item.name,
-                        price: item.price,
+                        price: resolvedPrice,
                         trackInventory: false,
                         stockQuantity: 0,
                         isActuallyAvailable: true, // Já filtrado acima
@@ -270,8 +283,8 @@ class CartProduct extends Equatable {
         }
       }
 
-      // ✅ Se ainda não selecionou todos os sabores, retorna 0
-      return 0;
+      // ✅ Se ainda não selecionou todos os sabores, retorna o startingPrice para não exibir R$ 0,00
+      return startingPrice;
     }
 
     // Para itens normais, o preço vem do vínculo com a categoria.

@@ -1,5 +1,7 @@
 // lib/models/category.dart
 
+import 'dart:convert';
+
 import 'package:equatable/equatable.dart';
 import 'package:totem/models/image_model.dart';
 import 'package:totem/models/option_group.dart';
@@ -71,6 +73,9 @@ class Category extends Equatable {
     List<OptionGroup>? optionGroups,
     List<ProductCategoryLink>? productLinks,
     Map<int, List<OptionGroup>>? productOptionGroups,
+    // ✅ FIX: campos faltantes que eram silenciosamente resetados a cada copyWith
+    AvailabilityType? availabilityType,
+    List<ScheduleRule>? schedules,
   }) {
     return Category(
       id: id ?? this.id,
@@ -83,15 +88,34 @@ class Category extends Equatable {
       optionGroups: optionGroups ?? this.optionGroups,
       productLinks: productLinks ?? this.productLinks,
       productOptionGroups: productOptionGroups ?? this.productOptionGroups,
+      availabilityType: availabilityType ?? this.availabilityType,
+      schedules: schedules ?? this.schedules,
     );
   }
 
   factory Category.fromJson(Map<String, dynamic> json) {
+    // ✅ CRITICAL FIX: Garante que json é um Map Dart puro (não JS Proxy)
+    // Em Flutter Web, objetos vindos do socket podem ser JS Proxy que passam
+    // o teste `is Map<String, dynamic>` mas falham ao acessar propriedades.
+    Map<String, dynamic> safeJson;
+    try {
+      // Ponte JSON: força conversão para tipos Dart puros
+      final encoded = jsonEncode(json);
+      final decoded = jsonDecode(encoded);
+      safeJson =
+          decoded is Map<String, dynamic>
+              ? decoded
+              : Map<String, dynamic>.from(decoded as Map);
+    } catch (e) {
+      // Fallback: tenta conversão manual
+      safeJson = Map<String, dynamic>.from(json);
+    }
+
     // ✅ Parse de availability_type robusto
     AvailabilityType availabilityType = AvailabilityType.always;
     try {
-      if (json['availability_type'] != null) {
-        final typeStr = json['availability_type'].toString().toUpperCase();
+      if (safeJson['availability_type'] != null) {
+        final typeStr = safeJson['availability_type'].toString().toUpperCase();
         if (typeStr == 'SCHEDULED') {
           availabilityType = AvailabilityType.scheduled;
         } else if (typeStr == 'ALWAYS') {
@@ -105,9 +129,9 @@ class Category extends Equatable {
     // ✅ Parse de schedules
     List<ScheduleRule> schedules = [];
     try {
-      if (json['schedules'] != null && json['schedules'] is List) {
+      if (safeJson['schedules'] != null && safeJson['schedules'] is List) {
         schedules =
-            (json['schedules'] as List<dynamic>)
+            (safeJson['schedules'] as List<dynamic>)
                 .map(
                   (scheduleJson) => ScheduleRule.fromJson(
                     scheduleJson as Map<String, dynamic>,
@@ -122,8 +146,8 @@ class Category extends Equatable {
     // ✅ Detecta tipo da categoria
     CategoryType categoryType = CategoryType.GENERAL;
     try {
-      if (json['type'] != null) {
-        categoryType = CategoryType.fromString(json['type'].toString());
+      if (safeJson['type'] != null) {
+        categoryType = CategoryType.fromString(safeJson['type'].toString());
       }
     } catch (e) {
       // Mantem general
@@ -132,7 +156,7 @@ class Category extends Equatable {
     // ✅ Se não tiver tipo definido, tenta detectar pelo nome (para compatibilidade com formato antigo)
     if (categoryType == CategoryType.UNKNOWN ||
         categoryType == CategoryType.GENERAL) {
-      final categoryName = (json['name']?.toString() ?? '').toLowerCase();
+      final categoryName = (safeJson['name']?.toString() ?? '').toLowerCase();
       // Detecta categorias de pizza pelo nome
       if (categoryName.contains('pizza') || categoryName.contains('pizzas')) {
         categoryType = CategoryType.CUSTOMIZABLE;
@@ -141,35 +165,72 @@ class Category extends Equatable {
 
     // ✅ Parse de imagem (suporte a image object ou image_path string)
     ImageModel? imageModel;
-    if (json['image'] != null && json['image'] is Map) {
-      imageModel = ImageModel.fromJson(json['image']);
-    } else if (json['image_path'] != null &&
-        json['image_path'].toString().isNotEmpty) {
-      imageModel = ImageModel(url: json['image_path'].toString());
+    if (safeJson['image'] != null && safeJson['image'] is Map) {
+      imageModel = ImageModel.fromJson(safeJson['image']);
+    } else if (safeJson['image_path'] != null &&
+        safeJson['image_path'].toString().isNotEmpty) {
+      imageModel = ImageModel(url: safeJson['image_path'].toString());
     }
 
-    // ✅ Parse de productOptionGroups
+    // ✅ Parse de productOptionGroups — com ponte JSON para evitar JS Proxy
     Map<int, List<OptionGroup>>? productOptionGroups;
     try {
-      if (json['product_option_groups'] != null &&
-          json['product_option_groups'] is Map) {
+      if (safeJson['product_option_groups'] != null &&
+          safeJson['product_option_groups'] is Map) {
         productOptionGroups = {};
-        (json['product_option_groups'] as Map).forEach((key, value) {
+        (safeJson['product_option_groups'] as Map).forEach((key, value) {
           final productId = int.tryParse(key.toString());
-          if (productId != null && value is List) {
-            productOptionGroups![productId] =
-                (value as List).map((v) => OptionGroup.fromJson(v)).toList();
+          if (productId == null) return;
+
+          // Garante que value é uma lista pura do Dart (sem JS Proxy)
+          List<dynamic> rawList;
+          try {
+            // Ponte JSON: serializa e deserializa para garantir tipos puros
+            final encoded = jsonEncode(value);
+            final decoded = jsonDecode(encoded);
+            rawList = decoded is List ? decoded : [];
+          } catch (_) {
+            rawList = value is List ? value : [];
+          }
+
+          final groups = <OptionGroup>[];
+          for (final v in rawList) {
+            try {
+              final Map<String, dynamic> groupMap;
+              if (v is Map<String, dynamic>) {
+                groupMap = v;
+              } else if (v is Map) {
+                groupMap = Map<String, dynamic>.from(
+                  v.map((k, val) => MapEntry(k.toString(), val)),
+                );
+              } else {
+                continue;
+              }
+              groups.add(OptionGroup.fromJson(groupMap));
+            } catch (eg) {
+              // Skip individual bad group — não quebra o mapa todo
+            }
+          }
+
+          if (groups.isNotEmpty) {
+            productOptionGroups![productId] = groups;
           }
         });
+
+        // Se o mapeamento resultou vazio, mantém null (o rebuild local pode tentar)
+        if (productOptionGroups.isEmpty) {
+          productOptionGroups = null;
+        }
       }
     } catch (e) {
-      // Ignora erro de parse
+      // Ignora erro de parse — rebuild local será tentado pelo realtime_repository
+      productOptionGroups = null;
     }
 
     // ✅ Parse de option_groups com guard por item (proteção contra JS Proxy)
     final List<OptionGroup> parsedOptionGroups = [];
     try {
-      final rawGroups = json['option_groups'];
+      final rawGroups = safeJson['option_groups'];
       if (rawGroups is List) {
         for (final groupJson in rawGroups) {
           try {
@@ -194,7 +255,7 @@ class Category extends Equatable {
     // ✅ Parse de product_links com guard por item
     final List<ProductCategoryLink> parsedProductLinks = [];
     try {
-      final rawLinks = json['product_links'];
+      final rawLinks = safeJson['product_links'];
       if (rawLinks is List) {
         for (final linkJson in rawLinks) {
           try {
@@ -217,18 +278,18 @@ class Category extends Equatable {
 
     return Category(
       id:
-          json['id'] is int
-              ? json['id']
-              : int.tryParse(json['id']?.toString() ?? '0'),
-      name: json['name']?.toString() ?? '',
-      description: json['description']?.toString(),
+          safeJson['id'] is int
+              ? safeJson['id']
+              : int.tryParse(safeJson['id']?.toString() ?? '0'),
+      name: safeJson['name']?.toString() ?? '',
+      description: safeJson['description']?.toString(),
       priority:
-          json['priority'] is int
-              ? json['priority']
-              : (int.tryParse(json['priority']?.toString() ?? '0') ?? 0),
+          safeJson['priority'] is int
+              ? safeJson['priority']
+              : (int.tryParse(safeJson['priority']?.toString() ?? '0') ?? 0),
       isActive:
-          json['is_active'] == true ||
-          json['is_active'] == 1, // Suporte a bool ou int
+          safeJson['is_active'] == true ||
+          safeJson['is_active'] == 1, // Suporte a bool ou int
       type: categoryType,
       image: imageModel,
       optionGroups: parsedOptionGroups,

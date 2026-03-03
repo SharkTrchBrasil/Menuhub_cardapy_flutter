@@ -883,14 +883,35 @@ class RealtimeRepository {
     try {
       final encoded = jsonEncode(data);
       final decoded = jsonDecode(encoded);
+      // ✅ FIX CRÍTICO: jsonDecode retorna tipos PUROS do Dart.
+      // Em Flutter Web (DDC), sub-objetos JS Proxy sobrevivem ao jsonDecode
+      // se o objeto raiz não for serializado completamente.
+      // Solução: convertemos recursivamente o grafo inteiro.
       if (decoded is Map) {
-        return Map<String, dynamic>.from(decoded);
+        return _recursiveConvert(decoded) as Map<String, dynamic>;
       }
     } catch (e) {
       AppLogger.w('⚠️ Ponte JSON falhou para _deepConvertToJson: $e');
     }
     // Fallback: tenta conversão manual recursiva
     return _convertToStringDynamicMap(data);
+  }
+
+  /// ✅ Converte recursivamente toda a árvore de objetos para tipos Dart puros.
+  /// Necessário em Flutter Web (DDC) onde jsonDecode pode retornar Maps cujos
+  /// valores aninhados ainda são JS Proxy objects.
+  dynamic _recursiveConvert(dynamic value) {
+    if (value is Map) {
+      final result = <String, dynamic>{};
+      value.forEach((k, v) {
+        result[k.toString()] = _recursiveConvert(v);
+      });
+      return result;
+    } else if (value is List) {
+      return value.map(_recursiveConvert).toList();
+    }
+    // Tipos primitivos (String, num, bool, null) são sempre puros
+    return value;
   }
 
   /// ✅ Converte objetos JS Proxy para Map<String, dynamic> (conversão manual recursiva)
@@ -1296,27 +1317,48 @@ class RealtimeRepository {
               );
               if (existingIndex != -1) {
                 final oldCategory = currentCategories[existingIndex];
-                // ✅ SMART MERGE: Preserva campos complexos se não vierem no payload
-                bool optionGroupsUpdated = false;
-                if (!categoryData.containsKey('option_groups')) {
+
+                // ✅ SMART MERGE + FIX PIZZA:
+                // O backend agora injeta product_option_groups no payload.
+                // Se vier populado → já foi parseado em fromJson → usamos sem rebuild.
+                // Se NÃO vier → tentamos reconstruir a partir de option_groups.
+                // Se option_groups também não vier → preservamos do estado anterior.
+
+                final bool optionGroupsInPayload = categoryData.containsKey(
+                  'option_groups',
+                );
+                final bool pogInPayload =
+                    categoryData.containsKey('product_option_groups') &&
+                    categoryData['product_option_groups'] != null;
+
+                if (!optionGroupsInPayload) {
+                  // option_groups não veio → preserva os locais
                   updatedCategory = updatedCategory.copyWith(
                     optionGroups: oldCategory.optionGroups,
                   );
-                } else {
-                  optionGroupsUpdated = true;
                 }
 
-                if (!categoryData.containsKey('product_option_groups')) {
-                  // Se os grupos de opções mudaram, precisamos reconstruir o mapa!
-                  if (optionGroupsUpdated) {
-                    updatedCategory = _rebuildProductOptionGroups(
-                      updatedCategory,
-                    );
-                  } else {
-                    updatedCategory = updatedCategory.copyWith(
-                      productOptionGroups: oldCategory.productOptionGroups,
-                    );
-                  }
+                if (pogInPayload) {
+                  // ✅ Backend enviou product_option_groups completo — dado autoritativo.
+                  // fromJson já populou o campo, nada a fazer.
+                  AppLogger.d(
+                    '✅ [PIZZA] product_option_groups recebido do backend para ${updatedCategory.name}: '
+                    '${updatedCategory.productOptionGroups?.length ?? 0} tamanhos',
+                  );
+                } else if (optionGroupsInPayload) {
+                  // option_groups veio mas product_option_groups não → rebuild local forçado
+                  AppLogger.d(
+                    '🔧 [PIZZA] option_groups chegou sem product_option_groups → rebuild local forçado',
+                  );
+                  updatedCategory = _rebuildProductOptionGroups(
+                    updatedCategory,
+                    forceRebuild: true,
+                  );
+                } else {
+                  // Nenhum dos dois veio → preserva do estado anterior
+                  updatedCategory = updatedCategory.copyWith(
+                    productOptionGroups: oldCategory.productOptionGroups,
+                  );
                 }
 
                 if (!categoryData.containsKey('product_links')) {
@@ -1324,21 +1366,31 @@ class RealtimeRepository {
                     productLinks: oldCategory.productLinks,
                   );
                 }
+
                 currentCategories[existingIndex] = updatedCategory;
                 // ✅ REFACTOR: Publica em categoriesController
                 _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
-                  '✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada (smart merge)',
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} atualizada '
+                  '(pog_from_backend=$pogInPayload, og_in_payload=$optionGroupsInPayload)',
                 );
               } else {
-                // ✅ FIX PIZZA: Categoria não existia (foi removida anteriormente via category_deleted)
-                // Precisamos reconstruir productOptionGroups a partir dos option_groups recebidos.
-                updatedCategory = _rebuildProductOptionGroups(updatedCategory);
+                // ✅ FIX PIZZA: Categoria não existia (foi removida anteriormente).
+                // Se backend enviou product_option_groups → fromJson já preencheu.
+                // Se não → tenta rebuild local.
+                if (updatedCategory.productOptionGroups == null ||
+                    updatedCategory.productOptionGroups!.isEmpty) {
+                  updatedCategory = _rebuildProductOptionGroups(
+                    updatedCategory,
+                    forceRebuild: true,
+                  );
+                }
 
                 currentCategories.add(updatedCategory);
                 _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
-                  '✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada via update',
+                  '✅ [GRANULAR] Categoria ${updatedCategory.name} adicionada via update '
+                  '(pog=${updatedCategory.productOptionGroups?.length ?? 0} tamanhos)',
                 );
               }
             } catch (e, stackTrace) {
@@ -1382,63 +1434,100 @@ class RealtimeRepository {
   }
 
   /// ✅ Reconstroi o mapa productOptionGroups (necessário para Pizzas no Totem)
-  /// O backend envia grupos globais, então mapeamos cada tamanho para seus respectivos escolhas.
+  /// O backend envia grupos globais, então mapeamos cada tamanho para suas escolhas.
   ///
-  /// IMPORTANTE: A chave do mapa deve ser o OptionItem.id do grupo SIZE (ou linkedProductId),
+  /// IMPORTANTE: A chave do mapa deve ser o OptionItem.linkedProductId (ou id) do grupo SIZE,
   /// pois é assim que o PizzaAdapter faz o lookup:
   ///   `final sizeProductId = size.linkedProductId ?? size.id;`
-  models.Category _rebuildProductOptionGroups(models.Category category) {
-    if (!category.isCustomizable ||
-        category.productOptionGroups != null ||
-        category.optionGroups.isEmpty) {
+  ///
+  /// ✅ FIX: Removida a guarda `productOptionGroups != null` — agora o rebuild é
+  /// sempre forçado quando [forceRebuild] = true, permitindo sobrescrever um mapa
+  /// stale quando novos option_groups chegam via evento granular.
+  models.Category _rebuildProductOptionGroups(
+    models.Category category, {
+    bool forceRebuild = false,
+  }) {
+    if (!category.isCustomizable) {
+      return category;
+    }
+
+    // ✅ Se o backend já enviou product_option_groups populado (via fromJson),
+    // e não estamos forçando rebuild, confio no dado do servidor.
+    if (category.productOptionGroups != null &&
+        category.productOptionGroups!.isNotEmpty &&
+        !forceRebuild) {
+      AppLogger.d(
+        '✅ [REBUILD] productOptionGroups já populado pelo backend para ${category.name} '
+        '(${category.productOptionGroups!.length} tamanhos) — usando dado do servidor.',
+      );
+      return category;
+    }
+
+    if (category.optionGroups.isEmpty) {
+      AppLogger.w(
+        '⚠️ [REBUILD] Categoria ${category.name} é pizza mas optionGroups está vazio! '
+        'Não é possível reconstruir productOptionGroups.',
+      );
       return category;
     }
 
     // Pega todos os grupos que NÃO são de tamanhos (sabores, bordas, massas, etc)
     final nonSizeGroups =
         category.optionGroups
-            .where((g) => g.groupType != OptionGroupType.size)
+            .where((g) => g.groupType != OptionGroupType.size && g.isActive)
             .toList();
 
-    if (nonSizeGroups.isEmpty) return category;
+    if (nonSizeGroups.isEmpty) {
+      AppLogger.w(
+        '⚠️ [REBUILD] Categoria ${category.name}: nenhum grupo não-SIZE ativo encontrado.',
+      );
+      return category;
+    }
 
     // Constrói o mapa sizeKey -> List<OptionGroup>
+    // ✅ FIX CHAVES MÚLTIPLAS: Inclui TODAS as chaves possíveis para compatibilidade
+    // com MenuAdapter (carga inicial) e category_updated (dados granulares)
     final Map<int, List<OptionGroup>> rebuiltMap = {};
 
-    // ✅ PRIORIDADE 1: Usa os OptionItems do grupo SIZE como chave
+    // ✅ ESTRATÉGIA 1: Usa os OptionItems do grupo SIZE como chave
     // O PizzaAdapter busca por size.linkedProductId ?? size.id
-    // Então a chave DEVE ser o OptionItem.id (ou linkedProductId) do grupo SIZE
     final sizeGroup = category.optionGroups.firstWhereOrNull(
       (g) => g.groupType == OptionGroupType.size,
     );
     if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
       for (final item in sizeGroup.items) {
-        // Usa linkedProductId se disponível, senão o id do OptionItem
-        final key = item.linkedProductId ?? item.id;
-        if (key != null) {
-          rebuiltMap[key] = nonSizeGroups;
+        // Inclui AMBAS as chaves: linkedProductId E id
+        if (item.linkedProductId != null) {
+          rebuiltMap[item.linkedProductId!] = nonSizeGroups;
+        }
+        if (item.id != null) {
+          rebuiltMap[item.id!] = nonSizeGroups;
         }
       }
     }
 
-    // ✅ FALLBACK: Se não houver grupo SIZE, tenta product_links
-    if (rebuiltMap.isEmpty) {
-      for (final link in category.productLinks) {
-        final pid = link.productId;
-        if (pid != null) {
-          rebuiltMap[pid] = nonSizeGroups;
-        }
+    // ✅ ESTRATÉGIA 2: Também inclui product_links como chaves adicionais
+    // O MenuAdapter cria OptionItems SIZE com id=productId do menu,
+    // e o product_link.productId corresponde a esse valor.
+    for (final link in category.productLinks) {
+      final pid = link.productId;
+      if (pid != null && !rebuiltMap.containsKey(pid)) {
+        rebuiltMap[pid] = nonSizeGroups;
       }
     }
 
     if (rebuiltMap.isNotEmpty) {
       AppLogger.d(
-        '🔧 [REBUILD] productOptionGroups reconstruído para ${category.name}: '
+        '🔧 [REBUILD] productOptionGroups reconstruído localmente para ${category.name}: '
         'keys=${rebuiltMap.keys.toList()} (${rebuiltMap.length} tamanhos × ${nonSizeGroups.length} grupos)',
       );
       return category.copyWith(productOptionGroups: rebuiltMap);
     }
 
+    AppLogger.e(
+      '❌ [REBUILD] Falha ao reconstruir productOptionGroups para ${category.name}. '
+      'sizeGroup=${sizeGroup?.items.length} items, nonSizeGroups=${nonSizeGroups.length}',
+    );
     return category;
   }
 

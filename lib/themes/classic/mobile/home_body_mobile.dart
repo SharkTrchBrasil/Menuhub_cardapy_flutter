@@ -408,7 +408,8 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
 
                         for (var product in productsInCategory) {
                           final priceObj = product.prices.firstWhereOrNull(
-                            (p) => p.sizeOptionId == size.id,
+                            (p) =>
+                                p.sizeOptionId.toString() == size.id.toString(),
                           );
                           if (priceObj != null &&
                               priceObj.price > 0 &&

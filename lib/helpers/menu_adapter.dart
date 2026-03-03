@@ -86,46 +86,81 @@ class MenuAdapter {
     final Map<int, int> sizeMaxFlavorsMap = {};
     for (final item in menuCategory.itens) {
       final sizeId = _codeToInt(item.id);
-      // Extrai max_flavors do productInfo.quantity ou do nome
+      // ✅ FIX: Extrai max_flavors do NOME (regex), NÃO do productInfo.quantity.
+      // productInfo.quantity contém PEDAÇOS (slices), não sabores.
+      // Ex: "MÉDIA 3 SABORES (6 PEDAÇOS)" → productInfo.quantity=6 (pedaços), sabores=3
       int? maxFlavors;
-      if (item.productInfo != null) {
-        // Se productInfo.quantity contém o número de sabores
-        maxFlavors = item.productInfo!.quantity;
-      }
-      // Fallback: extrai do nome (ex: "2 SABORES")
-      if (maxFlavors == null || maxFlavors == 0) {
-        final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
-        final match = regex.firstMatch(item.description);
-        if (match != null) {
-          maxFlavors = int.tryParse(match.group(1)!);
-        }
+      final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
+      final match = regex.firstMatch(item.description);
+      if (match != null) {
+        maxFlavors = int.tryParse(match.group(1)!);
       }
       if (maxFlavors != null && maxFlavors > 0) {
         sizeMaxFlavorsMap[sizeId] = maxFlavors;
       }
     }
 
-    // ✅ NOVO: Processa choices de cada item e armazena em um mapa
-    // productId -> List<OptionGroup> (choices específicos de cada tamanho)
-    final Map<int, List<OptionGroup>> productOptionGroupsMap = {};
+    // ✅ FORMATO CANÔNICO: Usa product_option_groups do backend se disponível
+    // O backend injeta 1 grupo TOPPING raw (com prices_by_size) por tamanho.
+    // Isso garante formato idêntico entre carga inicial e category_updated.
+    // Fallback: converte choices (formato legado) se o backend não enviou.
+    Map<int, List<OptionGroup>> productOptionGroupsMap = {};
     final categoryId = _codeToInt(menuCategory.code);
 
-    for (final item in menuCategory.itens) {
-      if (item.choices != null && item.choices!.isNotEmpty) {
-        final baseItemId = _codeToInt(item.id);
-        final itemProductId =
-            item.linkedProductId ?? baseItemId; // ✅ SIMPLIFICADO
+    if (menuCategory.productOptionGroups != null &&
+        menuCategory.productOptionGroups!.isNotEmpty) {
+      // ✅ CANÔNICO: Parseia product_option_groups do backend
+      print(
+        '🔍 [MenuAdapter] product_option_groups recebido: ${menuCategory.productOptionGroups!.length} chaves',
+      );
+      menuCategory.productOptionGroups!.forEach((key, value) {
+        final productId = int.tryParse(key.toString());
+        if (productId == null) return;
+        if (value is! List) return;
 
-        // Processa os choices deste item específico
-        final List<OptionGroup> itemOptionGroups = [];
-        for (final choice in item.choices!) {
-          // ✅ Backend já envia preços divididos, então maxFlavors não é necessário aqui
-          final optionGroup = _convertMenuChoice(choice, null);
-          itemOptionGroups.add(optionGroup);
+        final groups = <OptionGroup>[];
+        for (final v in value) {
+          try {
+            final Map<String, dynamic> groupMap;
+            if (v is Map<String, dynamic>) {
+              groupMap = v;
+            } else if (v is Map) {
+              groupMap = Map<String, dynamic>.from(
+                v.map((k, val) => MapEntry(k.toString(), val)),
+              );
+            } else {
+              continue;
+            }
+            final group = OptionGroup.fromJson(groupMap);
+            groups.add(group);
+            print(
+              '   ✅ Grupo ${group.groupType} "${group.name}": ${group.items.length} items',
+            );
+          } catch (e) {
+            print('   ❌ Erro ao parsear grupo: $e');
+            // Skip bad group
+          }
         }
+        if (groups.isNotEmpty) {
+          productOptionGroupsMap[productId] = groups;
+        }
+      });
+    } else {
+      // ✅ FALLBACK LEGADO: Converte choices em OptionGroups
+      for (final item in menuCategory.itens) {
+        if (item.choices != null && item.choices!.isNotEmpty) {
+          final baseItemId = _codeToInt(item.id);
+          final itemProductId = item.linkedProductId ?? baseItemId;
 
-        if (itemOptionGroups.isNotEmpty) {
-          productOptionGroupsMap[itemProductId] = itemOptionGroups;
+          final List<OptionGroup> itemOptionGroups = [];
+          for (final choice in item.choices!) {
+            final optionGroup = _convertMenuChoice(choice, null);
+            itemOptionGroups.add(optionGroup);
+          }
+
+          if (itemOptionGroups.isNotEmpty) {
+            productOptionGroupsMap[itemProductId] = itemOptionGroups;
+          }
         }
       }
     }
@@ -148,17 +183,13 @@ class MenuAdapter {
         ).firstMatch(item.description);
         final sizeName = sizeNameMatch?.group(1) ?? item.description;
 
-        // Extrai maxFlavors
+        // ✅ FIX: Extrai maxFlavors do NOME (regex), NÃO do productInfo.quantity.
+        // productInfo.quantity contém PEDAÇOS (slices), não sabores.
         int? maxFlavors;
-        if (item.productInfo != null) {
-          maxFlavors = item.productInfo!.quantity;
-        }
-        if (maxFlavors == null || maxFlavors == 0) {
-          final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
-          final match = regex.firstMatch(item.description);
-          if (match != null) {
-            maxFlavors = int.tryParse(match.group(1)!);
-          }
+        final flavorsRegex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
+        final flavorsMatch = flavorsRegex.firstMatch(item.description);
+        if (flavorsMatch != null) {
+          maxFlavors = int.tryParse(flavorsMatch.group(1)!);
         }
 
         // Extrai slices
@@ -179,9 +210,7 @@ class MenuAdapter {
 
         sizeItems.add(
           OptionItem(
-            id:
-                item.linkedProductId ??
-                baseItemId, // ✅ Usa linkedProductId se disponível, senão baseItemId
+            id: baseItemId, // ✅ CRÍTICO: ID real do tamanho de opção (511, 512, 513) para getPriceForSize
             name: item.description, // Nome completo do tamanho
             description: item.details,
             price: (item.unitMinPrice * 100).round(), // Preço em centavos
@@ -190,7 +219,7 @@ class MenuAdapter {
             maxFlavors: maxFlavors,
             slices: slices,
             linkedProductId:
-                item.linkedProductId, // ✅ VITAL: ID do produto real no banco
+                item.linkedProductId, // ✅ VITAL: ID do produto real no banco (274, 275, 276)
           ),
         );
       }
