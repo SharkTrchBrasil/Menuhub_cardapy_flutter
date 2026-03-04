@@ -7,6 +7,7 @@ import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/themes/ds_theme.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../../../models/cart_item.dart';
+import '../../../models/option_group.dart';
 import '../../../models/update_cart_payload.dart';
 import '../../../themes/ds_theme_switcher.dart';
 import 'cart_quantity_control.dart';
@@ -248,19 +249,17 @@ class CartItemListItem extends StatelessWidget {
       if (variant.name.toLowerCase().contains('tamanho')) continue;
 
       final variantNameLower = variant.name.toLowerCase();
-      final isFlavorGroup =
-          variantNameLower.contains('sabor') ||
-          variantNameLower.contains('topping');
-      final isMassaGroup =
-          variantNameLower.contains('massa') ||
-          variantNameLower.contains('dough');
-      final isBordaGroup =
-          variantNameLower.contains('borda') ||
-          variantNameLower.contains('edge') ||
-          variantNameLower.contains('crust');
+      final groupType = OptionGroupType.fromString(variant.groupType);
+
+      final isFlavorGroup = groupType == OptionGroupType.topping;
+
+      // ✅ Usa EXCLUSIVAMENTE o enum do tipo de grupo — sem fallback de string
+      final isMassaGroup = groupType == OptionGroupType.crust;
+      final isBordaGroup = groupType == OptionGroupType.edge;
       final isPreferenceGroup =
-          variantNameLower.contains('preferência') ||
-          variantNameLower.contains('preferencia');
+          groupType == OptionGroupType.generic &&
+          (variantNameLower.contains('preferência') ||
+              variantNameLower.contains('preferencia'));
 
       for (final option in variant.options) {
         if (option.quantity <= 0) continue;
@@ -274,21 +273,22 @@ class CartItemListItem extends StatelessWidget {
             if (parts.length >= 2) {
               massaText = parts[0].trim();
               bordaText = parts[1].trim();
-              massaPrice = option.price; // preço combinado
+              massaPrice = option.price; // No combo, o preço já está somado
+              bordaPrice = 0; // Evita somar duas vezes
             }
             continue;
           }
         }
 
-        // Detecta Massa
-        if (isMassaGroup || optionNameLower.startsWith('massa')) {
+        // Detecta Massa (somente via groupType enum)
+        if (isMassaGroup) {
           massaText = option.name;
           massaPrice = option.price;
           continue;
         }
 
-        // Detecta Borda
-        if (isBordaGroup || optionNameLower.startsWith('borda')) {
+        // Detecta Borda (somente via groupType enum)
+        if (isBordaGroup) {
           bordaText = option.name;
           bordaPrice = option.price;
           continue;

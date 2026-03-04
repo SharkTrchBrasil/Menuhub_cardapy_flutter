@@ -340,7 +340,7 @@ class RealtimeRepository {
     _socket.on('payment_methods_updated', (data) {
       AppLogger.d('💳 [TOTEM] payment_methods_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -381,7 +381,7 @@ class RealtimeRepository {
     _socket.on('delivery_fee_rules_updated', (data) {
       AppLogger.d('🚚 [TOTEM] delivery_fee_rules_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -420,7 +420,7 @@ class RealtimeRepository {
     _socket.on('store_hours_updated', (data) {
       AppLogger.d('🕐 [TOTEM] store_hours_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -455,7 +455,7 @@ class RealtimeRepository {
     _socket.on('scheduled_pauses_updated', (data) {
       AppLogger.d('⏸️ [TOTEM] scheduled_pauses_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -490,7 +490,7 @@ class RealtimeRepository {
     _socket.on('operation_config_updated', (data) {
       AppLogger.d('⚙️ [TOTEM] operation_config_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -527,7 +527,7 @@ class RealtimeRepository {
     _socket.on('store_status_changed', (data) {
       AppLogger.d('⏸️ [TOTEM] store_status_changed recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -584,7 +584,7 @@ class RealtimeRepository {
     _socket.on('store_profile_updated', (data) {
       AppLogger.d('👤 [TOTEM] store_profile_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -650,7 +650,7 @@ class RealtimeRepository {
     _socket.on('coupons_updated', (data) {
       AppLogger.d('🎫 [TOTEM] coupons_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -682,7 +682,7 @@ class RealtimeRepository {
     _socket.on('store_internationalization_updated', (data) {
       AppLogger.d('🌐 [TOTEM] store_internationalization_updated recebido');
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final storeId = payload['store_id'] as int?;
         if (storeId == null) return;
 
@@ -723,7 +723,8 @@ class RealtimeRepository {
     _socket.on('order_updated', (data) {
       AppLogger.d('🛒 Atualização de pedido recebida');
       try {
-        final Order order = Order.fromJson(data);
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+        final Order order = Order.fromJson(payload);
         orderController.add(order);
 
         // ✅ ATUALIZA CUBIT: Garante que o estado global de pedidos do cliente seja atualizado
@@ -2192,7 +2193,7 @@ class RealtimeRepository {
   // ✅ Processa atualização da loja (apenas configs, sem categorias)
   void _handleStoreUpdate(dynamic data) {
     try {
-      final Map<String, dynamic> payload = data as Map<String, dynamic>;
+      final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       if (payload['store'] != null) {
         final storeData = payload['store'] as Map<String, dynamic>;
         // Store agora não carrega categorias — elas ficam no categoriesController

@@ -43,7 +43,10 @@ class VariantOptionItem extends StatelessWidget {
           // Imagem (se existir) com um filtro cinza para indicar indisponibilidade
           if (option.imageUrl != null && option.imageUrl!.isNotEmpty)
             ColorFiltered(
-              colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.saturation),
+              colorFilter: const ColorFilter.mode(
+                Colors.grey,
+                BlendMode.saturation,
+              ),
               child: SizedBox(
                 width: 56,
                 height: 56,
@@ -64,13 +67,28 @@ class VariantOptionItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(option.name, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: disabledColor, decoration: TextDecoration.lineThrough)),
-                if (option.description != null && option.description!.isNotEmpty)
-                  Text(option.description!, style: TextStyle(color: disabledColor)),
+                Text(
+                  option.name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: disabledColor,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+                if (option.description != null &&
+                    option.description!.isNotEmpty)
+                  Text(
+                    option.description!,
+                    style: TextStyle(color: disabledColor),
+                  ),
                 if (option.price > 0) ...[
                   const SizedBox(height: 2),
-                  Text('+ ${option.price.toCurrency}', style: TextStyle(color: disabledColor, fontSize: 14)),
-                ]
+                  Text(
+                    '+ ${option.price.toCurrency}',
+                    style: TextStyle(color: disabledColor, fontSize: 14),
+                  ),
+                ],
               ],
             ),
           ),
@@ -105,94 +123,113 @@ class VariantOptionItem extends StatelessWidget {
 
     switch (variant.uiDisplayMode) {
       case UIDisplayMode.QUANTITY:
-        final bool canIncrement = variant.maxTotalQuantity == null ||
+        final bool canIncrement =
+            variant.maxTotalQuantity == null ||
             variant.totalQuantitySelected < variant.maxTotalQuantity!;
         trailingWidget = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: Icon(Icons.remove_circle_outline, color: isSelected ? theme.primaryColor : Colors.grey.shade300),
-              onPressed: isSelected ? () => onUpdate(option.quantity - 1) : null,
+              icon: Icon(
+                Icons.remove_circle_outline,
+                color: isSelected ? theme.primaryColor : Colors.grey.shade300,
+              ),
+              onPressed:
+                  isSelected ? () => onUpdate(option.quantity - 1) : null,
             ),
-            Text(option.quantity.toString(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              option.quantity.toString(),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             IconButton(
-              icon: Icon(Icons.add_circle, color: canIncrement ? theme.primaryColor : Colors.grey.shade300),
-              onPressed: canIncrement ? () => onUpdate(option.quantity + 1) : null,
+              icon: Icon(
+                Icons.add_circle,
+                color: canIncrement ? theme.primaryColor : Colors.grey.shade300,
+              ),
+              onPressed:
+                  canIncrement ? () => onUpdate(option.quantity + 1) : null,
             ),
           ],
         );
         break;
 
       case UIDisplayMode.SINGLE:
-        final selectedOptionIdInGroup = variant.cartOptions.firstWhere(
-              (o) => o.quantity > 0,
-          orElse: () => CartVariantOption(
-            id: -1,
-            name: '',
-            price: 0,
-            trackInventory: false,
-            stockQuantity: 0,
-            isActuallyAvailable: false,
-          ),
-        ).id;
+        final selectedOptionIdInGroup =
+            variant.cartOptions
+                .firstWhere(
+                  (o) => o.quantity > 0,
+                  orElse:
+                      () => CartVariantOption(
+                        id: -1,
+                        name: '',
+                        price: 0,
+                        trackInventory: false,
+                        stockQuantity: 0,
+                        isActuallyAvailable: false,
+                      ),
+                )
+                .id;
 
         final bool isSelectedRadio = option.id == selectedOptionIdInGroup;
-        
-        // ✅ Se tem imagem, usa layout customizado para sabores
-        if (option.imageUrl != null && option.imageUrl!.isNotEmpty) {
-          return InkWell(
-            onTap: () => onUpdate(1),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade100),
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Informações do sabor
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+        final bool hasImage =
+            option.imageUrl != null && option.imageUrl!.isNotEmpty;
+
+        // ✅ LAYOUT UNIFICADO PARA COMPONENTES DE ESCOLHA ÚNICA (BOLINHA SEMPRE NO END)
+        return InkWell(
+          onTap: () => onUpdate(1),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+            ),
+            child: Row(
+              children: [
+                // 1. Informações da Opção
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        option.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      if (option.description != null &&
+                          option.description!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
                         Text(
-                          option.name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
+                          option.description!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (option.price > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '+ ${option.price.toCurrency}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: theme.primaryColor,
                           ),
                         ),
-                        if (option.description != null && option.description!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            option.description!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade600,
-                            ),
-                            maxLines: 3, // ✅ MENUHUB STYLE: Máximo 3 linhas para descrição
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        if (option.price > 0) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '+ ${option.price.toCurrency}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: theme.primaryColor,
-                            ),
-                          ),
-                        ],
                       ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  // Imagem do sabor
+                ),
+
+                const SizedBox(width: 12),
+
+                // 2. Imagem (apenas se existir)
+                if (hasImage) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: SizedBox(
@@ -201,65 +238,49 @@ class VariantOptionItem extends StatelessWidget {
                       child: CachedNetworkImage(
                         imageUrl: option.imageUrl!,
                         fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(color: Colors.grey.shade200),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.local_pizza, color: Colors.grey),
-                        ),
+                        placeholder:
+                            (context, url) =>
+                                Container(color: Colors.grey.shade200),
+                        errorWidget:
+                            (context, url, error) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(
+                                Icons.local_pizza,
+                                color: Colors.grey,
+                              ),
+                            ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Radio button
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelectedRadio ? theme.primaryColor : Colors.grey.shade400,
-                        width: 2,
-                      ),
-                    ),
-                    child: isSelectedRadio
-                        ? Center(
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: theme.primaryColor,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
                 ],
-              ),
+
+                // 3. Radio Button (A Bolinha - Sempre Alinhada no End)
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Radio<int>(
+                    value: option.id,
+                    groupValue: selectedOptionIdInGroup,
+                    onChanged: (value) => onUpdate(1),
+                    activeColor: theme.primaryColor,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
             ),
-          );
-        }
-        
-        // Radio sem imagem (layout original)
-        return RadioListTile<int>(
-          title: Text(
-            option.name.isEmpty ? 'Opção sem nome' : option.name, 
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
           ),
-          subtitle: _buildSubtitle(),
-          value: option.id,
-          groupValue: selectedOptionIdInGroup,
-          onChanged: (value) => onUpdate(1),
-          activeColor: theme.primaryColor,
-          controlAffinity: ListTileControlAffinity.trailing,
         );
 
       case UIDisplayMode.MULTIPLE:
         // ✅ MENUHUB STYLE: Usa +/- para permitir múltiplas unidades da mesma opção
         // Usa maxSelectedOptions como limite quando maxTotalQuantity é null
-        final effectiveMaxTotal = variant.maxTotalQuantity ?? variant.maxSelectedOptions;
-        final bool canIncrementMultiple = variant.totalQuantitySelected < effectiveMaxTotal;
-        
+        final effectiveMaxTotal =
+            variant.maxTotalQuantity ?? variant.maxSelectedOptions;
+        final bool canIncrementMultiple =
+            variant.totalQuantitySelected < effectiveMaxTotal;
+
         // Se ainda não selecionou nenhum, mostra apenas o botão +
         if (!isSelected) {
           trailingWidget = IconButton(
@@ -273,7 +294,11 @@ class VariantOptionItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: Icon(Icons.remove_circle_outline, color: theme.primaryColor, size: 24),
+                icon: Icon(
+                  Icons.remove_circle_outline,
+                  color: theme.primaryColor,
+                  size: 24,
+                ),
                 onPressed: () => onUpdate(option.quantity - 1),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -282,13 +307,26 @@ class VariantOptionItem extends StatelessWidget {
                 width: 24,
                 child: Text(
                   option.quantity.toString(),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.add_circle, color: canIncrementMultiple ? theme.primaryColor : Colors.grey.shade300, size: 24),
-                onPressed: canIncrementMultiple ? () => onUpdate(option.quantity + 1) : null,
+                icon: Icon(
+                  Icons.add_circle,
+                  color:
+                      canIncrementMultiple
+                          ? theme.primaryColor
+                          : Colors.grey.shade300,
+                  size: 24,
+                ),
+                onPressed:
+                    canIncrementMultiple
+                        ? () => onUpdate(option.quantity + 1)
+                        : null,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
@@ -316,8 +354,12 @@ class VariantOptionItem extends StatelessWidget {
                   child: CachedNetworkImage(
                     imageUrl: option.imageUrl!,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(color: Colors.grey.shade200),
-                    errorWidget: (context, url, error) => const Icon(Icons.image_not_supported),
+                    placeholder:
+                        (context, url) =>
+                            Container(color: Colors.grey.shade200),
+                    errorWidget:
+                        (context, url, error) =>
+                            const Icon(Icons.image_not_supported),
                   ),
                 ),
               ),
@@ -328,8 +370,12 @@ class VariantOptionItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    option.name.isEmpty ? 'Opção sem nome' : option.name, 
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
+                    option.name.isEmpty ? 'Opção sem nome' : option.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
                   ),
                   if (_buildSubtitle() != null) _buildSubtitle()!,
                 ],
@@ -344,7 +390,8 @@ class VariantOptionItem extends StatelessWidget {
 
   // Widget auxiliar para não repetir a lógica do subtítulo
   Widget? _buildSubtitle() {
-    final hasDescription = option.description != null && option.description!.isNotEmpty;
+    final hasDescription =
+        option.description != null && option.description!.isNotEmpty;
     final hasPrice = option.price > 0;
 
     if (!hasDescription && !hasPrice) return null;
@@ -356,7 +403,7 @@ class VariantOptionItem extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
             child: Text(
-              option.description!, 
+              option.description!,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               maxLines: 3, // ✅ Consistência com o layout SINGLE
               overflow: TextOverflow.ellipsis,
@@ -365,7 +412,10 @@ class VariantOptionItem extends StatelessWidget {
         if (hasPrice)
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
-            child: Text('+ ${option.price.toCurrency}', style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+            child: Text(
+              '+ ${option.price.toCurrency}',
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+            ),
           ),
       ],
     );

@@ -306,11 +306,11 @@ class PizzaAdapterHelper {
   /// Cria o grupo de preferências (massa + borda combinadas)
   static OptionGroup? createPreferencesGroup(Category category) {
     final doughGroup = category.optionGroups.firstWhereOrNull(
-      (g) => g.name.toLowerCase().contains('massa'),
+      (g) => g.groupType == OptionGroupType.crust,
     );
 
     final edgeGroup = category.optionGroups.firstWhereOrNull(
-      (g) => g.name.toLowerCase().contains('borda'),
+      (g) => g.groupType == OptionGroupType.edge,
     );
 
     if (doughGroup == null || edgeGroup == null) return null;
@@ -468,12 +468,12 @@ class PizzaAdapterHelper {
       // Busca os optionGroups específicos deste tamanho
       final productGroups = category.productOptionGroups![sizeProductId]!;
 
-      // Busca grupos de MASSA e BORDA
+      // ✅ Identifica grupos de Massa e Borda pelo groupType enum
       final doughGroup = productGroups.firstWhereOrNull(
-        (g) => g.name.toLowerCase().contains('massa'),
+        (g) => g.groupType == OptionGroupType.crust,
       );
       final edgeGroup = productGroups.firstWhereOrNull(
-        (g) => g.name.toLowerCase().contains('borda'),
+        (g) => g.groupType == OptionGroupType.edge,
       );
 
       // ✅ Se tem ambos, cria grupo combinado de preferências
@@ -540,8 +540,8 @@ class PizzaAdapterHelper {
       otherGroups =
           productGroups.where((g) {
             if (g.groupType == OptionGroupType.topping) return false;
-            if (g.name.toLowerCase().contains('massa')) return false;
-            if (g.name.toLowerCase().contains('borda')) return false;
+            if (g.groupType == OptionGroupType.crust) return false;
+            if (g.groupType == OptionGroupType.edge) return false;
             return true;
           }).toList();
 
@@ -559,8 +559,8 @@ class PizzaAdapterHelper {
             if (g.groupType == OptionGroupType.size) return false;
             if (g.groupType == OptionGroupType.topping) return false;
             if (g.groupType == OptionGroupType.flavor) return false;
-            if (g.name.toLowerCase().contains('massa')) return false;
-            if (g.name.toLowerCase().contains('borda')) return false;
+            if (g.groupType == OptionGroupType.crust) return false;
+            if (g.groupType == OptionGroupType.edge) return false;
             return true;
           }).toList();
     }

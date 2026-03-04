@@ -20,55 +20,79 @@ class OnboardingPage extends StatelessWidget {
 
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) async {
-        print("👂 [OnboardingPage] BlocListener ouviu uma mudança! Novo estado: ${state.status}");
+        print(
+          "👂 [OnboardingPage] BlocListener ouviu uma mudança! Novo estado: ${state.status}",
+        );
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
         if (state.status == AuthStatus.success) {
           print("✅ [OnboardingPage] Estado de SUCESSO detectado.");
           BotToast.showText(text: "Login realizado! Verificando endereços...");
-          
+
           final customer = state.customer;
           if (customer != null && customer.id != null) {
             try {
               // Aguarda os endereços com timeout de 6 segundos
-              print("📍 [OnboardingPage] Aguardando carregamento de endereços...");
-              await context.read<AddressCubit>().loadAddresses(customer.id!)
+              print(
+                "📍 [OnboardingPage] Aguardando carregamento de endereços...",
+              );
+              await context
+                  .read<AddressCubit>()
+                  .loadAddresses(customer.id!)
                   .timeout(const Duration(seconds: 6));
-              
+
               final addressState = context.read<AddressCubit>().state;
               final hasAddresses = addressState.addresses.isNotEmpty;
-              
+
               if (!hasAddresses) {
-                print("📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding");
+                print(
+                  "📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding",
+                );
                 if (context.mounted) {
                   context.go('/address-onboarding');
                 }
                 return;
               }
             } catch (e) {
-              print("⚠️ [OnboardingPage] Timeout ou erro ao carregar endereços. Seguindo para a Home como fallback.");
-              BotToast.showText(text: "Aviso: Seguindo sem endereços (timeout)");
+              print(
+                "⚠️ [OnboardingPage] Timeout ou erro ao carregar endereços. Seguindo para a Home como fallback.",
+              );
+              BotToast.showText(
+                text: "Aviso: Seguindo sem endereços (timeout)",
+              );
             }
           }
-          
+
           // ✅ Fluxo normal ou fallback (se tiver endereço ou se deu timeout)
           if (context.mounted) {
-            print("✅ [OnboardingPage] Finalizando fluxo de login e indo para '/'");
+            print(
+              "✅ [OnboardingPage] Finalizando fluxo de login e indo para '/'",
+            );
             // Usamos Go direto para garantir a saída da tela independente da pilha
             context.go('/');
           }
         } else if (state.status == AuthStatus.error) {
-          print("❌ [OnboardingPage] Estado de ERRO detectado: ${state.errorMessage}");
-          BotToast.showText(text: "Erro: ${state.errorMessage}", backgroundColor: Colors.red);
+          print(
+            "❌ [OnboardingPage] Estado de ERRO detectado: ${state.errorMessage}",
+          );
+          BotToast.showText(
+            text: "Erro: ${state.errorMessage}",
+            backgroundColor: Colors.red,
+          );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(state.errorMessage ?? 'Ocorreu um erro desconhecido.'),
+              content: Text(
+                state.errorMessage ?? 'Ocorreu um erro desconhecido.',
+              ),
               backgroundColor: Colors.redAccent,
             ),
           );
         }
       },
       child: Scaffold(
+        backgroundColor:
+            Colors
+                .transparent, // ✅ Permite transparência se usado como BottomSheet
         body: Stack(
           children: [
             // Layout responsivo
@@ -79,9 +103,13 @@ class OnboardingPage extends StatelessWidget {
             // Overlay de loading
             Builder(
               builder: (context) {
-                final authLoading = context.watch<AuthCubit>().state.status == AuthStatus.loading;
-                final addressLoading = context.watch<AddressCubit>().state.status == AddressStatus.loading;
-                
+                final authLoading =
+                    context.watch<AuthCubit>().state.status ==
+                    AuthStatus.loading;
+                final addressLoading =
+                    context.watch<AddressCubit>().state.status ==
+                    AddressStatus.loading;
+
                 if (authLoading || addressLoading) {
                   return Container(
                     color: Colors.black.withOpacity(0.5),
@@ -92,8 +120,13 @@ class OnboardingPage extends StatelessWidget {
                           const CircularProgressIndicator(color: Colors.white),
                           const SizedBox(height: 16),
                           Text(
-                            addressLoading ? 'Buscando seus endereços...' : 'Autenticando...',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                            addressLoading
+                                ? 'Buscando seus endereços...'
+                                : 'Autenticando...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -148,10 +181,11 @@ class OnboardingPage extends StatelessWidget {
         final store = storeState.store;
         final String? storeImage = store?.image?.url;
         final String? bannerImage = store?.banner?.url;
-        
+
         // Usa banner, depois imagem da loja, depois imagem padrão de comida
-        final String backgroundImage = bannerImage ?? 
-            storeImage ?? 
+        final String backgroundImage =
+            bannerImage ??
+            storeImage ??
             'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80';
 
         return Stack(
@@ -161,16 +195,20 @@ class OnboardingPage extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: backgroundImage,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey.shade300,
-                  child: const Center(
-                    child: CircularProgressIndicator(),
-                  ),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: Colors.grey.shade300,
-                  child: const Icon(Icons.restaurant, size: 100, color: Colors.grey),
-                ),
+                placeholder:
+                    (context, url) => Container(
+                      color: Colors.grey.shade300,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                errorWidget:
+                    (context, url, error) => Container(
+                      color: Colors.grey.shade300,
+                      child: const Icon(
+                        Icons.restaurant,
+                        size: 100,
+                        color: Colors.grey,
+                      ),
+                    ),
               ),
             ),
 
@@ -181,10 +219,7 @@ class OnboardingPage extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.3),
-                    ],
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.3)],
                     stops: const [0.5, 1.0],
                   ),
                 ),
@@ -262,9 +297,13 @@ class OnboardingPage extends StatelessWidget {
                         // Separador "ou"
                         Row(
                           children: [
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                              child: Divider(color: Colors.grey.shade300),
+                            ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Text(
                                 'ou',
                                 style: TextStyle(
@@ -273,7 +312,9 @@ class OnboardingPage extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                              child: Divider(color: Colors.grey.shade300),
+                            ),
                           ],
                         ),
 
@@ -362,25 +403,22 @@ class OnboardingPage extends StatelessWidget {
         ),
       ),
       onPressed: () {
-        print("🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Mobile)");
+        print(
+          "🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Mobile)",
+        );
         context.read<AuthCubit>().signInWithGoogle();
       },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min, // ✅ Evita ocupar espaço extra
         children: [
-          SvgPicture.asset(
-            'assets/images/google.svg',
-            height: 22,
-          ),
+          SvgPicture.asset('assets/images/google.svg', height: 22),
           const SizedBox(width: 12),
-          Flexible( // ✅ Permite que o texto quebre ou diminua se necessário
+          Flexible(
+            // ✅ Permite que o texto quebre ou diminua se necessário
             child: Text(
               'Continuar com Google',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -427,7 +465,9 @@ class OnboardingPage extends StatelessWidget {
                 ),
               ),
               onPressed: () {
-                print("🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Card)");
+                print(
+                  "🖱️ [OnboardingPage] Clique detectado no botão Google (Layout Card)",
+                );
                 context.read<AuthCubit>().signInWithGoogle();
               },
               child: Row(

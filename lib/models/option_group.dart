@@ -22,8 +22,10 @@ enum OptionGroupType {
       case 'TOPPING':
         return OptionGroupType.topping;
       case 'CRUST':
+      case 'MASSA':
         return OptionGroupType.crust;
       case 'EDGE':
+      case 'BORDA':
         return OptionGroupType.edge;
       case 'GENERIC':
         return OptionGroupType.generic;

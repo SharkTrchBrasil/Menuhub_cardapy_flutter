@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
 
+import 'package:totem/models/option_group.dart';
+
 /// Página de detalhes do pedido completa - Estilo iFood
 /// ✅ Suporta pedidos cancelados, concluídos e avaliações
 class OrderDetailPage extends StatelessWidget {
@@ -31,7 +33,11 @@ class _OrderDetailContent extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFEA1D2C), size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            color: Color(0xFFEA1D2C),
+            size: 20,
+          ),
           onPressed: () => context.pop(),
         ),
         title: const Text(
@@ -70,7 +76,9 @@ class _OrderDetailContent extends StatelessWidget {
             _buildPaymentSection(),
             _buildAddressSection(),
             if (order.isConcluded) _buildReviewSection(),
-            const SizedBox(height: 100), // Espaço para não ficar colado no bottom
+            const SizedBox(
+              height: 100,
+            ), // Espaço para não ficar colado no bottom
           ],
         ),
       ),
@@ -79,7 +87,7 @@ class _OrderDetailContent extends StatelessWidget {
 
   Widget _buildStoreHeader() {
     final dateFormat = DateFormat('dd/MM/yyyy • HH:mm', 'pt_BR');
-    
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -146,11 +154,14 @@ class _OrderDetailContent extends StatelessWidget {
     Color iconColor = Colors.grey;
 
     if (order.isCancelled) {
-      message = 'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?';
+      message =
+          'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?';
       icon = Icons.cancel;
       iconColor = Colors.black87;
     } else if (order.isConcluded) {
-      final time = DateFormat('HH:mm').format(order.closedAt ?? order.updatedAt);
+      final time = DateFormat(
+        'HH:mm',
+      ).format(order.closedAt ?? order.updatedAt);
       message = 'Pedido concluído às $time';
       icon = Icons.check_circle;
       iconColor = Colors.green;
@@ -248,7 +259,9 @@ class _OrderDetailContent extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      NumberFormat.simpleCurrency(locale: 'pt_BR').format(item.priceInReais),
+                      NumberFormat.simpleCurrency(
+                        locale: 'pt_BR',
+                      ).format(item.priceInReais),
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0xFF3F3E3E),
@@ -257,25 +270,8 @@ class _OrderDetailContent extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // Sub-itens
-                ...item.subItems.map((sub) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      _buildQuantityBox(sub.quantity),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          sub.name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF717171),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
+                // Sub-itens formatados como no carrinho
+                if (item.subItems.isNotEmpty) _buildVariantsSection(item),
                 // Observações
                 if (item.hasNotes)
                   Padding(
@@ -292,6 +288,177 @@ class _OrderDetailContent extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVariantsSection(BagItem item) {
+    String? massaText;
+    String? bordaText;
+    final flavorOptions = <SubItem>[];
+    final otherOptions = <SubItem>[];
+
+    int massaPrice = 0;
+    int bordaPrice = 0;
+
+    for (final sub in item.subItems) {
+      if (sub.quantity <= 0) continue;
+
+      final groupType = OptionGroupType.fromString(sub.groupType);
+      final groupNameLower = sub.groupName?.toLowerCase() ?? '';
+      final nameLower = sub.name.toLowerCase();
+
+      final isFlavorGroup = groupType == OptionGroupType.topping;
+      final isMassaGroup = groupType == OptionGroupType.crust;
+      final isBordaGroup = groupType == OptionGroupType.edge;
+
+      // Detecta Massa
+      if (isMassaGroup && massaText == null) {
+        massaText = sub.name;
+        massaPrice = sub.totalPrice ~/ sub.quantity;
+        continue;
+      }
+
+      // Detecta Borda
+      if (isBordaGroup && bordaText == null) {
+        bordaText = sub.name;
+        bordaPrice = sub.totalPrice ~/ sub.quantity;
+        continue;
+      }
+
+      // 🍕 Detecta combo "Massa + Borda" pelo nome da opção ou se for do grupo de preferência
+      final isPreferenceGroup =
+          groupType == OptionGroupType.generic &&
+          (groupNameLower.contains('preferência') ||
+              groupNameLower.contains('preferencia'));
+
+      if (nameLower.contains(' + ') || isPreferenceGroup) {
+        if (nameLower.contains(' + ')) {
+          final parts = sub.name.split(' + ');
+          if (parts.length >= 2) {
+            massaText = parts[0].trim();
+            bordaText = parts[1].trim();
+            massaPrice = sub.totalPrice ~/ sub.quantity;
+            bordaPrice = 0;
+            continue;
+          }
+        }
+      }
+
+      // Sabores
+      if (isFlavorGroup) {
+        flavorOptions.add(sub);
+      } else {
+        otherOptions.add(sub);
+      }
+    }
+
+    final lineWidgets = <Widget>[];
+
+    // 1. Massa + Borda
+    if (massaText != null || bordaText != null) {
+      String cleanMassa = massaText ?? '';
+      String cleanBorda = bordaText ?? '';
+      int combinedPrice = massaPrice + bordaPrice;
+
+      while (RegExp(
+        r'^[Mm]assa\s+',
+        caseSensitive: false,
+      ).hasMatch(cleanMassa)) {
+        cleanMassa = cleanMassa.replaceFirst(
+          RegExp(r'^[Mm]assa\s+', caseSensitive: false),
+          '',
+        );
+      }
+      while (RegExp(
+        r'^[Bb]orda\s+',
+        caseSensitive: false,
+      ).hasMatch(cleanBorda)) {
+        cleanBorda = cleanBorda.replaceFirst(
+          RegExp(r'^[Bb]orda\s+', caseSensitive: false),
+          '',
+        );
+      }
+
+      String combinedText = '';
+      if (massaText != null && bordaText != null) {
+        combinedText = 'Massa $cleanMassa + Borda $cleanBorda';
+      } else if (massaText != null) {
+        combinedText = 'Massa $cleanMassa';
+      } else {
+        combinedText = 'Borda $cleanBorda';
+      }
+      lineWidgets.add(
+        _buildVariantRow('1', combinedText, price: combinedPrice),
+      );
+    }
+
+    // 2. Sabores
+    final flavorCount = flavorOptions.length;
+    final fractionText = flavorCount > 1 ? '1/$flavorCount ' : '';
+    for (final flavor in flavorOptions) {
+      String name = flavor.name;
+      name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
+      final flavorPrice = flavor.totalPrice ~/ flavor.quantity;
+      lineWidgets.add(
+        _buildVariantRow('1', '$fractionText$name', price: flavorPrice),
+      );
+    }
+
+    // 3. Outros
+    for (final other in otherOptions) {
+      lineWidgets.add(
+        _buildVariantRow(
+          other.quantity.toString(),
+          other.name,
+          price: other.totalPrice ~/ other.quantity,
+        ),
+      );
+    }
+
+    if (lineWidgets.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: lineWidgets,
+      ),
+    );
+  }
+
+  Widget _buildVariantRow(String quantity, String text, {int price = 0}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildQuantityBox(int.tryParse(quantity) ?? 1),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF717171),
+                height: 1.2,
+              ),
+            ),
+          ),
+          if (price > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              NumberFormat.simpleCurrency(
+                locale: 'pt_BR',
+              ).format(price / 100.0),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF717171).withOpacity(0.8),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -332,8 +499,8 @@ class _OrderDetailContent extends StatelessWidget {
           const SizedBox(height: 16),
           _buildSummaryRow('Subtotal', order.subtotalAmount),
           _buildSummaryRow(
-            'Taxa de entrega', 
-            order.deliveryFeeAmount, 
+            'Taxa de entrega',
+            order.deliveryFeeAmount,
             isFree: order.deliveryFeeAmount == 0,
           ),
           _buildSummaryRow('Taxa de serviço', 0.99, hasHelp: true),
@@ -350,7 +517,9 @@ class _OrderDetailContent extends StatelessWidget {
                 ),
               ),
               Text(
-                NumberFormat.simpleCurrency(locale: 'pt_BR').format(order.totalAmount + 0.99),
+                NumberFormat.simpleCurrency(
+                  locale: 'pt_BR',
+                ).format(order.totalAmount + 0.99),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -364,7 +533,12 @@ class _OrderDetailContent extends StatelessWidget {
     );
   }
 
-  Widget _buildSummaryRow(String label, double value, {bool isFree = false, bool hasHelp = false}) {
+  Widget _buildSummaryRow(
+    String label,
+    double value, {
+    bool isFree = false,
+    bool hasHelp = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -374,10 +548,7 @@ class _OrderDetailContent extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF717171),
-                ),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF717171)),
               ),
               if (hasHelp) ...[
                 const SizedBox(width: 4),
@@ -386,7 +557,9 @@ class _OrderDetailContent extends StatelessWidget {
             ],
           ),
           Text(
-            isFree ? 'Grátis' : NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
+            isFree
+                ? 'Grátis'
+                : NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
             style: TextStyle(
               fontSize: 14,
               color: isFree ? const Color(0xFF008E2F) : const Color(0xFF717171),
@@ -444,7 +617,7 @@ class _OrderDetailContent extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      payment.displayName,
+                      '${payment.type.isOnline ? '' : 'Pagamento na entrega • '}${payment.displayName}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -627,13 +800,16 @@ class _OrderDetailContent extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: ClipOval(
-        child: logoUrl != null && logoUrl.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: _formatImageUrl(logoUrl),
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => const Icon(Icons.store, color: Colors.grey),
-              )
-            : const Icon(Icons.store, color: Colors.grey),
+        child:
+            logoUrl != null && logoUrl.isNotEmpty
+                ? CachedNetworkImage(
+                  imageUrl: _formatImageUrl(logoUrl),
+                  fit: BoxFit.cover,
+                  errorWidget:
+                      (_, __, ___) =>
+                          const Icon(Icons.store, color: Colors.grey),
+                )
+                : const Icon(Icons.store, color: Colors.grey),
       ),
     );
   }
@@ -648,13 +824,16 @@ class _OrderDetailContent extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: url != null && url.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: _formatImageUrl(url),
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => const Icon(Icons.restaurant, color: Colors.grey),
-              )
-            : const Icon(Icons.restaurant, color: Colors.grey),
+        child:
+            url != null && url.isNotEmpty
+                ? CachedNetworkImage(
+                  imageUrl: _formatImageUrl(url),
+                  fit: BoxFit.cover,
+                  errorWidget:
+                      (_, __, ___) =>
+                          const Icon(Icons.restaurant, color: Colors.grey),
+                )
+                : const Icon(Icons.restaurant, color: Colors.grey),
       ),
     );
   }

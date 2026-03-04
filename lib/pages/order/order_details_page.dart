@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/models/payment_method.dart';
+import 'package:totem/models/option_group.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
@@ -14,8 +15,8 @@ import 'package:totem/widgets/store_closed_widgets.dart';
 import 'package:totem/models/update_cart_payload.dart';
 import 'package:totem/models/cart_item.dart';
 import 'package:totem/models/product.dart';
-import 'package:totem/models/category.dart';
 import 'package:totem/core/services/timezone_service.dart';
+import 'package:totem/pages/order/widgets/order_status_progress_bar.dart';
 
 /// Página de detalhes do pedido completa - Estilo iFood
 /// ✅ Suporta pedidos cancelados, concluídos e avaliações
@@ -195,97 +196,39 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildStatusBanner() {
-    String message = '';
-    IconData icon = Icons.info;
-    Color iconColor = Colors.grey;
-
-    if (widget.order.isCancelled) {
-      message =
-          'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?';
-      icon = Icons.cancel;
-      iconColor = Colors.black87;
-    } else if (_isConcluded) {
-      final time = TimezoneService.formatStoreDateTime(
-        widget.order.closedAt ?? widget.order.updatedAt,
-        context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo",
-        format: 'HH:mm',
-      );
+    // Se cancelado pelo sistema (timeout), mostra mensagem amigável atual
+    if (widget.order.isSystemCancelled) {
       return Container(
         width: double.infinity,
         margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F2F2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF008E2F),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check, color: Colors.white, size: 32),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Seu pedido foi entregue',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3F3E3E),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Pedido entregue às: $time',
-              style: const TextStyle(fontSize: 14, color: Color(0xFF717171)),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                // Ajuda com o pedido
-              },
-              child: const Text(
-                'Ajuda com o pedido',
+            Icon(Icons.cancel, color: Colors.black87, size: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?',
                 style: TextStyle(
-                  color: Color(0xFFEA1D2C),
-                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Color(0xFF3F3E3E),
+                  height: 1.4,
                 ),
               ),
             ),
           ],
         ),
       );
-    } else {
-      message = 'Pedido em andamento: ${widget.order.statusLabel}';
-      icon = Icons.access_time;
-      iconColor = Colors.orange;
     }
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: iconColor, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF3F3E3E),
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // Para todos os outros casos (em andamento, concluído ou cancelado pelo lojista),
+    // usa o widget de progresso replicado do Admin
+    return OrderStatusProgressBar(order: widget.order);
   }
 
   Widget _buildProductList() {
@@ -354,41 +297,39 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                       ).format(item.priceInReais),
                       style: const TextStyle(
                         fontSize: 14,
+                        fontWeight: FontWeight.bold,
                         color: Color(0xFF3F3E3E),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                // Sub-itens
-                ...item.subItems.map(
-                  (sub) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        _buildQuantityBox(sub.quantity),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            sub.name,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF717171),
-                            ),
-                          ),
-                        ),
-                      ],
+                if (item.description != null &&
+                    item.description!.trim().isNotEmpty &&
+                    !item.description!.toLowerCase().contains('categoria:') &&
+                    !item.description!.toLowerCase().contains('tamanho')) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    item.description!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF717171),
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
+                ],
+
+                // Sub-itens formatados como no carrinho
+                if (item.subItems.isNotEmpty) _buildVariantsSection(item),
+
                 // Observações
                 if (item.hasNotes)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      item.notes!,
+                      "Obs: ${item.notes!.trim()}",
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: Color(0xFF717171),
                         fontStyle: FontStyle.italic,
                       ),
@@ -402,26 +343,204 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     );
   }
 
-  Widget _buildQuantityBox(int qty) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '$qty',
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF717171),
+  Widget _buildVariantsSection(BagItem item) {
+    String? massaText;
+    String? bordaText;
+    final flavorOptions = <SubItem>[];
+    final otherOptions = <SubItem>[];
+
+    int massaPrice = 0;
+    int bordaPrice = 0;
+
+    for (final sub in item.subItems) {
+      if (sub.quantity <= 0) continue;
+
+      final groupType = OptionGroupType.fromString(sub.groupType);
+      final groupNameLower = sub.groupName?.toLowerCase() ?? '';
+      final nameLower = sub.name.toLowerCase();
+
+      final isFlavorGroup = groupType == OptionGroupType.topping;
+      final isMassaGroup = groupType == OptionGroupType.crust;
+      final isBordaGroup = groupType == OptionGroupType.edge;
+
+      // Detecta Massa
+      if (isMassaGroup && massaText == null) {
+        massaText = sub.name;
+        massaPrice = sub.totalPrice ~/ sub.quantity;
+        continue;
+      }
+
+      // Detecta Borda
+      if (isBordaGroup && bordaText == null) {
+        bordaText = sub.name;
+        bordaPrice = sub.totalPrice ~/ sub.quantity;
+        continue;
+      }
+
+      // 🍕 Detecta combo "Massa + Borda" pelo nome da opção ou se for do grupo de preferência
+      final isPreferenceGroup =
+          groupType == OptionGroupType.generic &&
+          (groupNameLower.contains('preferência') ||
+              groupNameLower.contains('preferencia'));
+
+      if (nameLower.contains(' + ') || isPreferenceGroup) {
+        if (nameLower.contains(' + ')) {
+          final parts = sub.name.split(' + ');
+          if (parts.length >= 2) {
+            massaText = parts[0].trim();
+            bordaText = parts[1].trim();
+            massaPrice = sub.totalPrice ~/ sub.quantity;
+            bordaPrice = 0;
+            continue;
+          }
+        }
+      }
+
+      // Sabores
+      if (isFlavorGroup) {
+        flavorOptions.add(sub);
+      } else {
+        otherOptions.add(sub);
+      }
+    }
+
+    final lineWidgets = <Widget>[];
+
+    // 1. Massa + Borda
+    if (massaText != null || bordaText != null) {
+      String cleanMassa = massaText ?? '';
+      String cleanBorda = bordaText ?? '';
+      int combinedPrice = massaPrice + bordaPrice;
+
+      while (RegExp(
+        r'^[Mm]assa\s+',
+        caseSensitive: false,
+      ).hasMatch(cleanMassa)) {
+        cleanMassa = cleanMassa.replaceFirst(
+          RegExp(r'^[Mm]assa\s+', caseSensitive: false),
+          '',
+        );
+      }
+      while (RegExp(
+        r'^[Bb]orda\s+',
+        caseSensitive: false,
+      ).hasMatch(cleanBorda)) {
+        cleanBorda = cleanBorda.replaceFirst(
+          RegExp(r'^[Bb]orda\s+', caseSensitive: false),
+          '',
+        );
+      }
+
+      String combinedText = '';
+      if (massaText != null && bordaText != null) {
+        combinedText = 'Massa $cleanMassa + Borda $cleanBorda';
+      } else if (massaText != null) {
+        combinedText = 'Massa $cleanMassa';
+      } else {
+        combinedText = 'Borda $cleanBorda';
+      }
+      lineWidgets.add(
+        _buildVariantRow(context, '1', combinedText, price: combinedPrice),
+      );
+    }
+
+    // 2. Sabores
+    final flavorCount = flavorOptions.length;
+    final fractionText = flavorCount > 1 ? '1/$flavorCount ' : '';
+    for (final flavor in flavorOptions) {
+      String name = flavor.name;
+      name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
+      final flavorPrice = flavor.totalPrice ~/ flavor.quantity;
+      lineWidgets.add(
+        _buildVariantRow(
+          context,
+          '1',
+          '$fractionText$name',
+          price: flavorPrice,
         ),
+      );
+    }
+
+    // 3. Outros
+    for (final other in otherOptions) {
+      lineWidgets.add(
+        _buildVariantRow(
+          context,
+          other.quantity.toString(),
+          other.name,
+          price: other.totalPrice ~/ other.quantity,
+        ),
+      );
+    }
+
+    if (lineWidgets.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: lineWidgets,
+      ),
+    );
+  }
+
+  Widget _buildVariantRow(
+    BuildContext context,
+    String quantity,
+    String text, {
+    int price = 0,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F2),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Text(
+              quantity,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF717171),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF717171),
+                height: 1.2,
+              ),
+            ),
+          ),
+          if (price > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              NumberFormat.simpleCurrency(
+                locale: 'pt_BR',
+              ).format(price / 100.0),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF717171).withOpacity(0.8),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildValuesSummary() {
-    final serviceFee = 0.99;
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -442,7 +561,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             widget.order.deliveryFeeAmount,
             isFree: widget.order.deliveryFeeAmount == 0,
           ),
-          _buildSummaryRow('Taxa de serviço', serviceFee, hasHelp: true),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -458,7 +576,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               Text(
                 NumberFormat.simpleCurrency(
                   locale: 'pt_BR',
-                ).format(widget.order.totalAmount + serviceFee),
+                ).format(widget.order.totalAmount),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -625,7 +743,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      payment.displayName,
+                      '${payment.type.isOnline ? '' : 'Pagamento na entrega • '}${payment.displayName}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

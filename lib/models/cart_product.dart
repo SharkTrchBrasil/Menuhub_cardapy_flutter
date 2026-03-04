@@ -9,6 +9,7 @@ import 'package:totem/models/option_item.dart';
 import 'package:totem/models/cart_variant.dart';
 import 'package:totem/models/cart_variant_option.dart';
 import 'package:totem/helpers/enums/displaymode.dart';
+import 'package:totem/models/store_operation_config.dart';
 
 class CartProduct extends Equatable {
   // PROPRIEDADES DE ORIGEM (IMUTÁVEIS)
@@ -32,7 +33,10 @@ class CartProduct extends Equatable {
     this.selectedSize,
     this.selectedFlavors = const [],
     this.selectedVariants = const [],
+    this.pizzaPricingStrategy = PizzaPricingStrategy.highest,
   });
+
+  final PizzaPricingStrategy pizzaPricingStrategy;
 
   // ✅ NOVO: Getter para quantidade efetiva (usa weightQuantity se disponível)
   double get effectiveQuantity {
@@ -54,11 +58,14 @@ class CartProduct extends Equatable {
     OptionItem? defaultSize;
 
     if (category.isCustomizable) {
-      // 1. Pré-seleciona o primeiro tamanho como padrão
       final sizeGroup = category.optionGroups.firstWhereOrNull(
         (g) => g.groupType == OptionGroupType.size,
       );
       defaultSize = sizeGroup?.items.firstOrNull;
+
+      // ✅ Estratégia de preço da pizza (default HIGHEST se não informado)
+      // Nota: Idealmente isso viria do StoreCubit, mas como estamos num factory,
+      // o CartProduct deve ser imutável com a estratégia setada.
 
       // 2. Converte grupos em variants, filtrando opções e grupos inativos
       variants =
@@ -164,126 +171,140 @@ class CartProduct extends Equatable {
     if (category.isCustomizable) {
       if (selectedSize == null) return 0;
 
-      // ✅ NOVO: Busca TODOS os grupos TOPPING (pode haver múltiplos: SABOR, SABOR2, SABOR3, etc.)
+      // ✅ Busca TODOS os grupos FLAVOR (já adaptados pelo PizzaAdapterHelper)
+      // O PizzaAdapterHelper converte TOPPING groups em FLAVOR groups com IDs virtuais (1000+i)
+      final flavorGroups =
+          category.optionGroups
+              .where((g) => g.groupType == OptionGroupType.flavor)
+              .toList();
+
+      if (flavorGroups.isNotEmpty) {
+        // ✅ CORREÇÃO CRÍTICA: Para cada opção selecionada, busca o preço CHEIO
+        // via pricesBySize do OptionItem original.
+        // O preço armazenado no CartVariantOption é FRACIONADO (preço/N) para exibição.
+        // Usar o fracionado * N causa diferença por arredondamento vs o backend.
+        final List<int> fullPrices = [];
+
+        for (final flavorGroup in flavorGroups) {
+          final flavorVariant = selectedVariants.firstWhereOrNull(
+            (v) => v.id == flavorGroup.id,
+          );
+
+          if (flavorVariant != null) {
+            for (final option in flavorVariant.cartOptions.where(
+              (o) => o.quantity > 0,
+            )) {
+              // Busca o OptionItem deste grupo para acessar pricesBySize
+              final flavorItem = flavorGroup.items.firstWhereOrNull(
+                (item) => item.id == option.id,
+              );
+
+              if (flavorItem != null) {
+                // ✅ PREÇO CHEIO: busca pelo selectedSize.id (mesmo que faz o backend)
+                final priceFromSize =
+                    flavorItem.getPriceForSize(selectedSize!.id) ??
+                    flavorItem.getPriceForSize(selectedSize!.linkedProductId);
+
+                final int fullPrice;
+                if (priceFromSize != null && priceFromSize > 0) {
+                  // Tem pricesBySize → preço cheio disponível diretamente
+                  fullPrice = priceFromSize;
+                } else {
+                  // Sem pricesBySize (cenário createFlavorGroups/Product IDs):
+                  // flavorItem.price é FRACIONADO (dividido por maxFlavors)
+                  // Reconstrói o preço cheio multiplicando pelo número de slots
+                  fullPrice = flavorItem.price * flavorGroups.length;
+                }
+                if (fullPrice > 0) fullPrices.add(fullPrice);
+              } else {
+                // Fallback: item não encontrado no grupo, usa price do CartVariantOption
+                // mas como estava fracionado, multiplica pelo número de sabores do grupo
+                final maxFlavors = flavorGroups.length;
+                final approximateFullPrice = option.price * maxFlavors;
+                if (approximateFullPrice > 0)
+                  fullPrices.add(approximateFullPrice);
+              }
+            }
+          }
+        }
+
+        if (fullPrices.isNotEmpty) {
+          // ✅ ESTRATÉGIA DE PREÇO sobre PREÇOS CHEIOS (idêntico ao backend)
+          final int combinedPrice;
+          if (pizzaPricingStrategy == PizzaPricingStrategy.average) {
+            // AVERAGE: média aritmética dos preços cheios
+            combinedPrice =
+                fullPrices.fold(0, (sum, p) => sum + p) ~/ fullPrices.length;
+          } else {
+            // HIGHEST: maior preço cheio (sem multiplicar — já é o valor total)
+            combinedPrice = fullPrices.reduce((a, b) => a > b ? a : b);
+          }
+
+          print(
+            '🍕 [CartProduct] basePrice ($pizzaPricingStrategy) — preços CHEIOS:',
+          );
+          print(
+            '   - Sabores: ${fullPrices.map((p) => (p / 100).toStringAsFixed(2)).join(", ")}',
+          );
+          print(
+            '   - basePrice: R\$ ${(combinedPrice / 100).toStringAsFixed(2)}',
+          );
+
+          return combinedPrice;
+        }
+        return 0;
+      }
+
+      // ✅ Fallback para TOPPING groups (caso a adaptação não tenha sido feita)
       final toppingGroups =
           category.optionGroups
               .where((g) => g.groupType == OptionGroupType.topping)
               .toList();
 
       if (toppingGroups.isNotEmpty) {
-        // ✅ Coleta todos os sabores selecionados de TODOS os grupos TOPPING
-        final List<int> selectedFlavorPrices = [];
+        final List<int> fullPrices = [];
 
         for (final toppingGroup in toppingGroups) {
           final flavorVariant = selectedVariants.firstWhereOrNull(
             (v) => v.id == toppingGroup.id,
           );
 
-          if (flavorVariant != null && flavorVariant.cartOptions.isNotEmpty) {
-            // Busca preços dos sabores selecionados usando prices_by_size
-            final groupFlavorPrices =
-                flavorVariant.cartOptions
-                    .where((o) => o.quantity > 0)
-                    .map((o) {
-                      // Busca o OptionItem original para acessar prices_by_size
-                      final toppingItem = toppingGroup.items.firstWhereOrNull(
-                        (item) => item.id == o.id,
-                      );
-
-                      if (toppingItem != null && selectedSize?.id != null) {
-                        // Usa prices_by_size se disponível
-                        final priceForSize = toppingItem.getPriceForSize(
-                          selectedSize!.id,
-                        );
-                        return priceForSize ?? o.price;
-                      }
-                      return o.price;
-                    })
-                    .whereType<int>()
-                    .where((p) => p > 0)
-                    .toList();
-
-            selectedFlavorPrices.addAll(groupFlavorPrices);
+          if (flavorVariant != null) {
+            for (final option in flavorVariant.cartOptions.where(
+              (o) => o.quantity > 0,
+            )) {
+              final toppingItem = toppingGroup.items.firstWhereOrNull(
+                (item) => item.id == option.id,
+              );
+              if (toppingItem != null && selectedSize?.id != null) {
+                final fullPrice =
+                    toppingItem.getPriceForSize(selectedSize!.id) ??
+                    option.price;
+                if (fullPrice > 0) fullPrices.add(fullPrice);
+              } else if (option.price > 0) {
+                fullPrices.add(option.price);
+              }
+            }
           }
         }
 
-        if (selectedFlavorPrices.isNotEmpty) {
-          // ✅ CORREÇÃO: Os preços já vêm divididos (ex: R$ 17,50 para 1/2)
-          // Para obter o preço cheio, precisamos multiplicar pelo número de sabores
-          final numberOfFlavors = selectedFlavorPrices.length;
-
-          // ✅ ESTRATÉGIA DE PREÇO: HIGHEST ou AVERAGE
-          // Por padrão usa HIGHEST (mais caro) se não tiver acesso à configuração
-          // O backend recalcula usando a estratégia configurada na loja
-          // Aqui apenas calculamos o preço base para exibição
-          final maxFractionalPrice = selectedFlavorPrices.reduce(
-            (a, b) => a > b ? a : b,
-          );
-
-          // ✅ Para HIGHEST: pega o maior preço dividido e multiplica pelo número de sabores
-          // Exemplo: 2 sabores de R$ 17,50 cada → R$ 17,50 * 2 = R$ 35,00 (preço cheio)
-          final fullPrice = maxFractionalPrice * numberOfFlavors;
-
-          print('🍕 [CartProduct] Cálculo de basePrice:');
+        if (fullPrices.isNotEmpty) {
+          final int combinedPrice;
+          if (pizzaPricingStrategy == PizzaPricingStrategy.average) {
+            combinedPrice =
+                fullPrices.fold(0, (sum, p) => sum + p) ~/ fullPrices.length;
+          } else {
+            combinedPrice = fullPrices.reduce((a, b) => a > b ? a : b);
+          }
           print(
-            '   - Preços divididos: ${selectedFlavorPrices.map((p) => (p / 100).toStringAsFixed(2)).join(", ")}',
+            '🍕 [CartProduct] basePrice fallback TOPPING ($pizzaPricingStrategy): R\$ ${(combinedPrice / 100).toStringAsFixed(2)}',
           );
-          print('   - Número de sabores: $numberOfFlavors');
-          print(
-            '   - Maior preço dividido: R\$ ${(maxFractionalPrice / 100).toStringAsFixed(2)}',
-          );
-          print(
-            '   - Preço cheio (basePrice): R\$ ${(fullPrice / 100).toStringAsFixed(2)}',
-          );
-
-          return fullPrice;
+          return combinedPrice;
         }
         return 0;
       }
 
-      // ⚠️ FALLBACK: Estrutura antiga (busca por nome "sabor")
-      final flavorGroups =
-          selectedVariants
-              .where((v) => v.name.toLowerCase().contains('sabor'))
-              .toList();
-
-      // ✅ Verifica se TODOS os grupos de sabores obrigatórios foram selecionados
-      final allFlavorsSelected = flavorGroups.every((g) => g.isValid);
-
-      if (flavorGroups.isNotEmpty && allFlavorsSelected) {
-        // ✅ REGRA DO MAIS CARO (igual Menuhub):
-        // Pizza com múltiplos sabores cobra o PREÇO CHEIO DO SABOR MAIS CARO
-        //
-        // Exemplo: Pizza Grande 4 Sabores
-        // - Catupiry: R$ 70,00 (preço cheio) → exibe "+ R$ 17,50" (70/4)
-        // - Palmito: R$ 38,50 (preço cheio) → exibe "+ R$ 9,62" (38,50/4)
-        // - Calabresa: R$ 48,00 (preço cheio) → exibe "+ R$ 12,00" (48/4)
-        //
-        // Total = R$ 70,00 (preço cheio do Catupiry, o mais caro)
-        // NÃO soma os fracionados!
-
-        final selectedFlavorPrices =
-            flavorGroups
-                .expand((g) => g.cartOptions.where((o) => o.quantity > 0))
-                .map((o) => o.price)
-                .toList();
-
-        if (selectedFlavorPrices.isNotEmpty) {
-          // ✅ O preço exibido já é fracionado (ex: R$ 17,50 = 70/4)
-          // Para obter o preço cheio, multiplicamos pelo número de sabores
-          final numberOfFlavors = selectedFlavorPrices.length;
-
-          // ✅ Pega o MAIOR preço fracionado e reconstrói o preço cheio
-          final maxFractionalPrice = selectedFlavorPrices.reduce(
-            (a, b) => a > b ? a : b,
-          );
-          final fullPriceOfMostExpensive = maxFractionalPrice * numberOfFlavors;
-
-          return fullPriceOfMostExpensive;
-        }
-      }
-
-      // ✅ Se ainda não selecionou todos os sabores, retorna o startingPrice para não exibir R$ 0,00
+      // ✅ Se nenhum sabor selecionado ainda, exibe startingPrice para não mostrar R$0,00
       return startingPrice;
     }
 
@@ -305,23 +326,25 @@ class CartProduct extends Equatable {
       // ✅ NOVO: Para pizzas: soma apenas bordas (EDGE), massas (CRUST) e outros extras (NÃO sabores TOPPING)
       // Sabores já são calculados no basePrice usando a regra do maior preço
 
-      // ✅ CORREÇÃO: Busca TODOS os grupos TOPPING para excluir do cálculo
-      final toppingGroupIds =
+      // ✅ CORREÇÃO: Exclui TOPPING e FLAVOR (sabores) do variantsPrice
+      // Os sabores (TOPPING) dos grupos originais e FLAVOR dos grupos adaptados
+      // já são contabilizados no basePrice — não devem entrar no variantsPrice.
+      final excludedGroupIds =
           category.optionGroups
-              .where((g) => g.groupType == OptionGroupType.topping)
+              .where(
+                (g) =>
+                    g.groupType == OptionGroupType.topping ||
+                    g.groupType == OptionGroupType.flavor,
+              )
               .map((g) => g.id)
               .toSet();
 
       return selectedVariants
           .where((v) {
-            // Exclui TODOS os grupos TOPPING (sabores)
-            if (toppingGroupIds.contains(v.id)) {
-              return false;
-            }
-            // Exclui grupos com nome "sabor" (estrutura antiga)
-            if (v.name.toLowerCase().contains('sabor')) {
-              return false;
-            }
+            // Exclui grupos de sabor (TOPPING e FLAVOR)
+            if (excludedGroupIds.contains(v.id)) return false;
+            // Exclui grupos com nome "sabor" (estrutura legada)
+            if (v.name.toLowerCase().contains('sabor')) return false;
             return true;
           })
           .fold(0, (total, variant) => total + variant.totalPrice);
@@ -425,6 +448,7 @@ class CartProduct extends Equatable {
     OptionItem? selectedSize,
     List<Product>? selectedFlavors,
     List<CartVariant>? selectedVariants,
+    PizzaPricingStrategy? pizzaPricingStrategy,
   }) {
     return CartProduct(
       product: product ?? this.product,
@@ -435,6 +459,9 @@ class CartProduct extends Equatable {
       selectedSize: selectedSize ?? this.selectedSize,
       selectedFlavors: selectedFlavors ?? this.selectedFlavors,
       selectedVariants: selectedVariants ?? this.selectedVariants,
+      pizzaPricingStrategy:
+          pizzaPricingStrategy ??
+          this.pizzaPricingStrategy, // Mantém a estratégia
     );
   }
 
@@ -447,5 +474,6 @@ class CartProduct extends Equatable {
     selectedSize,
     selectedFlavors,
     selectedVariants,
+    pizzaPricingStrategy,
   ];
 }

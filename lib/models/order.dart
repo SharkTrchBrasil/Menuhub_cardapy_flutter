@@ -440,6 +440,9 @@ class SubItem {
   final int unitPrice;
   final int unitPriceWithDiscount;
 
+  final String? groupName;
+  final String? groupType;
+
   SubItem({
     required this.id,
     this.externalId,
@@ -450,6 +453,8 @@ class SubItem {
     required this.totalPriceWithDiscount,
     required this.unitPrice,
     required this.unitPriceWithDiscount,
+    this.groupName,
+    this.groupType,
   });
 
   factory SubItem.fromJson(Map<String, dynamic> json) {
@@ -485,6 +490,16 @@ class SubItem {
             json['unitPriceWithDiscount'] ?? json['unitPrice'] ?? json['price'],
           ) ??
           0,
+      groupName:
+          json['groupName'] ??
+          json['group_name'] ??
+          json['group'] ??
+          json['group_name'],
+      groupType:
+          json['groupType'] ??
+          json['group_type'] ??
+          json['type'] ??
+          json['category'],
     );
   }
 
@@ -933,28 +948,11 @@ class Order {
     // 1. Normaliza Bag (pode vir como 'bag' ou 'items' + 'total')
     // Helper function para converter valores de preço para centavos de forma segura
     int toCents(dynamic value) {
-      if (value == null) return 0;
-      if (value is int) return (value * 100);
-      if (value is double) return (value * 100).round();
-      if (value is String) {
-        final parsed = double.tryParse(value.replaceAll(',', '.'));
-        return parsed != null ? (parsed * 100).round() : 0;
-      }
-      if (value is num) return (value * 100).round();
-      return 0;
+      return parseMoneyAmount(value) ?? 0;
     }
 
-    // Helper function para converter valores já em centavos (int) de forma segura
     int toSafeCents(dynamic value) {
-      if (value == null) return 0;
-      if (value is int) return value;
-      if (value is double) return value.round();
-      if (value is String) {
-        final parsed = double.tryParse(value.replaceAll(',', '.'));
-        return parsed?.round() ?? 0;
-      }
-      if (value is num) return value.round();
-      return 0;
+      return parseMoneyAmount(value) ?? 0;
     }
 
     Map<String, dynamic> bagJson;
@@ -1198,6 +1196,10 @@ class Order {
   List<BagItem> get items => bag.items;
   int get itemCount => bag.itemCount;
   String get formattedAddress => delivery.address.formatted;
+
+  /// Verifica se foi cancelado automaticamente pelo sistema (timeout)
+  bool get isSystemCancelled =>
+      isCancelled && details.cancellation?.code == 'AUTO_TIMEOUT';
 
   // ==========================================
   // COMPATIBILITY GETTERS

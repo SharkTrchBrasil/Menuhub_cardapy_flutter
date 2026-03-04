@@ -12,12 +12,25 @@ Future<T?> showResponsiveSidePanel<T>(
   print('📱 [SidePanel] showResponsiveSidePanel chamado');
   final bool isMobile = ResponsiveBuilder.isMobile(context);
   final bool isDesktop = ResponsiveBuilder.isDesktop(context);
-  
+
   print('📱 [SidePanel] isMobile: $isMobile, isDesktop: $isDesktop');
 
-  // ✅ MOBILE ou DESKTOP FULL SCREEN = modal full screen
-  if (isMobile || useFullScreenOnDesktop) {
-    print('📱 [SidePanel] Abrindo modal full screen para mobile');
+  // ✅ MOBILE = modal bottom sheet
+  if (isMobile) {
+    print('📱 [SidePanel] Abrindo modal bottom sheet para mobile');
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      barrierColor: Colors.black54,
+      builder: (context) => panel,
+    );
+  }
+
+  // ✅ DESKTOP FULL SCREEN = modal full screen
+  if (useFullScreenOnDesktop) {
+    print('📱 [SidePanel] Abrindo modal full screen para desktop');
     return Navigator.of(context, rootNavigator: true).push<T>(
       PageRouteBuilder(
         opaque: false,
@@ -33,8 +46,10 @@ Future<T?> showResponsiveSidePanel<T>(
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(0.0, 1.0);
           const end = Offset.zero;
-          final tween = Tween(begin: begin, end: end)
-              .chain(CurveTween(curve: Curves.easeOutCubic));
+          final tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: Curves.easeOutCubic));
 
           return SlideTransition(
             position: animation.drive(tween),
@@ -97,15 +112,14 @@ Future<T?> showResponsiveSidePanel<T>(
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        final tween = Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-            .chain(CurveTween(curve: Curves.easeOutCubic));
+        final tween = Tween(
+          begin: const Offset(1.0, 0.0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutCubic));
 
         return SlideTransition(
           position: tween.animate(anim1),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: child,
-          ),
+          child: Align(alignment: Alignment.centerRight, child: child),
         );
       },
     );

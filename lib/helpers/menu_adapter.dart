@@ -454,33 +454,26 @@ class MenuAdapter {
   /// Converte MenuChoice para OptionGroup
   /// [maxFlavors] é usado para dividir preços de sabores quando necessário
   static OptionGroup _convertMenuChoice(MenuChoice choice, int? maxFlavors) {
-    // Determina o tipo do grupo baseado no código e nome
+    // ✅ Determina o tipo do grupo pelo CODE que o backend envia
+    // Não usar string matching nos nomes — o backend define o tipo
     OptionGroupType groupType = OptionGroupType.generic;
 
-    // Detecta sabores (SABOR, SABOR2, SABOR3, SABOR4, SBR)
+    // Sabores: SABOR, SABOR2, SABOR3, SABOR4, SBR
     if (choice.code.startsWith('SABOR') || choice.code == 'SBR') {
       groupType = OptionGroupType.topping;
     }
-    // Detecta preferências (massa + borda)
-    else if (choice.name.toLowerCase().contains('preferência') ||
-        choice.name.toLowerCase().contains('preferencia')) {
-      // Verifica se contém massa e borda juntos
-      final hasMassa = choice.garnishItens.any(
-        (g) => g.description.toLowerCase().contains('massa'),
-      );
-      final hasBorda = choice.garnishItens.any(
-        (g) => g.description.toLowerCase().contains('borda'),
-      );
-
-      if (hasMassa && hasBorda) {
-        // É um grupo combinado de massa+borda
-        // Por enquanto mantém como generic, mas pode ser separado depois
-        groupType = OptionGroupType.generic;
-      } else if (hasMassa) {
-        groupType = OptionGroupType.crust;
-      } else if (hasBorda) {
-        groupType = OptionGroupType.edge;
-      }
+    // Massa (apenas): backend envia code 'MASSA' quando não há borda
+    else if (choice.code == 'MASSA') {
+      groupType = OptionGroupType.crust;
+    }
+    // Borda (apenas): backend envia code 'BORDA' quando não há massa
+    else if (choice.code == 'BORDA') {
+      groupType = OptionGroupType.edge;
+    }
+    // Preferência combinada (MASSA + BORDA): backend envia code 'PREFERENCIA'
+    // Mantém como generic pois combina CRUST e EDGE numa única escolha
+    else if (choice.code == 'PREFERENCIA') {
+      groupType = OptionGroupType.generic;
     }
     // Outros grupos (ex: "Ponto da carne")
     else {

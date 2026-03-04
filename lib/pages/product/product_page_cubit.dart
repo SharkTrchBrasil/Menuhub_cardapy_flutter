@@ -20,6 +20,7 @@ import '../../models/option_group.dart';
 import '../../repositories/storee_repository.dart';
 import 'package:totem/helpers/pizza_adapter_helper.dart';
 import '../../helpers/enums/product_status.dart';
+import 'package:totem/models/store_operation_config.dart';
 
 class ProductPageCubit extends Cubit<ProductPageState> {
   final StoreRepository _repository;
@@ -323,11 +324,20 @@ class ProductPageCubit extends Cubit<ProductPageState> {
 
       CartProduct configuredProduct;
 
+      final pricingStrategy =
+          _storeCubit
+              .state
+              .store
+              ?.store_operation_config
+              ?.pizzaPricingStrategy ??
+          PizzaPricingStrategy.highest;
+
       if (cartItemToEdit != null) {
         configuredProduct = _configureForEdit(
           product,
           category,
           cartItemToEdit,
+          pricingStrategy,
         );
         // ✅ Para pizzas em edição, garantir que o selectedSize seja setado
         if (category.isCustomizable && selectedSize != null) {
@@ -345,10 +355,11 @@ class ProductPageCubit extends Cubit<ProductPageState> {
         );
       } else {
         configuredProduct = CartProduct.fromProduct(product, category);
-        // ✅ Para pizzas, garantir que o selectedSize seja setado (já foi escolhido na grid)
-        if (category.isCustomizable && selectedSize != null) {
+        // ✅ Para pizzas, garantir que o selectedSize seja setado e a estratégia aplicada
+        if (category.isCustomizable) {
           configuredProduct = configuredProduct.copyWith(
             selectedSize: selectedSize,
+            pizzaPricingStrategy: pricingStrategy,
           );
         }
         emit(
@@ -369,63 +380,105 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     Product product,
     Category category,
     CartItem cartItem,
+    PizzaPricingStrategy strategy,
   ) {
     print('🔧 [_configureForEdit] Iniciando configuração para edição');
-    var configuredProduct = CartProduct.fromProduct(product, category);
+    var configuredProduct = CartProduct.fromProduct(
+      product,
+      category,
+    ).copyWith(pizzaPricingStrategy: strategy);
     OptionItem? selectedSize;
 
-    // 1. Identifica o tamanho
+    // 1. Identifica o tamanho — busca por nome OU por product_id
     if (category.isCustomizable) {
       final sizeGroup = category.optionGroups.firstWhereOrNull(
         (g) => g.groupType == OptionGroupType.size,
       );
       if (sizeGroup != null) {
+        // ✅ Tenta primeiro por nome (mais confiável para exibição)
         selectedSize = sizeGroup.items.firstWhereOrNull(
           (item) => item.name == cartItem.sizeName,
         );
-        print('   - Tamanho encontrado: ${selectedSize?.name}');
+
+        // ✅ Fallback: tenta por linkedProductId (caso o nome tenha mudado)
+        if (selectedSize == null && cartItem.product.id != null) {
+          selectedSize = sizeGroup.items.firstWhereOrNull(
+            (item) => item.linkedProductId == cartItem.product.id,
+          );
+        }
+        print(
+          '   - Tamanho encontrado: ${selectedSize?.name} (id: ${selectedSize?.id})',
+        );
       }
     }
 
-    // 2. Extrai o que está salvo no carrinho (IDs e Qtd)
-    final savedOptionIds = <int, int>{};
-    final savedOptionNames = <String, int>{};
-    final savedFlavors = <Product>[];
+    // 2. Extrai IDs/nomes salvos no carrinho
+    final savedOptionIds = <int, int>{}; // {option_item_id: quantity}
+    final savedOptionNames = <String, int>{}; // {nome_minusculo: 1}
 
-    // Busca todos os produtos da loja para reidratar sabores (pizzas)
-    final allProducts = _catalogCubit.state.products ?? [];
-
+    print('   - Variants no carrinho: ${cartItem.variants.length}');
     for (var v in cartItem.variants) {
+      print(
+        '     variant: groupType=${v.groupType}, optionGroupId=${v.optionGroupId}, name=${v.name}',
+      );
       for (var o in v.options) {
         final id = o.effectiveId;
-        if (id > 0) savedOptionIds[id] = o.quantity;
-        if (o.name.isNotEmpty)
-          savedOptionNames[o.name.toLowerCase()] = o.quantity;
+        if (id > 0) {
+          savedOptionIds[id] = o.quantity;
+          print('       option id=$id, name="${o.name}", qty=${o.quantity}');
+        }
+        // Salva nome sempre (crucial para a option sintética de Preferências que não tem ID)
+        if (o.name.isNotEmpty) {
+          savedOptionNames[o.name.toLowerCase()] = o.quantity > 0 ? 1 : 0;
+        }
+      }
+    }
 
-        // Se for um sabor (Pizza...), adiciona à lista de sabores recuperados
-        if (o.name.toLowerCase().contains('pizza') ||
-            o.name.toLowerCase().contains('sabor')) {
-          final flavorId = o.effectiveId;
-          final flavorProduct = allProducts.firstWhereOrNull(
-            (p) => p.id == flavorId,
-          );
+    // ✅ Reidrata sabores buscando nos grupos FLAVOR/TOPPING da categoria adaptada
+    // (após adaptPizzaProduct, os sabores estão nos grupos 'flavor' ou 'topping')
+    final savedFlavors = <Product>[];
+    final allProducts = _catalogCubit.state.products ?? [];
 
-          if (flavorProduct != null) {
-            savedFlavors.add(flavorProduct);
-            print(
-              '      ✅ Sabor Recuperado por ID: "${flavorProduct.name}" (id: ${flavorProduct.id})',
+    if (category.isCustomizable && selectedSize != null) {
+      // Grupos de sabor na categoria adaptada
+      final flavorAndToppingGroups =
+          category.optionGroups
+              .where(
+                (g) =>
+                    g.groupType == OptionGroupType.flavor ||
+                    g.groupType == OptionGroupType.topping,
+              )
+              .toList();
+
+      for (final group in flavorAndToppingGroups) {
+        for (final item in group.items) {
+          if (savedOptionIds.containsKey(item.id)) {
+            // Busca o Product correspondente pelo ID (optionItemId = product_id do sabor em pizzas)
+            final flavorProduct = allProducts.firstWhereOrNull(
+              (p) => p.id == item.id || p.id == item.linkedProductId,
             );
-          } else {
-            final flavorByName = allProducts.firstWhereOrNull((p) {
-              final cleanName =
-                  o.name.replaceAll(RegExp(r'1/\d\s*'), '').toLowerCase();
-              return p.name.toLowerCase() == cleanName;
-            });
-            if (flavorByName != null) {
-              savedFlavors.add(flavorByName);
+            if (flavorProduct != null &&
+                !savedFlavors.any((f) => f.id == flavorProduct.id)) {
+              savedFlavors.add(flavorProduct);
               print(
-                '      ✅ Sabor Recuperado por Nome: "${flavorByName.name}"',
+                '      ✅ Sabor reidratado por ID: "${flavorProduct.name}" (optionItemId: ${item.id})',
               );
+            }
+          } else if (item.name.isNotEmpty) {
+            // Fallback: tenta por nome (remove prefixo '1/N ' se existir)
+            final cleanItemName =
+                item.name.replaceAll(RegExp(r'^1/\d+\s*'), '').toLowerCase();
+            if (savedOptionNames.containsKey(cleanItemName)) {
+              final flavorProduct = allProducts.firstWhereOrNull(
+                (p) => p.name.toLowerCase() == cleanItemName,
+              );
+              if (flavorProduct != null &&
+                  !savedFlavors.any((f) => f.id == flavorProduct.id)) {
+                savedFlavors.add(flavorProduct);
+                print(
+                  '      ✅ Sabor reidratado por nome: "${flavorProduct.name}"',
+                );
+              }
             }
           }
         }
@@ -433,52 +486,133 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     }
 
     print('   - savedOptionIds: $savedOptionIds');
-
-    // 3. Reconstrói a seleção de variantes (incluindo Combos de Pizza)
-    final newSelectedVariants =
-        configuredProduct.selectedVariants.map((variant) {
-          final newOptions =
-              variant.cartOptions.map((option) {
-                int quantity = 0;
-
-                // ✅ LÓGICA DE COMBO (Massas e Bordas combinadas na UI)
-                if (category.isCustomizable &&
-                    (option.crustId != null || option.edgeId != null)) {
-                  final cid = option.crustId ?? option.id;
-                  final eid =
-                      option.edgeId ?? option.parentCustomizationOptionId;
-
-                  if (savedOptionIds.containsKey(cid) &&
-                      savedOptionIds.containsKey(eid)) {
-                    quantity = 1;
-                    print(
-                      '      ✅ [Reidratação] Combo Match: "${option.name}" (crust: $cid, edge: $eid)',
-                    );
-                  }
-                }
-                // LÓGICA NORMAL (Item único)
-                else {
-                  quantity = savedOptionIds[option.id] ?? 0;
-                  if (quantity == 0 && option.name.isNotEmpty) {
-                    quantity = savedOptionNames[option.name.toLowerCase()] ?? 0;
-                  }
-                }
-
-                return option.copyWith(quantity: quantity);
-              }).toList();
-          return variant.copyWith(options: newOptions);
-        }).toList();
-
     print(
-      '🔧 [_configureForEdit] Configuração concluída. Sabores recuperados: ${savedFlavors.length}',
+      '   - savedOptionNames (10 primeiros): ${savedOptionNames.keys.take(10).toList()}',
     );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. Reconstrói seleções de variantes
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // ⚠️ PROBLEMA PIZZA:
+    //   • SABORES: Grupos 1000, 1001, 1002 têm os MESMOS itens.
+    //     Match "flat" por ID marcaria o mesmo sabor em TODOS os grupos.
+    //     → Solução: match por SLOT (cartVariant[i] → flavorGroup[i])
+    //
+    //   • BORDA/PREFERÊNCIA: O backend cria variant sintético com
+    //     optionItemId=null e name="Massa X + Borda Y".
+    //     → Não entra em savedOptionIds. Solução: match por NOME.
+    // ─────────────────────────────────────────────────────────────────────────
+    List<CartVariant> newSelectedVariants;
+
+    if (category.isCustomizable) {
+      // ✅ MATCH POR OPTIONGROUP ID VIRTUAL (1000, 1001, 1002...)
+      // O backend PRESERVA os IDs virtuais: frontend manda optionGroupId=1001,
+      // backend salva option_group_id=1001 e devolve option_group_id=1001.
+      // → Match directíssimo: groupId do cart → groupId do adapted flavor group.
+      final Map<int, Set<int>> groupIdToOptionIds = {};
+      for (final v in cartItem.variants) {
+        final gid = v.optionGroupId;
+        if (gid == null || gid == 999)
+          continue; // Pula sintético de Preferências
+        final optionIds =
+            v.options
+                .where((o) => o.quantity > 0 && o.optionItemId != null)
+                .map((o) => o.optionItemId!)
+                .toSet();
+        if (optionIds.isNotEmpty) {
+          groupIdToOptionIds[gid] = optionIds;
+          print('   - GroupId $gid → optionItemIds=$optionIds');
+        }
+      }
+      print(
+        '   - groupIdToOptionIds keys: ${groupIdToOptionIds.keys.toList()}',
+      );
+
+      newSelectedVariants =
+          configuredProduct.selectedVariants.map((variant) {
+            final og = category.optionGroups.firstWhereOrNull(
+              (g) => g.id == variant.id,
+            );
+            final isFlavorGroup =
+                og != null &&
+                (og.groupType == OptionGroupType.flavor ||
+                    og.groupType == OptionGroupType.topping);
+
+            if (isFlavorGroup) {
+              // ✅ SABOR: match por groupId virtual (1000→slot1, 1001→slot2, etc.)
+              final idsForGroup = groupIdToOptionIds[variant.id] ?? {};
+              print('   ↪ Flavor group id=${variant.id}: ids=$idsForGroup');
+
+              final newOptions =
+                  variant.cartOptions.map((option) {
+                    final qty = idsForGroup.contains(option.id) ? 1 : 0;
+                    if (qty > 0)
+                      print(
+                        '      ✅ Sabor: "${option.name}" (id=${option.id})',
+                      );
+                    return option.copyWith(quantity: qty);
+                  }).toList();
+
+              return variant.copyWith(options: newOptions);
+            } else {
+              // ✅ PREFERÊNCIA/BORDA: match por nome da option sintética
+              // Backend monta "Massa X + Borda Y" sem IDs reais → único path é nome
+              final newOptions =
+                  variant.cartOptions.map((option) {
+                    int quantity = 0;
+
+                    // 1º: nome exato (sintético "Massa Tradicional + Borda Tradicional")
+                    final byName = savedOptionNames[option.name.toLowerCase()];
+                    if (byName != null && byName > 0) {
+                      quantity = 1;
+                      print('      ✅ Preferência por nome: "${option.name}"');
+                    }
+                    // 2º: fallback crustId+edgeId
+                    else if (option.crustId != null || option.edgeId != null) {
+                      final cid = option.crustId;
+                      final eid =
+                          option.edgeId ?? option.parentCustomizationOptionId;
+                      if (cid != null &&
+                          eid != null &&
+                          savedOptionIds.containsKey(cid) &&
+                          savedOptionIds.containsKey(eid)) {
+                        quantity = 1;
+                        print('      ✅ Combo por ID: "${option.name}"');
+                      }
+                    }
+                    // 3º: fallback por ID direto
+                    else {
+                      quantity = savedOptionIds[option.id] ?? 0;
+                    }
+
+                    return option.copyWith(quantity: quantity);
+                  }).toList();
+
+              return variant.copyWith(options: newOptions);
+            }
+          }).toList();
+    } else {
+      // Produtos normais: match direto por ID
+      newSelectedVariants =
+          configuredProduct.selectedVariants.map((variant) {
+            final newOptions =
+                variant.cartOptions.map((option) {
+                  final qty = savedOptionIds[option.id] ?? 0;
+                  return option.copyWith(quantity: qty);
+                }).toList();
+            return variant.copyWith(options: newOptions);
+          }).toList();
+    }
+
+    print('🔧 [_configureForEdit] Concluído. Sabores: ${savedFlavors.length}');
 
     return configuredProduct.copyWith(
       quantity: cartItem.quantity,
       note: cartItem.note,
       selectedSize: selectedSize,
       selectedVariants: newSelectedVariants,
-      selectedFlavors: savedFlavors, // ✅ Restaura sabores selecionados
+      selectedFlavors: savedFlavors,
     );
   }
 
