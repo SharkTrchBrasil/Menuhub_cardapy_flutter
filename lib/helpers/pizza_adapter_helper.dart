@@ -69,17 +69,20 @@ class PizzaAdapterHelper {
   /// Extrai o número máximo de sabores permitidos do nome do tamanho
   /// Ex: "FAMÍLIA 4 SABORES (16 PEDAÇOS)" -> 4
   static int getMaxFlavorsFromSize(OptionItem size) {
-    // Primeiro tenta usar o campo maxFlavors se disponível
+    // 1. TENTA EXTRAIR DO NOME (Mais confiável para o que o usuário vê)
+    // Ex: "FAMÍLIA 4 SABORES (16 PEDAÇOS)" -> 4
+    final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
+    final match = regex.firstMatch(size.name);
+    if (match != null) {
+      final fromName = int.parse(match.group(1)!);
+      if (fromName > 0) return fromName;
+    }
+
+    // 2. FALLBACK: Campo maxFlavors do objeto
     if (size.maxFlavors != null && size.maxFlavors! > 0) {
       return size.maxFlavors!;
     }
 
-    // Caso contrário, extrai do nome
-    final regex = RegExp(r'(\d+)\s*SABORES?', caseSensitive: false);
-    final match = regex.firstMatch(size.name);
-    if (match != null) {
-      return int.parse(match.group(1)!);
-    }
     return 1; // Padrão: 1 sabor
   }
 
@@ -250,7 +253,10 @@ class PizzaAdapterHelper {
                   );
                 } else {
                   // Cenário 2: category_updated — preço cheio em pricesBySize, precisa dividir
-                  final fullPrice = item.getPriceForSize(size.id) ?? item.price;
+                  final fullPrice =
+                      item.getPriceForSize(size.id) ??
+                      item.getPriceForSize(size.linkedProductId) ??
+                      item.price;
                   print(
                     '      🔍 Item "${item.name}": fullPrice=$fullPrice (size.id=${size.id})',
                   );
@@ -426,7 +432,9 @@ class PizzaAdapterHelper {
                     items:
                         group.items.map((item) {
                           final priceForSize =
-                              item.getPriceForSize(size.id) ?? item.price;
+                              item.getPriceForSize(size.id) ??
+                              item.getPriceForSize(size.linkedProductId) ??
+                              item.price;
                           return OptionItem(
                             id: item.id,
                             name: item.name,

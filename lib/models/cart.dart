@@ -12,15 +12,15 @@ class Cart extends Equatable {
 
   // Campos calculados pelo backend
   final int subtotal;
-  final int discount;  // Desconto no pedido (de cupom/voucher)
+  final int discount; // Desconto no pedido (de cupom/voucher)
   final int total;
-  
+
   // ✅ NOVO: Campos de promoções
-  final int deliveryFee;  // Taxa de entrega original
-  final int deliveryDiscount;  // Desconto no frete (de promo DELIVERY)
-  final int finalDeliveryFee;  // Frete final após desconto
-  final String? promotionMessage;  // Ex: "🎉 Frete grátis!"
-  
+  final int deliveryFee; // Taxa de entrega original
+  final int deliveryDiscount; // Desconto no frete (de promo DELIVERY)
+  final int finalDeliveryFee; // Frete final após desconto
+  final String? promotionMessage; // Ex: "🎉 Frete grátis!"
+
   // ✅ NOVO: Indica quando cupom FREE_DELIVERY foi aplicado (frete grátis no checkout)
   final bool isFreeDelivery;
 
@@ -42,28 +42,28 @@ class Cart extends Equatable {
 
   // Um construtor 'vazio' é útil para o estado inicial
   const Cart.empty()
-      : id = 0,
-        status = 'empty',
-        couponCode = null,
-        observation = null,
-        items = const [],
-        subtotal = 0,
-        discount = 0,
-        total = 0,
-        deliveryFee = 0,
-        deliveryDiscount = 0,
-        finalDeliveryFee = 0,
-        promotionMessage = null,
-        isFreeDelivery = false;
+    : id = 0,
+      status = 'empty',
+      couponCode = null,
+      observation = null,
+      items = const [],
+      subtotal = 0,
+      discount = 0,
+      total = 0,
+      deliveryFee = 0,
+      deliveryDiscount = 0,
+      finalDeliveryFee = 0,
+      promotionMessage = null,
+      isFreeDelivery = false;
 
-  bool get isEmpty => id == 0 || items.isEmpty;
-  
+  bool get isEmpty => items.isEmpty;
+
   /// Verifica se tem frete grátis
   bool get hasFreeDelivery => deliveryFee > 0 && finalDeliveryFee == 0;
-  
+
   /// Verifica se tem algum desconto aplicado
   bool get hasDiscount => discount > 0 || deliveryDiscount > 0;
-  
+
   /// Total final incluindo frete
   int get grandTotal => total + finalDeliveryFee;
 
@@ -73,9 +73,10 @@ class Cart extends Equatable {
       status: json['status'],
       couponCode: json['coupon_code'],
       observation: json['observation'],
-      items: (json['items'] as List)
-          .map((itemJson) => CartItem.fromJson(itemJson))
-          .toList(),
+      items:
+          (json['items'] as List)
+              .map((itemJson) => CartItem.fromJson(itemJson))
+              .toList(),
       subtotal: _parseMoney(json['subtotal']),
       discount: _parseMoney(json['discount']),
       total: _parseMoney(json['total']),
@@ -127,43 +128,51 @@ class Cart extends Equatable {
       isFreeDelivery: isFreeDelivery ?? this.isFreeDelivery,
     );
   }
-  
+
   /// ✅ NOVO: Cria uma cópia do carrinho com cupom e desconto explicitamente removidos
   /// Use este método quando o backend confirmar a remoção do cupom
   Cart copyWithCouponRemoved() {
     return Cart(
       id: id,
       status: status,
-      couponCode: null,  // ✅ Força null
+      couponCode: null, // ✅ Força null
       observation: observation,
       items: items,
       subtotal: subtotal,
-      discount: 0,  // ✅ Zera desconto
-      total: subtotal,  // Recalcula total sem desconto
+      discount: 0, // ✅ Zera desconto
+      total: subtotal, // Recalcula total sem desconto
       deliveryFee: deliveryFee,
-      deliveryDiscount: 0,  // ✅ Zera desconto de frete
-      finalDeliveryFee: deliveryFee,  // Frete volta ao original
-      promotionMessage: null,  // ✅ Limpa mensagem
-      isFreeDelivery: false,  // ✅ Remove flag de frete grátis
+      deliveryDiscount: 0, // ✅ Zera desconto de frete
+      finalDeliveryFee: deliveryFee, // Frete volta ao original
+      promotionMessage: null, // ✅ Limpa mensagem
+      isFreeDelivery: false, // ✅ Remove flag de frete grátis
     );
   }
 
   @override
   List<Object?> get props => [
-    id, status, couponCode, observation, items, 
-    subtotal, discount, total,
-    deliveryFee, deliveryDiscount, finalDeliveryFee, promotionMessage,
+    id,
+    status,
+    couponCode,
+    observation,
+    items,
+    subtotal,
+    discount,
+    total,
+    deliveryFee,
+    deliveryDiscount,
+    finalDeliveryFee,
+    promotionMessage,
     isFreeDelivery,
   ];
 }
 
-
 /// ✅ NOVO: Resposta granular para atualização de item (economiza banda)
 class CartGranularResponse extends Equatable {
-  final String action;  // "added", "updated", "removed", "quantity_changed"
-  final CartItem? item;  // Null quando ação é "removed"
-  final int? removedItemId;  // Preenchido quando ação é "removed"
-  
+  final String action; // "added", "updated", "removed", "quantity_changed"
+  final CartItem? item; // Null quando ação é "removed"
+  final int? removedItemId; // Preenchido quando ação é "removed"
+
   // Totais atualizados do carrinho
   final int cartId;
   final int cartSubtotal;
@@ -206,8 +215,14 @@ class CartGranularResponse extends Equatable {
 
   @override
   List<Object?> get props => [
-    action, item, removedItemId, 
-    cartId, cartSubtotal, cartDiscount, cartTotal, cartItemsCount
+    action,
+    item,
+    removedItemId,
+    cartId,
+    cartSubtotal,
+    cartDiscount,
+    cartTotal,
+    cartItemsCount,
   ];
 }
 
@@ -215,7 +230,8 @@ class CartGranularResponse extends Equatable {
 class CartGranularFallbackException implements Exception {
   final Cart cart;
   CartGranularFallbackException(this.cart);
-  
+
   @override
-  String toString() => 'CartGranularFallbackException: Backend retornou carrinho completo';
+  String toString() =>
+      'CartGranularFallbackException: Backend retornou carrinho completo';
 }

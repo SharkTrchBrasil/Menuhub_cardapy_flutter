@@ -361,23 +361,14 @@ class CartItemListItem extends StatelessWidget {
       );
     }
 
-    // 2. Sabores com Frações e preço fracionado
+    // 2. Sabores com Frações (sem preço individual)
     final flavorCount = flavorOptions.length;
     final fraction = flavorCount > 1 ? '1/$flavorCount ' : '';
     for (final flavor in flavorOptions) {
       String name = flavor.name;
       // Remove frações existentes se houver (o backend já pode ter adicionado)
       name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
-      final flavorPrice = optionPrices[flavor.effectiveId] ?? 0;
-      lineWidgets.add(
-        _buildVariantRow(
-          context,
-          '1',
-          '$fraction$name',
-          theme,
-          price: flavorPrice,
-        ),
-      );
+      lineWidgets.add(_buildVariantRow(context, '1', '$fraction$name', theme));
     }
 
     // 3. Outros

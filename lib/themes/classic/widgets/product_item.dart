@@ -84,6 +84,57 @@ class ProductItem extends StatelessWidget {
         displayPrice = product.price ?? 0;
         originalPrice = null;
       }
+
+      // ✅ NOVO: Se o preço base é zero, busca o valor mínimo dos complementos ou grupos obrigatórios
+      if (displayPrice == 0) {
+        final Map<int, int> mandatoryGroups = {};
+
+        // A. Verifica VariantLinks (Complementos de Burgers/Itens normais)
+        for (final variantLink in product.variantLinks.where(
+          (l) => l.isRequired,
+        )) {
+          int? minOptionPrice;
+          for (final option in variantLink.variant.options.where(
+            (o) => o.canBeSelected,
+          )) {
+            if (option.resolvedPrice > 0) {
+              if (minOptionPrice == null ||
+                  option.resolvedPrice < minOptionPrice) {
+                minOptionPrice = option.resolvedPrice;
+              }
+            }
+          }
+
+          if (minOptionPrice != null && variantLink.variant.id != null) {
+            mandatoryGroups[variantLink.variant.id!] = minOptionPrice;
+          }
+        }
+
+        // B. Verifica OptionGroups da categoria (ex: Pão na chapa)
+        for (final group in category.optionGroups.where(
+          (g) => g.minSelection > 0,
+        )) {
+          int? minItemPrice;
+          for (final item in group.items.where((i) => i.isActive)) {
+            if (item.price > 0) {
+              if (minItemPrice == null || item.price < minItemPrice) {
+                minItemPrice = item.price;
+              }
+            }
+          }
+          if (minItemPrice != null && group.id != null) {
+            // Se o grupo já foi adicionado via VariantLink (mesmo ID), ele não será somado novamente
+            mandatoryGroups[group.id!] = minItemPrice;
+          }
+        }
+
+        if (mandatoryGroups.isNotEmpty) {
+          int minTotalMandatory = 0;
+          mandatoryGroups.forEach((id, price) => minTotalMandatory += price);
+          displayPrice = minTotalMandatory;
+          showAsStartingFrom = true;
+        }
+      }
     }
     displayPrice ??= 0;
     final isAvailable = AvailabilityService.isProductAvailableNow(product);

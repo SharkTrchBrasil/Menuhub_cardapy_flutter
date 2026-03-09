@@ -34,7 +34,7 @@ class _WaveProgressIndicatorState extends State<WaveProgressIndicator>
   @override
   void dispose() {
     _controller.dispose();
-    super.initState();
+    super.dispose();
   }
 
   @override
@@ -84,7 +84,10 @@ class _WaveProgressIndicatorState extends State<WaveProgressIndicator>
                     child: ShaderMask(
                       shaderCallback: (rect) {
                         return LinearGradient(
-                          begin: Alignment(-1.0 + (_controller.value * 2.5), 0.0),
+                          begin: Alignment(
+                            -1.0 + (_controller.value * 2.5),
+                            0.0,
+                          ),
                           end: Alignment(-0.1 + (_controller.value * 2.5), 0.0),
                           colors: [
                             widget.waveColor.withOpacity(0.0),
@@ -97,7 +100,9 @@ class _WaveProgressIndicatorState extends State<WaveProgressIndicator>
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(widget.height / 2),
+                          borderRadius: BorderRadius.circular(
+                            widget.height / 2,
+                          ),
                         ),
                       ),
                     ),

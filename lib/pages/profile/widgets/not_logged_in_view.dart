@@ -15,21 +15,25 @@ class NotLoggedInView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        SingleChildScrollView(
-          child: Column(
-            children: [
-              // ✅ Header com ilustração e botão de login
-              _buildLoginHeader(context),
-
-              const SizedBox(height: 16),
-
-              // ✅ Lista de opções do menu
-              _buildMenuOptions(context),
-
-              // Espaço extra no final
-              const SizedBox(height: 32),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Container(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment:
+                        MainAxisAlignment.center, // Centraliza verticalmente
+                    children: [
+                      // ✅ Header com ilustração e botão de login (agora centralizado)
+                      _buildLoginHeader(context),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
 
         // Loading overlay
@@ -201,132 +205,6 @@ class NotLoggedInView extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ✅ Lista de opções do menu
-  Widget _buildMenuOptions(BuildContext context) {
-    return Column(
-      children: [
-        // ✅ Opções que PRECISAM de login
-        Container(
-          color: Colors.white,
-          child: Column(
-            children: [
-              _buildMenuItem(
-                context,
-                icon: Icons.notifications_outlined,
-                title: 'Notificações',
-                requiresLogin: true,
-              ),
-              _buildMenuItem(
-                context,
-                icon: Icons.local_offer_outlined,
-                title: 'Cupons',
-                requiresLogin: true,
-              ),
-              _buildMenuItem(
-                context,
-                icon: Icons.location_on_outlined,
-                title: 'Endereços',
-                requiresLogin: true,
-              ),
-            ],
-          ),
-        ),
-
-        // Separador
-        Container(height: 8, color: Colors.grey.shade100),
-
-        // ✅ Opções que NÃO precisam de login
-        Container(
-          color: Colors.white,
-          child: Column(
-            children: [
-              _buildMenuItem(
-                context,
-                icon: Icons.help_outline,
-                title: 'Ajuda',
-                requiresLogin: false,
-                onTap: () {
-                  // TODO: Navegar para tela de ajuda
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ajuda - Em breve')),
-                  );
-                },
-              ),
-              _buildMenuItem(
-                context,
-                icon: Icons.settings_outlined,
-                title: 'Configurações',
-                requiresLogin: false,
-                onTap: () {
-                  // TODO: Navegar para tela de configurações
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Configurações - Em breve')),
-                  );
-                },
-              ),
-              _buildMenuItem(
-                context,
-                icon: Icons.store_outlined,
-                title: 'Sugerir restaurantes',
-                requiresLogin: false,
-                onTap: () {
-                  // TODO: Navegar para tela de sugestão
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Sugerir restaurantes - Em breve'),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ✅ Item do menu
-  Widget _buildMenuItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    bool requiresLogin = true,
-    VoidCallback? onTap,
-  }) {
-    return InkWell(
-      onTap: () {
-        if (requiresLogin) {
-          // Se precisa de login, leva para onboarding
-          context.push('/onboarding');
-        } else if (onTap != null) {
-          // Se não precisa de login, executa a ação específica
-          onTap();
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.grey.shade200, width: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 24, color: Colors.grey.shade700),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade800),
-              ),
-            ),
-            Icon(Icons.chevron_right, size: 24, color: Colors.grey.shade400),
-          ],
-        ),
       ),
     );
   }

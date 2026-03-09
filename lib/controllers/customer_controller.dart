@@ -1,15 +1,17 @@
-// customer_controller.dart
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/customer.dart';
+import '../services/encrypted_storage_service.dart';
 
 class CustomerController extends ValueNotifier<Customer?> {
-  // ✅ Usando FlutterSecureStorage ao invés de SharedPreferences
-  static FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+  final EncryptedStorageService _storage;
+
+  // ✅ Instância temporária para migração
+  final _oldStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
-      keyCipherAlgorithm: KeyCipherAlgorithm.RSA_ECB_OAEPwithSHA_256andMGF1Padding,
+      keyCipherAlgorithm:
+          KeyCipherAlgorithm.RSA_ECB_OAEPwithSHA_256andMGF1Padding,
       storageCipherAlgorithm: StorageCipherAlgorithm.AES_GCM_NoPadding,
     ),
     iOptions: IOSOptions(
@@ -17,85 +19,99 @@ class CustomerController extends ValueNotifier<Customer?> {
     ),
   );
 
-  CustomerController() : super(null);
+  CustomerController(this._storage) : super(null);
 
-  // --- Método existente, agora com pequeña alteração para ser mais explícito ---
   void setCustomer(Customer? customer) {
-    value = customer; // Atualiza o ValueNotifier
+    value = customer;
     if (customer != null) {
-      _saveCustomerToSecureStorage(customer); // Chama o método privado de salvamento
+      _saveCustomerToSecureStorage(customer);
     } else {
-      _clearCustomerSecureStorage(); // Limpa se o customer for nulo
+      _clearCustomerSecureStorage();
     }
   }
-
 
   Customer? get customer => value;
 
   void clearCustomer() {
     value = null;
-    _clearCustomerSecureStorage(); // Garante que também é limpo do armazenamento seguro
+    _clearCustomerSecureStorage();
   }
 
   Future<void> loadCustomerFromSecureStorage() async {
     try {
-      // ✅ Usando FlutterSecureStorage ao invés de SharedPreferences
-      final json = await _secureStorage.read(key: 'customer');
+      // 1. Tenta carregar do novo armazenamento (AES-256)
+      String? json = await _storage.read(key: 'customer');
+
       if (json != null) {
-        value = Customer.fromJson(jsonDecode(json)); // Atualiza o ValueNotifier diretamente
-        print('✅ Cliente carregado do armazenamento seguro: ${value?.name}, ${value?.phone}');
+        value = Customer.fromJson(jsonDecode(json));
+        print(
+          '✅ Cliente carregado do armazenamento seguro (AES-256): ${value?.name}',
+        );
+        return;
+      }
+
+      // 2. 🔄 MIGAÇÃO: Tenta carregar do armazenamento antigo se o novo estiver vazio
+      print('🔄 Tentando migração de dados do armazenamento antigo...');
+      json = await _oldStorage.read(key: 'customer');
+
+      if (json != null) {
+        final oldCustomer = Customer.fromJson(jsonDecode(json));
+        value = oldCustomer;
+
+        // Salva no novo formato imediatamente
+        await _saveCustomerToSecureStorage(oldCustomer);
+
+        // Limpa do antigo (opcional, mas recomendado para segurança)
+        await _oldStorage.delete(key: 'customer');
+
+        print('✅ Cliente migrado com sucesso para AES-256: ${value?.name}');
       } else {
-        print('ℹ️ Nenhum cliente encontrado no armazenamento seguro');
+        print('ℹ️ Nenhum cliente encontrado para migração.');
       }
     } catch (e) {
-      print('❌ Erro ao carregar cliente do armazenamento seguro: $e');
+      print('❌ Erro ao carregar/migrar cliente: $e');
     }
   }
 
-  // --- Mude para método privado, pois `setCustomer` já o usa ---
   Future<void> _saveCustomerToSecureStorage(Customer customer) async {
     try {
-      // ✅ Usando FlutterSecureStorage ao invés de SharedPreferences
-      await _secureStorage.write(
+      await _storage.write(
         key: 'customer',
         value: jsonEncode(customer.toJson()),
       );
-      print('✅ Cliente salvo no armazenamento seguro: ${customer.name}, ${customer.phone}');
+      print(
+        '✅ Cliente salvo no armazenamento seguro (AES-256): ${customer.name}',
+      );
     } catch (e) {
       print('❌ Erro ao salvar cliente no armazenamento seguro: $e');
     }
   }
 
-  // --- Mude para método privado, pois `setCustomer` e `clearCustomer` já o usam ---
   Future<void> _clearCustomerSecureStorage() async {
     try {
-      // ✅ Usando FlutterSecureStorage ao invés de SharedPreferences
-      await _secureStorage.delete(key: 'customer');
-      print('✅ Cliente removido do armazenamento seguro.');
+      await _storage.delete(key: 'customer');
+      await _oldStorage.delete(
+        key: 'customer',
+      ); // Limpa também o antigo por segurança
+      print('✅ Cliente removido de todos os armazenamentos.');
     } catch (e) {
-      print('❌ Erro ao remover cliente do armazenamento seguro: $e');
+      print('❌ Erro ao remover cliente: $e');
     }
   }
 
-  // --- NOVO: Método para lidar com o sucesso do login do Google ---
-  // Este método será chamado pelo AddressFormPage após o Firebase/Backend retornar o Customer.
   Future<void> handleGoogleSignInSuccess(Customer customer) async {
-    // Define o cliente, o que irá automaticamente atualizar o `value`
-    // e salvá-lo nas shared_preferences através de `setCustomer`.
     setCustomer(customer);
     print('Login Google processado com sucesso para: ${customer.name}');
   }
 
-  // --- NOVO: Método para atualizar APENAS o telefone localmente e persistir ---
   Future<void> updateCustomerPhoneLocally(String newPhone) async {
     if (value != null) {
       final updatedCustomer = value!.copyWith(phone: newPhone);
-      setCustomer(updatedCustomer); // Isso vai atualizar o `value` e salvar no armazenamento seguro
+      setCustomer(updatedCustomer);
       print('✅ Telefone atualizado localmente para: $newPhone');
     }
   }
 
-  // --- NOVO: Método para atualizar APENAS o nome localmente e persistir ---
   Future<void> updateCustomerNameLocally(String newName) async {
     if (value != null) {
       final updatedCustomer = value!.copyWith(name: newName);
@@ -104,15 +120,12 @@ class CustomerController extends ValueNotifier<Customer?> {
     }
   }
 
-  // ✅ NOVO: Método para limpar TODOS os dados do cliente (logout)
   Future<void> completeLogout() async {
     try {
       clearCustomer();
-      // Aqui você pode adicionar limpeza de outros dados sensíveis se necessário
       print('✅ Logout completo realizado. Dados sensíveis removidos.');
     } catch (e) {
       print('❌ Erro durante logout: $e');
     }
   }
-
 }

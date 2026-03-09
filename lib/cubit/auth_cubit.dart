@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -8,14 +7,13 @@ import 'package:totem/controllers/customer_controller.dart';
 import 'package:totem/models/customer.dart';
 import 'package:totem/repositories/customer_repository.dart';
 import 'package:totem/core/utils/app_logger.dart';
-import 'package:totem/core/exceptions/app_exception.dart';
+
 import 'package:totem/cubit/orders_cubit.dart';
 
 import '../pages/address/cubits/address_cubit.dart';
 import '../pages/cart/cart_cubit.dart';
 import '../repositories/realtime_repository.dart';
-import 'package:bot_toast/bot_toast.dart';
-import 'package:web/web.dart' as web;
+
 import '../services/pending_cart_service.dart';
 
 part 'auth_state.dart';
@@ -28,7 +26,17 @@ class AuthCubit extends Cubit<AuthState> {
     required this.cartCubit,
     required this.addressCubit,
     required this.ordersCubit,
-  }) : super(const AuthState());
+  }) : super(
+         customerController.value != null
+             ? AuthState(
+               status: AuthStatus.success,
+               customer: customerController.value,
+             )
+             : const AuthState(),
+       ) {
+    // ✅ Sincroniza o estado do Cubit com o Controller
+    customerController.addListener(_syncCustomerFromController);
+  }
 
   final CustomerRepository customerRepository;
   final CustomerController customerController;
@@ -36,6 +44,18 @@ class AuthCubit extends Cubit<AuthState> {
   final CartCubit cartCubit;
   final AddressCubit addressCubit;
   final OrdersCubit ordersCubit;
+
+  void _syncCustomerFromController() {
+    if (customerController.value != state.customer) {
+      emit(state.copyWith(customer: customerController.value));
+    }
+  }
+
+  @override
+  Future<void> close() {
+    customerController.removeListener(_syncCustomerFromController);
+    return super.close();
+  }
 
   /// ✅ Método auxiliar para processar payload pendente após login bem-sucedido
   Future<void> _processPendingCartItem() async {
@@ -68,7 +88,16 @@ class AuthCubit extends Cubit<AuthState> {
     final initialCustomer = customerController.value;
     if (initialCustomer != null) {
       try {
-        await realtimeRepository.linkCustomerToSession(initialCustomer.id!);
+        try {
+          await realtimeRepository.linkCustomerToSession(initialCustomer.id!);
+        } catch (e) {
+          // ✅ NÃO desloga se falhar o vínculo de sessão (pode ser apenas socket offline)
+          // O RealtimeRepository tentará novamente ao conectar.
+          print(
+            '⚠️ [AuthCubit] Falha ao vincular sessão na inicialização (ignorado): $e',
+          );
+        }
+
         emit(
           state.copyWith(status: AuthStatus.success, customer: initialCustomer),
         );
@@ -77,7 +106,8 @@ class AuthCubit extends Cubit<AuthState> {
         ordersCubit.loadOrders(initialCustomer.id!);
         await _processPendingCartItem();
       } catch (e) {
-        await signOut();
+        print('❌ [AuthCubit] Erro catastrófico na inicialização: $e');
+        emit(state.copyWith(status: AuthStatus.unauthenticated));
       }
     } else {
       emit(state.copyWith(status: AuthStatus.unauthenticated));
@@ -204,7 +234,7 @@ class AuthCubit extends Cubit<AuthState> {
               errorMessage: errorMessage,
             ),
           );
-          if (kIsWeb) web.window.alert("Backend error: $errorMessage");
+          print('❌ [AUTH_CUBIT] Error processing customer: $errorMessage');
         },
         (loginResponse) async {
           try {
@@ -226,6 +256,23 @@ class AuthCubit extends Cubit<AuthState> {
             }
 
             if (loginResponse.orders.isNotEmpty) {
+              print(
+                '📦 [AUTH] Login retornou ${loginResponse.orders.length} pedidos',
+              );
+              for (var order in loginResponse.orders.take(1)) {
+                print('📦 [AUTH] Pedido ${order.id} - ${order.shortId}');
+                print('📦 [AUTH]   Bag items: ${order.bag.items.length}');
+                for (var item in order.bag.items) {
+                  print(
+                    '📦 [AUTH]     - ${item.name} | SubItems: ${item.subItems.length}',
+                  );
+                  for (var sub in item.subItems) {
+                    print(
+                      '📦 [AUTH]       - ${sub.name} | Type: ${sub.groupType} | Price: ${sub.unitPrice}',
+                    );
+                  }
+                }
+              }
               ordersCubit.setOrdersFromLogin(loginResponse.orders);
             } else {
               ordersCubit.loadOrders(customer.id!);

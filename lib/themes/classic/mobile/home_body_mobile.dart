@@ -9,6 +9,8 @@ import 'package:totem/models/option_group.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
+import 'package:totem/pages/cart/cart_cubit.dart';
+import 'package:totem/pages/cart/cart_state.dart';
 import '../../../helpers/navigation_helper.dart';
 import '../widgets/featured_product.dart';
 import '../widgets/product_item.dart';
@@ -130,28 +132,33 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
   }
 
   void _calculateCategoryOffsets() {
+    if (!mounted) return;
     _categoryOffsets.clear();
     for (var entry in _categoryKeys.entries) {
       final key = entry.value;
-      if (key.currentContext != null) {
-        final renderBox = key.currentContext!.findRenderObject() as RenderBox;
-        final position = renderBox.localToGlobal(Offset.zero);
-        final offset =
-            position.dy +
-            _scrollController.offset -
-            MediaQuery.of(context).padding.top;
-        _categoryOffsets[entry.key] = offset;
-      }
+      final currentContext = key.currentContext;
+      if (currentContext == null || !currentContext.mounted) continue;
+
+      final renderObject = currentContext.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.attached) continue;
+
+      final position = renderObject.localToGlobal(Offset.zero);
+      final offset =
+          position.dy +
+          _scrollController.offset -
+          MediaQuery.of(context).padding.top;
+      _categoryOffsets[entry.key] = offset;
     }
   }
 
   void _scrollToCategory(int categoryId) async {
     final key = _categoryKeys[categoryId];
-    if (key?.currentContext != null) {
+    final currentContext = key?.currentContext;
+    if (currentContext != null && currentContext.mounted) {
       setState(() => _isManualScrolling = true);
 
       await Scrollable.ensureVisible(
-        key!.currentContext!,
+        currentContext,
         duration: const Duration(milliseconds: 500),
         alignment: 0.0,
         curve: Curves.easeInOutCubic,
@@ -669,7 +676,7 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                   );
                 }, childCount: widget.categories.length),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
           // ✅ Floating Sticky Header (Search + Categories)
@@ -746,16 +753,24 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
 
                 if (!canOrder) return const SizedBox.shrink();
 
-                return BlocBuilder<AuthCubit, AuthState>(
-                  builder: (context, authState) {
-                    if (authState.customer != null) {
-                      // ✅ Quando logado, mostra card de carrinho unificado
+                return BlocBuilder<CartCubit, CartState>(
+                  builder: (context, cartState) {
+                    final hasCartItems = cartState.cart.items.isNotEmpty;
+
+                    if (hasCartItems) {
                       return const UnifiedCartBottomBar(
                         variant: CartBottomBarVariant.home,
                       );
                     }
-                    // ✅ Quando não logado, mostra card de login
-                    return const _LoginPromoCard();
+
+                    return BlocBuilder<AuthCubit, AuthState>(
+                      builder: (context, authState) {
+                        if (authState.customer != null) {
+                          return const SizedBox.shrink();
+                        }
+                        return const _LoginPromoCard();
+                      },
+                    );
                   },
                 );
               },

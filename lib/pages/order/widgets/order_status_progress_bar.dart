@@ -70,6 +70,8 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
         currentStatusIndex = displayStatuses.indexOf('READY');
       else if (currentStatus.contains('DISPATCH'))
         currentStatusIndex = displayStatuses.indexOf('DISPATCHED');
+      else if (currentStatus.contains('ROUTE'))
+        currentStatusIndex = displayStatuses.indexOf('DISPATCHED');
     }
 
     final Color statusColor = _getStatusColor(currentStatus);

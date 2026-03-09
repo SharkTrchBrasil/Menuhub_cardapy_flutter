@@ -13,56 +13,72 @@ class AppReviewRatingWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.watch<DsThemeSwitcher>().theme;
+    final themeSwatch = context.watch<DsThemeSwitcher>().theme;
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(
-          color: Colors.grey ,
-          width: 0.5 ,
-        ),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(20.0),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // Seção da Média (Esquerda)
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-
-
                 Text(
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 30),
                   ratingsSummary.averageRating == 0
-                      ? '0'
-                      : ratingsSummary.averageRating.toStringAsFixed(1),
+                      ? '0,0'
+                      : ratingsSummary.averageRating
+                          .toStringAsFixed(1)
+                          .replaceAll('.', ','),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 42,
+                    color: Colors.black,
+                  ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 4),
                 RatingBarWidget(
-                  size: 24,
+                  size: 18,
                   onRatingChanged: (rating) {},
                   rating: ratingsSummary.averageRating,
-                  activeColor: theme.primaryColor,
-                  // Substitua por sua cor
+                  activeColor: Colors.amber,
                   disable: true,
                 ),
-                8.height,
+                const SizedBox(height: 8),
                 Text(
-                  '(${ratingsSummary.totalRatings} avaliações)',
-                  overflow: TextOverflow.ellipsis,
-                  // style: theme.textTheme.bodyLarge?.copyWith(
-                  //   color: Get.isDarkMode ? colorGrey300 : colorGrey800,
-                  //   fontWeight: FontWeight.w500,
-                  // ),
+                  '${ratingsSummary.totalRatings} ${ratingsSummary.totalRatings == 1 ? "avaliação" : "avaliações"}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
-            20.width,
-            Column(
-              children: [Container(height: 100, width: 1, color: Colors.amber)],
+
+            // Divisor Vertical
+            Container(
+              height: 80,
+              width: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 24),
+              color: Colors.grey.shade100,
             ),
-            20.width,
+
+            // Seção das Barras (Direita)
             Expanded(
               child: RatingSummary(
                 counter: ratingsSummary.totalRatings,
@@ -73,8 +89,13 @@ class AppReviewRatingWidget extends StatelessWidget {
                 counterThreeStars: ratingsSummary.distribution[3] ?? 0,
                 counterTwoStars: ratingsSummary.distribution[2] ?? 0,
                 counterOneStars: ratingsSummary.distribution[1] ?? 0,
-                color: theme.primaryColor,
-                backgroundColor: theme.backgroundColor,
+                color: themeSwatch.primaryColor, // Cor da barra ativa
+                backgroundColor: Colors.grey.shade100, // Cor de fundo da barra
+                labelStyle: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ),
           ],

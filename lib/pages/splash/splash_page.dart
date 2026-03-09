@@ -10,7 +10,6 @@ import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import '../../themes/ds_theme_switcher.dart';
 
-
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 
@@ -36,15 +35,17 @@ class _SplashPageState extends State<SplashPage> {
       print("⚠️ [SplashPage] Já navegou ou está navegando. Ignorando.");
       return;
     }
-    
+
     // ✅ Verifica se ainda estamos na página de splash
     final currentRoute = GoRouterState.of(context).matchedLocation;
     if (currentRoute != '/splash') {
-      print("⚠️ [SplashPage] Não estamos mais no splash ($currentRoute). Ignorando redirect.");
+      print(
+        "⚠️ [SplashPage] Não estamos mais no splash ($currentRoute). Ignorando redirect.",
+      );
       _hasNavigated = true;
       return;
     }
-    
+
     _isCheckingAddress = true;
 
     try {
@@ -53,38 +54,46 @@ class _SplashPageState extends State<SplashPage> {
 
       if (customer != null && customer.id != null) {
         print("📍 [SplashPage] Usuário logado. Verificando endereços...");
-        
+
         // ✅ Carrega endereços e espera o resultado
         final addressCubit = context.read<AddressCubit>();
         await addressCubit.loadAddresses(customer.id!);
-        
+
         // ✅ Espera um frame para garantir que o estado foi atualizado
         await Future.delayed(const Duration(milliseconds: 100));
-        
+
         if (!mounted || _hasNavigated) return;
-        
+
         // ✅ Verifica novamente se ainda estamos no splash após o await
         final currentRouteAfterLoad = GoRouterState.of(context).matchedLocation;
         if (currentRouteAfterLoad != '/splash') {
-          print("⚠️ [SplashPage] Saímos do splash durante o load. Ignorando redirect.");
+          print(
+            "⚠️ [SplashPage] Saímos do splash durante o load. Ignorando redirect.",
+          );
           _hasNavigated = true;
           return;
         }
-        
+
         final addressState = addressCubit.state;
         final hasAddresses = addressState.addresses.isNotEmpty;
-        
-        print("📍 [SplashPage] Endereços encontrados: ${addressState.addresses.length}");
-        
+
+        print(
+          "📍 [SplashPage] Endereços encontrados: ${addressState.addresses.length}",
+        );
+
         if (!hasAddresses) {
           // ✅ Logado sem endereço: vai para onboarding de endereço
-          print("📍 [SplashPage] Usuário logado SEM endereço. Redirecionando para /address-onboarding");
+          print(
+            "📍 [SplashPage] Usuário logado SEM endereço. Redirecionando para /address-onboarding",
+          );
           _hasNavigated = true;
           context.go('/address-onboarding');
           return;
         }
-        
-        print("✅ [SplashPage] Usuário tem ${addressState.addresses.length} endereço(s). Indo para home.");
+
+        print(
+          "✅ [SplashPage] Usuário tem ${addressState.addresses.length} endereço(s). Indo para home.",
+        );
       } else {
         print("👤 [SplashPage] Usuário não está logado. Indo para home.");
       }
@@ -108,13 +117,38 @@ class _SplashPageState extends State<SplashPage> {
   Widget build(BuildContext context) {
     final DsTheme theme = context.watch<DsThemeSwitcher>().theme;
 
-    return BlocListener<SplashPageCubit, SplashPageState>(
-      listener: (context, state) {
-        // ✅ Quando carregar, verifica endereços (apenas se não navegou ainda)
-        if (!state.loading && state.products != null && state.store != null && !_hasNavigated) {
-          _checkAddressAndNavigate();
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<SplashPageCubit, SplashPageState>(
+          listener: (context, state) {
+            // ✅ Quando carregar, verifica endereços (apenas se não navegou ainda)
+            if (!state.loading &&
+                state.products != null &&
+                state.store != null &&
+                !_hasNavigated) {
+              _checkAddressAndNavigate();
+            }
+          },
+        ),
+        BlocListener<AuthCubit, AuthState>(
+          listener: (context, state) {
+            if (state.status == AuthStatus.error && !_hasNavigated) {
+              print(
+                "⚠️ [SplashPage] Erro de autenticação detectado: ${state.errorMessage}",
+              );
+              // Se deu erro de login (ex: 429), prossegue para a home como convidado após um pequeno delay
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted && !_hasNavigated) {
+                  print(
+                    "👤 [SplashPage] Prosseguindo como convidado após erro de auth.",
+                  );
+                  _checkAddressAndNavigate();
+                }
+              });
+            }
+          },
+        ),
+      ],
       child: Scaffold(
         backgroundColor: theme.backgroundColor,
         body: Center(

@@ -47,9 +47,6 @@ class _AddressPageState extends State<AddressPage> {
         BlocListener<CartCubit, CartState>(
           listener: (context, state) => _triggerFeeCalculation(context),
         ),
-        BlocListener<DeliveryFeeCubit, DeliveryFeeState>(
-          listener: (context, state) => _triggerFeeCalculation(context),
-        ),
         // ✅ ENTERPRISE: Escuta mudanças no Store para recalcular frete quando regras são atualizadas
         BlocListener<StoreCubit, StoreState>(
           listener: (context, state) {

@@ -110,6 +110,10 @@ class MenuItem extends Equatable {
       if (productTags != null)
         'productTags': productTags!.map((t) => t.toJson()).toList(),
       'soldCount': soldCount,
+      'isOnPromotion': isOnPromotion,
+      if (promotionalPrice != null) 'promotionalPrice': promotionalPrice,
+      if (originalPrice != null) 'originalPrice': originalPrice,
+      if (linkedProductId != null) 'linkedProductId': linkedProductId,
     };
   }
 

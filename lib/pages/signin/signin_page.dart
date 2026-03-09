@@ -26,50 +26,23 @@ class OnboardingPage extends StatelessWidget {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
         if (state.status == AuthStatus.success) {
-          print("✅ [OnboardingPage] Estado de SUCESSO detectado.");
-          BotToast.showText(text: "Login realizado! Verificando endereços...");
+          print(
+            "✅ [OnboardingPage] Estado de SUCESSO detectado. Fechando tela.",
+          );
 
+          // ✅ Iniciamos o carregamento de endereços em background para antecipar dados
           final customer = state.customer;
           if (customer != null && customer.id != null) {
-            try {
-              // Aguarda os endereços com timeout de 6 segundos
-              print(
-                "📍 [OnboardingPage] Aguardando carregamento de endereços...",
-              );
-              await context
-                  .read<AddressCubit>()
-                  .loadAddresses(customer.id!)
-                  .timeout(const Duration(seconds: 6));
-
-              final addressState = context.read<AddressCubit>().state;
-              final hasAddresses = addressState.addresses.isNotEmpty;
-
-              if (!hasAddresses) {
-                print(
-                  "📍 [OnboardingPage] Usuário sem endereço. Redirecionando para /address-onboarding",
-                );
-                if (context.mounted) {
-                  context.go('/address-onboarding');
-                }
-                return;
-              }
-            } catch (e) {
-              print(
-                "⚠️ [OnboardingPage] Timeout ou erro ao carregar endereços. Seguindo para a Home como fallback.",
-              );
-              BotToast.showText(
-                text: "Aviso: Seguindo sem endereços (timeout)",
-              );
-            }
+            context.read<AddressCubit>().loadAddresses(customer.id!);
           }
 
-          // ✅ Fluxo normal ou fallback (se tiver endereço ou se deu timeout)
           if (context.mounted) {
-            print(
-              "✅ [OnboardingPage] Finalizando fluxo de login e indo para '/'",
-            );
-            // Usamos Go direto para garantir a saída da tela independente da pilha
-            context.go('/');
+            // Se puder dar pop, volta para onde estava (ex: Perfil ou Carrinho)
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
           }
         } else if (state.status == AuthStatus.error) {
           print(
@@ -118,16 +91,6 @@ class OnboardingPage extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const CircularProgressIndicator(color: Colors.white),
-                          const SizedBox(height: 16),
-                          Text(
-                            addressLoading
-                                ? 'Buscando seus endereços...'
-                                : 'Autenticando...',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
                         ],
                       ),
                     ),

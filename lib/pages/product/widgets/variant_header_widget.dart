@@ -17,11 +17,13 @@ class VariantHeaderWidget extends StatelessWidget {
 
     // Lógica de detalhes copiada do VariantWidget
     if (variant.uiDisplayMode == UIDisplayMode.QUANTITY) {
-      if (variant.maxTotalQuantity == null) return 'Adicione quantos itens desejar';
+      if (variant.maxTotalQuantity == null)
+        return 'Adicione quantos itens desejar';
       return 'Escolha até ${variant.maxTotalQuantity} itens no total';
     }
     if (min == 0 && max == 1) return 'Opcional, escolha 1 opção';
-    if (min > 0 && min == max) return 'Escolha $max opç${max > 1 ? 'ões' : 'ão'}';
+    if (min > 0 && min == max)
+      return 'Escolha $max opç${max > 1 ? 'ões' : 'ão'}';
     if (min > 0) return 'Escolha de $min até $max opções';
     return 'Escolha até $max opç${max > 1 ? 'ões' : 'ão'}';
   }
@@ -32,7 +34,7 @@ class VariantHeaderWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-     // color: Colors.white, // Fundo branco para não ser transparente
+      // color: Colors.white, // Fundo branco para não ser transparente
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Color(0xFFf3f4f6),
@@ -54,12 +56,22 @@ class VariantHeaderWidget extends StatelessWidget {
               const Spacer(),
               if (isRequired)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: Colors.black,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('OBRIGATÓRIO', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'OBRIGATÓRIO',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
             ],
           ),

@@ -519,7 +519,7 @@ class _OrderDetailContent extends StatelessWidget {
               Text(
                 NumberFormat.simpleCurrency(
                   locale: 'pt_BR',
-                ).format(order.totalAmount + 0.99),
+                ).format(order.totalAmount),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:dio/dio.dart';  // ✅ NOVO: Para chamar API de compartilhamento
-import 'package:share_plus/share_plus.dart';  // ✅ NOVO: Compartilhamento
-import 'package:totem/core/di.dart';  // ✅ NOVO: Para obter Dio
+import 'package:dio/dio.dart'; // ✅ NOVO: Para chamar API de compartilhamento
+import 'package:share_plus/share_plus.dart'; // ✅ NOVO: Compartilhamento
+import 'package:totem/core/di.dart'; // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
@@ -15,10 +16,11 @@ import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/widgets/ds_primary_button.dart';
 import '../../../cubit/auth_cubit.dart';
-import '../../../cubit/store_cubit.dart';  // ✅ NOVO: Para obter store
+import '../../../cubit/store_cubit.dart'; // ✅ NOVO: Para obter store
 import '../../../models/cart_item.dart';
 import '../../../models/cart_variant.dart';
 import '../../../models/cart_variant_option.dart';
+import '../../../models/option_group.dart';
 import '../../../models/update_cart_payload.dart';
 import '../../../widgets/dot_loading.dart';
 import '../../cart/cart_state.dart';
@@ -67,7 +69,7 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     if (!mounted) return;
     final product = widget.productState.product;
     if (product == null) return;
-    
+
     // Procura próximo grupo obrigatório não completado
     for (int i = 0; i < product.selectedVariants.length; i++) {
       final variant = product.selectedVariants[i];
@@ -95,8 +97,14 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     // ✅ Layout: mais largo e alto (aproximadamente 90% da largura e 85% da altura)
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxWidth: min(screenSize.width * 0.90, 1200), // ✅ Aumentado de 800 para 1200px
-        maxHeight: min(screenSize.height * 0.85, 800), // ✅ Aumentado de 600 para 800px
+        maxWidth: min(
+          screenSize.width * 0.90,
+          1200,
+        ), // ✅ Aumentado de 800 para 1200px
+        maxHeight: min(
+          screenSize.height * 0.85,
+          800,
+        ), // ✅ Aumentado de 600 para 800px
         minWidth: 600, // ✅ Largura mínima para garantir legibilidade
         minHeight: 500, // ✅ Altura mínima
       ),
@@ -118,14 +126,20 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                  ),
+                  placeholder:
+                      (context, url) => Container(
+                        color: Colors.grey.shade200,
+                        child: const Center(child: CircularProgressIndicator()),
+                      ),
+                  errorWidget:
+                      (context, url, error) => Container(
+                        color: Colors.grey.shade200,
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          size: 50,
+                          color: Colors.grey,
+                        ),
+                      ),
                 ),
               ),
             ),
@@ -183,11 +197,13 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // ✅ Descrição do produto
-                          if (product.product.description != null && product.product.description!.isNotEmpty) ...[
+                          if (product.product.description != null &&
+                              product.product.description!.isNotEmpty) ...[
                             Text(
                               product.product.description!,
                               style: TextStyle(
-                                fontSize: 15, // ✅ Ajustado para melhor legibilidade
+                                fontSize:
+                                    15, // ✅ Ajustado para melhor legibilidade
                                 color: Colors.grey.shade700,
                                 height: 1.6, // ✅ Aumentado line height
                               ),
@@ -199,7 +215,8 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // ✅ Para pizzas: mostra "A partir de" antes de selecionar sabores
-                              if (product.category.isCustomizable && product.totalPrice == 0) ...[
+                              if (product.category.isCustomizable &&
+                                  product.totalPrice == 0) ...[
                                 Text(
                                   'A partir de ${product.startingPrice.toCurrency}',
                                   style: TextStyle(
@@ -217,7 +234,10 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                   ),
                                 ),
                               ],
-                              if (product.product.unit.requiresQuantityInput) ...[
+                              if (product
+                                  .product
+                                  .unit
+                                  .requiresQuantityInput) ...[
                                 const SizedBox(height: 4),
                                 Text(
                                   'Preço por ${product.product.unit.displayName}',
@@ -241,24 +261,32 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                 return VariantWidget(
                                   key: _variantKeys[variant.id],
                                   onOptionUpdated: (v, o, nq) {
-                                    context.read<ProductPageCubit>().updateOption(
-                                      v, 
-                                      o, 
-                                      nq,
-                                      onUpdateComplete: _scrollToNextRequiredVariant,
-                                    );
+                                    context
+                                        .read<ProductPageCubit>()
+                                        .updateOption(
+                                          v,
+                                          o,
+                                          nq,
+                                          onUpdateComplete:
+                                              _scrollToNextRequiredVariant,
+                                        );
                                   },
                                   variant: variant,
-                                  onScrollToNextRequired: _scrollToNextRequiredVariant,
+                                  onScrollToNextRequired:
+                                      _scrollToNextRequiredVariant,
                                 );
                               },
-                              separatorBuilder: (_, __) => const SizedBox(height: 40),
+                              separatorBuilder:
+                                  (_, __) => const SizedBox(height: 40),
                             ),
                             const SizedBox(height: 32),
                           ],
                           const Text(
                             'Alguma observação no produto?',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           TextField(
@@ -267,14 +295,19 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                             maxLines: 4,
                             minLines: 3,
                             decoration: InputDecoration(
-                              hintText: 'Ex: tirar a cebola, maionese à parte etc.',
+                              hintText:
+                                  'Ex: tirar a cebola, maionese à parte etc.',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade300,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: theme.primaryColor),
+                                borderSide: BorderSide(
+                                  color: theme.primaryColor,
+                                ),
                               ),
                               contentPadding: const EdgeInsets.all(12),
                             ),
@@ -316,15 +349,20 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
             child: BlocBuilder<CartCubit, CartState>(
               builder: (context, cartState) {
                 final isEditMode = productState.isEditMode;
-                final buttonText = isEditMode
-                    ? 'Salvar ${product.totalPrice.toCurrency}'
-                    : 'Adicionar ${product.totalPrice.toCurrency}';
+                final buttonText =
+                    isEditMode
+                        ? 'Salvar ${product.totalPrice.toCurrency}'
+                        : 'Adicionar ${product.totalPrice.toCurrency}';
 
                 return DsPrimaryButton(
-                  onPressed: cartState.isUpdating || !product.isValid
-                      ? null
-                      : () => _onConfirm(context, productState),
-                  child: cartState.isUpdating ? const DotLoading() : Text(buttonText),
+                  onPressed:
+                      cartState.isUpdating || !product.isValid
+                          ? null
+                          : () => _onConfirm(context, productState),
+                  child:
+                      cartState.isUpdating
+                          ? const DotLoading()
+                          : Text(buttonText),
                 );
               },
             ),
@@ -339,58 +377,211 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final authState = context.read<AuthCubit>().state;
     final cartCubit = context.read<CartCubit>();
     final product = productState.product!;
+    final isCustomizable = product.category.isCustomizable;
+    final productIdToSend =
+        isCustomizable
+            ? (product.selectedSize?.linkedProductId ?? product.product.id!)
+            : product.product.id!;
 
     final payload = UpdateCartItemPayload(
-      cartItemId: productState.isEditMode ? productState.originalCartItemId : null,
-      productId: product.product.id!,
+      cartItemId:
+          productState.isEditMode ? productState.originalCartItemId : null,
+      productId: productIdToSend,
       // ✅ CORREÇÃO APLICADA AQUI
       // Pega o ID da categoria que está dentro do objeto CartProduct
       categoryId: product.category.id!,
       quantity: product.quantity,
       note: widget.observationController.text.trim(),
       sizeName: product.selectedSize?.name,
-      variants: product.selectedVariants.map((cartVariant) {
-        final selectedOptions = cartVariant.cartOptions.where((option) => option.quantity > 0).toList();
-        if (selectedOptions.isEmpty) return null;
-        return CartItemVariant(
-          variantId: cartVariant.id,
-          name: cartVariant.name,
-          options: selectedOptions.map((option) => CartItemVariantOption(
-            variantOptionId: option.id,
-            quantity: option.quantity,
-            name: option.name,
-            price: option.price,
-          )).toList(),
-        );
-      }).whereType<CartItemVariant>().toList(),
+      sizeImageUrl: product.selectedSize?.image?.url,
+      variants:
+          product.selectedVariants.expand<CartItemVariant>((cartVariant) {
+            final selectedOptions =
+                cartVariant.cartOptions
+                    .where((option) => option.quantity > 0)
+                    .toList();
+            if (selectedOptions.isEmpty) return [];
+
+            final crustOptions = <CartItemVariantOption>[];
+            final edgeOptions = <CartItemVariantOption>[];
+            final otherOptions = <CartItemVariantOption>[];
+
+            for (final option in selectedOptions) {
+              if (isCustomizable &&
+                  option.crustId != null &&
+                  option.edgeId != null) {
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.crustId,
+                    quantity: option.quantity,
+                    name:
+                        (option.crustName?.toLowerCase().startsWith('massa') ??
+                                false)
+                            ? (option.crustName ?? 'Massa')
+                            : 'Massa ${option.crustName ?? ''}',
+                    price: option.crustPrice ?? 0,
+                  ),
+                );
+
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.edgeId,
+                    quantity: option.quantity,
+                    name:
+                        (option.edgeName?.toLowerCase().startsWith('borda') ??
+                                false)
+                            ? (option.edgeName ?? 'Borda')
+                            : 'Borda ${option.edgeName ?? ''}',
+                    price: option.edgePrice ?? 0,
+                  ),
+                );
+                continue;
+              }
+
+              if (isCustomizable &&
+                  option.parentCustomizationOptionId != null) {
+                final parts = option.name.split(' + ');
+                final mainName = parts.first;
+                final edgeName = parts.length > 1 ? parts.last : 'Borda';
+
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.id,
+                    quantity: option.quantity,
+                    name: mainName,
+                    price: option.price,
+                  ),
+                );
+
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.parentCustomizationOptionId,
+                    quantity: option.quantity,
+                    name: edgeName,
+                    price: 0,
+                  ),
+                );
+                continue;
+              }
+
+              final type = cartVariant.groupType;
+              if (type == 'CRUST') {
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              } else if (type == 'EDGE') {
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              } else {
+                otherOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              }
+            }
+
+            final result = <CartItemVariant>[];
+
+            if (crustOptions.isNotEmpty) {
+              final crustGroup = product.category.optionGroups.firstWhereOrNull(
+                (g) => g.groupType == OptionGroupType.crust,
+              );
+              result.add(
+                CartItemVariant(
+                  variantId: isCustomizable ? null : cartVariant.id,
+                  optionGroupId:
+                      isCustomizable
+                          ? (crustGroup?.id ?? cartVariant.id)
+                          : null,
+                  groupType: 'CRUST',
+                  name: crustGroup?.name ?? 'Massa',
+                  options: crustOptions,
+                ),
+              );
+            }
+
+            if (edgeOptions.isNotEmpty) {
+              final edgeGroup = product.category.optionGroups.firstWhereOrNull(
+                (g) => g.groupType == OptionGroupType.edge,
+              );
+              result.add(
+                CartItemVariant(
+                  variantId: null,
+                  optionGroupId: edgeGroup?.id ?? cartVariant.id,
+                  groupType: 'EDGE',
+                  name: edgeGroup?.name ?? 'Borda',
+                  options: edgeOptions,
+                ),
+              );
+            }
+
+            if (otherOptions.isNotEmpty) {
+              result.add(
+                CartItemVariant(
+                  variantId: isCustomizable ? null : cartVariant.id,
+                  optionGroupId: isCustomizable ? cartVariant.id : null,
+                  groupType: cartVariant.groupType,
+                  name: cartVariant.name,
+                  options: otherOptions,
+                ),
+              );
+            }
+
+            return result;
+          }).toList(),
     );
 
     Future<void> updateAndPop() async {
       await cartCubit.updateItem(payload);
       if (context.mounted) {
-        // ✅ Fecha a tela de detalhes do produto e navega para home
+        // ✅ Fecha a tela de detalhes do produto e navega para o destino correto
         if (context.canPop()) {
           context.pop(); // Fecha tela de detalhes
         }
-        // Navega para home (garante que estamos na home após adicionar)
-        context.go('/');
+        final uri = GoRouterState.of(context).uri;
+        final fromCart = uri.queryParameters['fromCart'] == 'true';
+        context.go((fromCart || productState.isEditMode) ? '/cart' : '/');
       }
     }
 
     // ✅ CORREÇÃO: Verifica se o usuário está logado (customer != null)
     // Isso é mais confiável que verificar apenas o status
     final isLoggedIn = authState.customer != null;
-    
+
     if (isLoggedIn) {
       // ✅ Usuário está logado, adiciona ao carrinho diretamente
       await updateAndPop();
     } else {
       // ✅ Usuário NÃO está logado - abre sidepanel com login
-      print('🔐 [DesktopProductCard] Usuário não logado. Abrindo sidepanel de login...');
-      
+      print(
+        '🔐 [DesktopProductCard] Usuário não logado. Abrindo sidepanel de login...',
+      );
+
       // ✅ Salva payload pendente antes de pedir login
       await PendingCartService.savePendingCartItem(payload);
-      
+
       // ✅ Usa showResponsiveSidePanel ao invés de navegar
       // No mobile e desktop, abre um modal full screen com o login
       try {
@@ -399,21 +590,24 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           const OnboardingPage(),
           useFullScreenOnDesktop: true, // ✅ Força full screen no desktop também
         );
-        
+
         print('🔐 [DesktopProductCard] Resultado do login: $loginSuccess');
-        
+
         // ✅ Após login bem-sucedido, o AuthCubit vai processar o item pendente
         // e depois vamos fechar a tela e navegar para home
         if (loginSuccess == true && context.mounted) {
-          print('✅ [DesktopProductCard] Login bem-sucedido. Aguardando processamento do item...');
+          print(
+            '✅ [DesktopProductCard] Login bem-sucedido. Aguardando processamento do item...',
+          );
           // Aguarda um pouco para garantir que o item foi adicionado
           await Future.delayed(const Duration(milliseconds: 500));
           // Fecha a tela de detalhes do produto
           if (context.canPop()) {
             context.pop(); // Fecha tela de detalhes
           }
-          // Navega para home
-          context.go('/');
+          final uri = GoRouterState.of(context).uri;
+          final fromCart = uri.queryParameters['fromCart'] == 'true';
+          context.go((fromCart || productState.isEditMode) ? '/cart' : '/');
         }
       } catch (e) {
         print('❌ [DesktopProductCard] Erro ao abrir sidepanel de login: $e');
@@ -428,9 +622,13 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       }
     }
   }
-  
+
   // ✅ NOVO: Widget de quantidade inteira (para produtos normais)
-  Widget _buildIntegerQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+  Widget _buildIntegerQuantityInput(
+    BuildContext context,
+    DsTheme theme,
+    CartProduct product,
+  ) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -440,9 +638,12 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         children: [
           IconButton(
             icon: Icon(Icons.remove, color: theme.primaryColor),
-            onPressed: product.quantity > 1
-                ? () => context.read<ProductPageCubit>().updateQuantity(product.quantity - 1)
-                : null,
+            onPressed:
+                product.quantity > 1
+                    ? () => context.read<ProductPageCubit>().updateQuantity(
+                      product.quantity - 1,
+                    )
+                    : null,
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -450,19 +651,27 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           ),
           IconButton(
             icon: Icon(Icons.add, color: theme.primaryColor),
-            onPressed: () => context.read<ProductPageCubit>().updateQuantity(product.quantity + 1),
+            onPressed:
+                () => context.read<ProductPageCubit>().updateQuantity(
+                  product.quantity + 1,
+                ),
           ),
         ],
       ),
     );
   }
-  
+
   // ✅ NOVO: Widget de quantidade decimal (para kg/litros)
-  Widget _buildWeightQuantityInput(BuildContext context, DsTheme theme, CartProduct product) {
+  Widget _buildWeightQuantityInput(
+    BuildContext context,
+    DsTheme theme,
+    CartProduct product,
+  ) {
     final cubit = context.read<ProductPageCubit>();
-    final currentWeight = product.weightQuantity ?? 0.5; // Valor padrão: 0.5 kg/L
+    final currentWeight =
+        product.weightQuantity ?? 0.5; // Valor padrão: 0.5 kg/L
     final unitName = product.product.unit.displayName;
-    
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -474,21 +683,31 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         children: [
           IconButton(
             icon: Icon(Icons.remove, color: theme.primaryColor),
-            onPressed: currentWeight > 0.1
-                ? () => cubit.updateWeightQuantity((currentWeight - 0.1).clamp(0.1, 100.0))
-                : null,
+            onPressed:
+                currentWeight > 0.1
+                    ? () => cubit.updateWeightQuantity(
+                      (currentWeight - 0.1).clamp(0.1, 100.0),
+                    )
+                    : null,
           ),
           SizedBox(
             width: 80,
             child: TextField(
-              controller: TextEditingController(text: currentWeight.toStringAsFixed(2)),
+              controller: TextEditingController(
+                text: currentWeight.toStringAsFixed(2),
+              ),
               textAlign: TextAlign.center,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 suffixText: unitName,
-                suffixStyle: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                suffixStyle: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
               ),
               onSubmitted: (value) {
                 final parsed = double.tryParse(value.replaceAll(',', '.'));
@@ -500,7 +719,10 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           ),
           IconButton(
             icon: Icon(Icons.add, color: theme.primaryColor),
-            onPressed: () => cubit.updateWeightQuantity((currentWeight + 0.1).clamp(0.1, 100.0)),
+            onPressed:
+                () => cubit.updateWeightQuantity(
+                  (currentWeight + 0.1).clamp(0.1, 100.0),
+                ),
           ),
         ],
       ),
@@ -518,15 +740,17 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       final response = await dio.post(
         '/products/${store.urlSlug}/${product.product.id}/share',
         data: {
-          'share_type': 'app',  // Tipo de compartilhamento (app, web, etc.)
-          'share_source': 'desktop',  // Origem do compartilhamento (mobile, desktop, etc.)
-          'utm_source': 'totem_app',  // UTM source para rastreamento
-          'utm_medium': 'share',  // UTM medium para rastreamento
+          'share_type': 'app', // Tipo de compartilhamento (app, web, etc.)
+          'share_source':
+              'desktop', // Origem do compartilhamento (mobile, desktop, etc.)
+          'utm_source': 'totem_app', // UTM source para rastreamento
+          'utm_medium': 'share', // UTM medium para rastreamento
         },
       );
 
       final shareUrl = response.data['share_url'] as String;
-      final shareMessage = 'Confira este produto: ${product.product.name}\n$shareUrl';
+      final shareMessage =
+          'Confira este produto: ${product.product.name}\n$shareUrl';
 
       // Usa o Share do Flutter
       final shareResult = await Share.share(
@@ -557,14 +781,16 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         // Fallback: usa URL básica sem token
         final baseUrl = 'https://${store.urlSlug}.menuhub.com.br';
         // ✅ CORREÇÃO: Formato correto da URL é /product/{slug}/{id}
-        final productSlug = product.product.name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9-]'), '');
-        final productUrl = '$baseUrl/product/$productSlug/${product.product.id}';
-        final shareMessage = 'Confira este produto: ${product.product.name}\n$productUrl';
+        final productSlug = product.product.name
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replaceAll(RegExp(r'[^a-z0-9-]'), '');
+        final productUrl =
+            '$baseUrl/product/$productSlug/${product.product.id}';
+        final shareMessage =
+            'Confira este produto: ${product.product.name}\n$productUrl';
 
-        await Share.share(
-          shareMessage,
-          subject: product.product.name,
-        );
+        await Share.share(shareMessage, subject: product.product.name);
       } catch (e2) {
         // ✅ CORREÇÃO: Não bloqueia se houver erro ao compartilhar
         print('⚠️ Erro ao compartilhar produto: $e2');

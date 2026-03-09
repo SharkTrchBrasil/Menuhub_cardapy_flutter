@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:totem/models/payment_method.dart';
 import 'package:totem/models/store.dart';
-import 'package:totem/pages/checkout/widgets/mercadopago_payment_widget.dart';
+
 import 'package:totem/widgets/ds_button.dart'; // Importe seus modelos atualizados
 
 class PaymentMethodSelectionList extends StatefulWidget {
@@ -20,60 +20,52 @@ class PaymentMethodSelectionList extends StatefulWidget {
   });
 
   @override
-  State<PaymentMethodSelectionList> createState() => _PaymentMethodSelectionListState();
+  State<PaymentMethodSelectionList> createState() =>
+      _PaymentMethodSelectionListState();
 }
 
-class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList> with SingleTickerProviderStateMixin {
+class _PaymentMethodSelectionListState
+    extends State<PaymentMethodSelectionList> {
   // Guarda o método de pagamento selecionado
   PlatformPaymentMethod? _selectedMethod;
-  late TabController _tabController;
-  
+
   // ✅ NOVO: Variáveis de instância para grupos (acessíveis em todos os métodos)
   late final List<PaymentMethodGroup> offlineGroups;
-  late final List<PaymentMethodGroup> onlineGroups;
 
   @override
   void initState() {
     super.initState();
     _selectedMethod = widget.initialSelectedMethod;
-    _tabController = TabController(length: 2, vsync: this);
-    
-    // ✅ NOVO: Separa métodos em "Pagamento na Entrega" e "Pagamento Online"
-    final activeGroups = widget.paymentGroups
-        .where((group) => group.methods.any((method) => method.activation?.isActive == true))
-        .toList();
 
-    // ✅ Separa métodos offline (na entrega) e online (Mercado Pago)
+    // ✅ NOVO: Separa métodos em "Pagamento na Entrega" e "Pagamento Online"
+    final activeGroups =
+        widget.paymentGroups
+            .where(
+              (group) => group.methods.any(
+                (method) => method.activation?.isActive == true,
+              ),
+            )
+            .toList();
+
     final offline = <PaymentMethodGroup>[];
-    final online = <PaymentMethodGroup>[];
-    
+
     for (final group in activeGroups) {
-      final hasOnline = group.methods.any((m) => 
-        m.method_type == 'ONLINE' || 
-        (m.activation?.details?['is_online'] == true)
+      final hasOnline = group.methods.any(
+        (m) =>
+            m.method_type == 'ONLINE' ||
+            (m.activation?.details?['is_online'] == true),
       );
-      
-      if (hasOnline) {
-        online.add(group);
-      } else {
+
+      if (!hasOnline) {
         offline.add(group);
       }
     }
-    
-    offlineGroups = offline;
-    onlineGroups = online;
-  }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+    offlineGroups = offline;
   }
 
   @override
   Widget build(BuildContext context) {
-
-    // ✅ Layout Unificado com Tabs (Inspirado no iFood)
     return Scaffold(
       backgroundColor: Colors.white, // Fundo branco conforme solicitado
       appBar: AppBar(
@@ -92,151 +84,231 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
             fontSize: 18,
           ),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFFEA1D2C),
-              indicatorWeight: 3,
-              labelColor: const Color(0xFFEA1D2C),
-              unselectedLabelColor: Colors.grey,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              tabs: const [
-                Tab(text: 'Pagar na entrega'),
-                Tab(text: 'Pagar pelo app'),
-              ],
-            ),
-          ),
-        ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // ✅ Tab 1: Pagamento na Entrega
-                _buildOfflinePaymentTab(),
-                // ✅ Tab 2: Pagamento pelo App (Online)
-                _buildOnlinePaymentTab(context),
-              ],
-            ),
-          ),
-        ],
-      ),
+      body: _buildOfflinePaymentTab(),
       // ✅ Botão de confirmação movido para bottomNavigationBar (Estilo iFood limpo)
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: DsButton(
-            onPressed: _selectedMethod == null
-                ? null
-                : () {
-              Navigator.pop(context, _selectedMethod);
-            },
+            onPressed:
+                _selectedMethod == null
+                    ? null
+                    : () {
+                      Navigator.pop(context, _selectedMethod);
+                    },
             label: 'Confirmar',
-            minimumSize: const Size(double.infinity, 56), // ✅ Botão bem grande (altura 56)
+            minimumSize: const Size(
+              double.infinity,
+              56,
+            ), // ✅ Botão bem grande (altura 56)
           ),
         ),
       ),
     );
   }
 
-  /// ✅ NOVO: Aba de pagamento na entrega (estilo flat list com cards)
+  /// ✅ FIX: Aba de pagamento na entrega usando a estrutura real do Admin (Grupo > Flags)
   Widget _buildOfflinePaymentTab() {
-    // Coleta todos os métodos offline ativos em uma lista única
-    // ✅ ATUALIZADO: Preserva informação do grupo para adicionar prefixo Crédito/Débito
-    final allMethods = <PlatformPaymentMethod>[];
+    // ✅ SEPARAÇÃO DE VALES: Divide grupos de Vales em Refeição e Alimentação
+    final List<PaymentMethodGroup> expandedGroups = [];
     for (final group in offlineGroups) {
-      final groupName = group.name.toLowerCase();
-      final isCredit = groupName.contains('credit');
-      final isDebit = groupName.contains('debit');
-      
-      for (final m in group.methods.where((m) => m.activation?.isActive == true)) {
-        final isFlag = m.activation?.details?['is_flag'] == true;
-        
-        // ✅ Se for flag de cartão, adiciona prefixo Crédito/Débito ao nome
-        if (isFlag && (isCredit || isDebit)) {
-          final prefix = isCredit ? 'Crédito' : 'Débito';
-          allMethods.add(m.copyWith(name: '$prefix ${m.name}'));
-        } else {
-          allMethods.add(m);
+      final nameStr = (group.title ?? group.name).toLowerCase();
+
+      if (nameStr.contains('vale') ||
+          nameStr.contains('benefício') ||
+          nameStr.contains('beneficio')) {
+        final vrList = <PlatformPaymentMethod>[];
+        final vaList = <PlatformPaymentMethod>[];
+
+        for (final m in group.methods) {
+          final n = m.name.toLowerCase();
+          final ik = (m.iconKey ?? '').toLowerCase();
+
+          // Detecção de VR (Refeição)
+          if (n.contains('refeição') ||
+              n.contains('refeicao') ||
+              n.contains(' meal') ||
+              n.contains('vr') ||
+              ik.contains('vr')) {
+            vrList.add(m);
+          }
+          // Detecção de VA (Alimentação)
+          else if (n.contains('alimentação') ||
+              n.contains('alimentacao') ||
+              n.contains(' food') ||
+              n.contains('va') ||
+              ik.contains('va') ||
+              ik.contains('alelo') ||
+              ik.contains('sodexo') ||
+              ik.contains('ticket')) {
+            vaList.add(m);
+          }
+          // Fallback: Se não detectou nada, joga no grupo que fizer mais sentido ou no Alimentação se for Sodexo/Alelo genérico
+          else {
+            vaList.add(m);
+          }
         }
-      }
-    }
 
-    // ✅ ORGANIZAÇÃO POR PRIORIDADE:
-    // 1. Dinheiro e PIX (Topo da lista)
-    // 2. Bandeiras de Cartão (Flags: Visa, Master, etc)
-    // 3. Outros (Vales, etc)
-    final priorityMethods = <PlatformPaymentMethod>[];
-    final cardFlags = <PlatformPaymentMethod>[];
-    final otherMethods = <PlatformPaymentMethod>[];
-
-    for (final m in allMethods) {
-      final name = m.name.toLowerCase();
-      final isFlag = m.activation?.details?['is_flag'] == true;
-      
-      if (name.contains('dinheiro') || name.contains('pix')) {
-        priorityMethods.add(m);
-      } else if (isFlag) {
-        cardFlags.add(m);
+        if (vrList.isNotEmpty) {
+          expandedGroups.add(
+            group.copyWith(title: 'Vale Refeição', methods: vrList),
+          );
+        }
+        if (vaList.isNotEmpty) {
+          expandedGroups.add(
+            group.copyWith(title: 'Vale Alimentação', methods: vaList),
+          );
+        }
       } else {
-        // Esconde métodos genéricos (ex: "Crédito") se houver flags específicas
-        bool isGenericCard = name.contains('crédito') || name.contains('credito') || 
-                            name.contains('débito') || name.contains('debito');
-        
-        // Se for um "Vale" ou algo do tipo, entra em outros
-        if (!isGenericCard) {
-          otherMethods.add(m);
-        }
+        expandedGroups.add(group);
       }
     }
 
-    final displayList = [...priorityMethods, ...cardFlags, ...otherMethods];
+    // 1. Ordena os grupos pela prioridade solicitada (Dinheiro primeiro, Pix depois...)
+    final sortedGroups = List<PaymentMethodGroup>.from(expandedGroups);
+    sortedGroups.sort((a, b) {
+      final nameA = a.title ?? a.name;
+      final nameB = b.title ?? b.name;
+      return _getGroupPriority(nameA).compareTo(_getGroupPriority(nameB));
+    });
 
-    if (displayList.isEmpty) {
+    final widgets = <Widget>[];
+
+    for (final group in sortedGroups) {
+      final String groupTitle = group.title ?? group.name;
+      if (groupTitle.isEmpty) continue;
+
+      // Filtra os métodos ativos deste grupo
+      final methods =
+          group.methods.where((m) => m.activation?.isActive == true).toList();
+      if (methods.isEmpty) continue;
+
+      // Adiciona o Cabeçalho do Grupo (Seção)
+      String effectiveTitle = groupTitle;
+      final etLower = effectiveTitle.toLowerCase();
+      if (etLower.contains('crédito') || etLower.contains('credito')) {
+        effectiveTitle = 'Crédito';
+      } else if (etLower.contains('débito') || etLower.contains('debito')) {
+        effectiveTitle = 'Débito';
+      }
+
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 24, bottom: 8, left: 4),
+          child: Text(
+            effectiveTitle,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+              letterSpacing: -0.4,
+            ),
+          ),
+        ),
+      );
+
+      // Adiciona as "Flags" (métodos filhos) dentro deste grupo
+      for (final m in methods) {
+        final nameLower = m.name.toLowerCase();
+
+        // Validação de Chave PIX
+        if (nameLower == 'pix') {
+          final pixKey = m.activation?.details?['pix_key'];
+          if (pixKey == null || pixKey.toString().isEmpty) continue;
+        }
+
+        // Limpa redundâncias no nome da flag
+        String displayName = _formatFlagName(m.name, groupTitle);
+
+        widgets.add(_buildPaymentMethodCard(m, displayName: displayName));
+      }
+    }
+
+    if (widgets.isEmpty) {
       return const Center(
-        child: Text('Nenhuma forma de pagamento disponível na entrega.'),
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Text(
+            'Nenhuma forma de pagamento disponível para este tipo de pedido.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+        ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: displayList.length,
-      itemBuilder: (context, index) {
-        final method = displayList[index];
-        return _buildPaymentMethodCard(method);
-      },
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+      children: widgets,
     );
   }
 
+  /// Formata o nome da flag para evitar redundância com o título da seção
+  String _formatFlagName(String methodName, String groupTitle) {
+    final title = groupTitle.toLowerCase();
+
+    // Se for Dinheiro ou Pix, mantém o nome original
+    if (title.contains('dinheiro') || title.contains('pix')) return methodName;
+
+    final regex = RegExp(
+      r'crédito|credito|débito|debito|vale|alimentação|alimentacao|refeição|refeicao|voucher',
+      caseSensitive: false,
+    );
+
+    String cleaned = methodName.replaceAll(regex, '').trim();
+    return cleaned.isEmpty ? methodName : cleaned;
+  }
+
+  /// Helper para definir a ordem dos grupos conforme o padrão do Admin/iFood
+  int _getGroupPriority(String title) {
+    final t = title.toLowerCase();
+    if (t.contains('dinheiro')) return 1;
+    if (t.contains('pix') || t.contains('digital')) return 2;
+    if (t.contains('crédito') || t.contains('credito')) return 3;
+    if (t.contains('débito') || t.contains('debito')) return 4;
+    if (t.contains('refeição') || t.contains('refeicao')) return 5;
+    if (t.contains('alimentação') || t.contains('alimentacao')) return 6;
+    if (t.contains('vale') ||
+        t.contains('benefício') ||
+        t.contains('beneficio')) {
+      return 7;
+    }
+    return 8;
+  }
+
   /// ✅ NOVO: Item de pagamento estilo card premium
-  Widget _buildPaymentMethodCard(PlatformPaymentMethod method) {
+  Widget _buildPaymentMethodCard(
+    PlatformPaymentMethod method, {
+    String? displayName,
+  }) {
     // Consideramos selecionado se ID e Nome batem
-    bool isSelected = _selectedMethod?.id == method.id && _selectedMethod?.name == method.name;
-    
+    bool isSelected =
+        _selectedMethod?.id == method.id &&
+        _selectedMethod?.name == method.name;
+
+    // Usa displayName se fornecido, senão usa method.name
+    final String label = displayName ?? method.name;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isSelected ? const Color(0xFFEA1D2C) : Colors.transparent,
-          width: 1.5,
+          color: isSelected ? Colors.black : const Color(0xFFF2F2F2),
+          width: isSelected ? 1.5 : 1.0,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow:
+            isSelected
+                ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+                : null,
       ),
       child: InkWell(
         onTap: () {
@@ -264,37 +336,42 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
               // Nome do método
               Expanded(
                 child: Text(
-                  method.name,
+                  label,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF3F3E3E),
                   ),
                 ),
               ),
-              // Radio customizado
+              // Radio customizado estilo iFood
               Container(
-                width: 22,
-                height: 22,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? const Color(0xFFEA1D2C) : Colors.grey.shade300,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? Center(
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFFEA1D2C),
+                  color: isSelected ? Colors.black : const Color(0xFFF2F2F2),
+                  border:
+                      isSelected
+                          ? null
+                          : Border.all(
+                            color: const Color(0xFFE8E8E8),
+                            width: 1,
                           ),
-                        ),
-                      )
-                    : null,
+                ),
+                child:
+                    isSelected
+                        ? Center(
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                        : null,
               ),
             ],
           ),
@@ -302,84 +379,15 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
       ),
     );
   }
-  
+
   // ✅ Os itens são agora construídos via _buildPaymentMethodCard para layout flat
-
-  /// ✅ TAB 2: Pagamento pelo App (Online)
-  Widget _buildOnlinePaymentTab(BuildContext context) {
-    if (onlineGroups.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons. smartphone, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            const Text(
-              'Pagamento pelo app não disponível',
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Em breve você poderá pagar diretamente por aqui!',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: MercadoPagoPaymentWidget(
-        store: widget.store,
-        orderTotal: widget.orderTotal,
-        onPaymentCreated: (paymentId, paymentData) {
-          final onlineMethod = PlatformPaymentMethod(
-            id: 0,
-            name: paymentData['payment_method_id'] == 'pix' 
-                ? 'PIX (Pelo App)' 
-                : 'Cartão de Crédito (Pelo App)',
-            method_type: 'ONLINE',
-            iconKey: paymentData['payment_method_id'] == 'pix' ? 'pix' : 'credit_card',
-            activation: StorePaymentMethodActivation(
-              id: 0,
-              isActive: true,
-              feePercentage: 0.0,
-              details: {
-                'mercadopago_payment_id': paymentId,
-                'payment_method_id': paymentData['payment_method_id'],
-                'flag_type': paymentData['payment_method_id'],
-                'is_online': true,
-              },
-              isForDelivery: true,
-              isForPickup: true,
-              isForInStore: true,
-            ),
-          );
-          
-          setState(() {
-            _selectedMethod = onlineMethod;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Pagamento criado! Clique em "Confirmar" para finalizar.'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildPaymentIcon(String? iconKey) {
     if (iconKey != null && iconKey.isNotEmpty) {
       // ✅ Mapeamento de iconKeys para arquivos reais
       final String mappedIconKey = _mapIconKey(iconKey);
       final String assetPath = 'assets/icons/$mappedIconKey';
-      
+
       return SizedBox(
         width: 24,
         height: 24,
@@ -396,7 +404,7 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
   String _mapIconKey(String iconKey) {
     // Remove extensão se houver
     final cleanKey = iconKey.replaceAll('.svg', '').toLowerCase();
-    
+
     // Mapeamento de iconKeys comuns para arquivos reais
     final iconMap = {
       'credit': 'visa', // Fallback genérico para crédito
@@ -421,17 +429,17 @@ class _PaymentMethodSelectionListState extends State<PaymentMethodSelectionList>
       'va': 'ticket', // Vale alimentação -> Ticket como fallback
       'vr_refeicao': 'vr',
     };
-    
+
     // Se existe mapeamento, usa ele
     if (iconMap.containsKey(cleanKey)) {
       return '${iconMap[cleanKey]}.svg';
     }
-    
+
     // Se não tem extensão, adiciona .svg
     if (!cleanKey.endsWith('.svg')) {
       return '$cleanKey.svg';
     }
-    
+
     return iconKey; // Retorna original se já tiver extensão
   }
 }
@@ -441,10 +449,7 @@ class _SafeSvgPicture extends StatelessWidget {
   final String assetPath;
   final Widget fallback;
 
-  const _SafeSvgPicture({
-    required this.assetPath,
-    required this.fallback,
-  });
+  const _SafeSvgPicture({required this.assetPath, required this.fallback});
 
   @override
   Widget build(BuildContext context) {

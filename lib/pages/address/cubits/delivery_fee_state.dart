@@ -27,24 +27,28 @@ class DeliveryFeeLoading extends DeliveryFeeState {
 class DeliveryFeeLoaded extends DeliveryFeeState {
   final double deliveryFee;
   final bool isFree;
+  final double? distanceKm;
 
   const DeliveryFeeLoaded({
     required this.deliveryFee,
     required this.isFree,
+    this.distanceKm,
     required super.deliveryType, // ✅ USA O PARÂMETRO DA CLASSE PAI
   });
 
   @override
-  List<Object> get props => [deliveryFee, isFree, deliveryType];
+  List<Object?> get props => [deliveryFee, isFree, distanceKm, deliveryType];
 
   DeliveryFeeLoaded copyWith({
     double? deliveryFee,
     bool? isFree,
+    double? distanceKm,
     DeliveryType? deliveryType,
   }) {
     return DeliveryFeeLoaded(
       deliveryFee: deliveryFee ?? this.deliveryFee,
       isFree: isFree ?? this.isFree,
+      distanceKm: distanceKm ?? this.distanceKm,
       deliveryType: deliveryType ?? this.deliveryType,
     );
   }

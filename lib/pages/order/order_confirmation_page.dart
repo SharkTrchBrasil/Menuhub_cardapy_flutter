@@ -12,11 +12,7 @@ class OrderConfirmationPage extends StatelessWidget {
   final Order? order;
   final PlatformPaymentMethod? paymentMethod;
 
-  const OrderConfirmationPage({
-    super.key,
-    this.order,
-    this.paymentMethod,
-  });
+  const OrderConfirmationPage({super.key, this.order, this.paymentMethod});
 
   @override
   Widget build(BuildContext context) {
@@ -25,16 +21,14 @@ class OrderConfirmationPage extends StatelessWidget {
       return OrderDetailsPage(
         order: order!,
         paymentMethod: paymentMethod,
-        showActions: true,  // Mostra footer com "Ver sacola"
-        showRating: false,  // Não mostra avaliação (pedido acabou de ser feito)
+        showActions: true,
+        showRating: false,
       );
     }
-    
+
     // Fallback para quando não tiver order
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-      ),
+      appBar: AppBar(automaticallyImplyLeading: false),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -65,9 +59,9 @@ class OrderConfirmationPage extends StatelessWidget {
               Text(
                 'Seu pedido já está sendo preparado.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey.shade700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: Colors.grey.shade700),
               ),
             ],
           ),

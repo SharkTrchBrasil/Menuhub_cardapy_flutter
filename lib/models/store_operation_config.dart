@@ -2,29 +2,29 @@
 enum PizzaPricingStrategy {
   /// Cobra pelo sabor mais caro (padrão)
   highest,
+
   /// Cobra pela média dos sabores
   average;
 
   static PizzaPricingStrategy fromString(String? value) {
     switch (value?.toUpperCase()) {
-      case 'HIGHEST':
-        return PizzaPricingStrategy.highest;
       case 'AVERAGE':
-      default:
         return PizzaPricingStrategy.average;
+      default:
+        return PizzaPricingStrategy.highest;
     }
   }
-  
+
   String toApiString() => name.toUpperCase();
 }
 
 class StoreOperationConfig {
   // --- Configurações Gerais de Operação ---
   final bool isStoreOpen;
-  
+
   // ✅ PAUSA PROGRAMADA: Data/hora até quando a loja está pausada
   final DateTime? pausedUntil;
-  
+
   final bool autoAcceptOrders;
   final bool autoPrintOrders;
   final bool is_operational;
@@ -59,7 +59,7 @@ class StoreOperationConfig {
 
   final double? freeDeliveryThreshold;
   final bool scheduledOrdersEnabled;
-  
+
   // --- ✅ NOVO: Configuração de preço para pizzas ---
   final PizzaPricingStrategy pizzaPricingStrategy;
 
@@ -102,13 +102,16 @@ class StoreOperationConfig {
 
   static double? _parseMoney(dynamic value) {
     double? result;
-    if (value is num) result = value.toDouble();
+    if (value is num)
+      result = value.toDouble();
     else if (value is Map) {
-      if (value['amount'] is num) result = (value['amount'] as num).toDouble();
-      else if (value['value'] is num) result = (value['value'] as num).toDouble();
-    }
-    else if (value is String) result = double.tryParse(value);
-    
+      if (value['amount'] is num)
+        result = (value['amount'] as num).toDouble();
+      else if (value['value'] is num)
+        result = (value['value'] as num).toDouble();
+    } else if (value is String)
+      result = double.tryParse(value);
+
     // ✅ CORREÇÃO: Converte centavos para reais se houver valor
     return result != null ? result / 100.0 : null;
   }
@@ -117,9 +120,10 @@ class StoreOperationConfig {
     return StoreOperationConfig(
       // Gerais
       isStoreOpen: json['is_store_open'] ?? true,
-      pausedUntil: json['paused_until'] != null 
-          ? DateTime.tryParse(json['paused_until']) 
-          : null,
+      pausedUntil:
+          json['paused_until'] != null
+              ? DateTime.tryParse(json['paused_until'])
+              : null,
       autoAcceptOrders: json['auto_accept_orders'] ?? false,
       autoPrintOrders: json['auto_print_orders'] ?? false,
       is_operational: json['is_operational'] ?? true,
@@ -128,8 +132,9 @@ class StoreOperationConfig {
       deliveryEstimatedMin: json['delivery_estimated_min'],
       deliveryEstimatedMax: json['delivery_estimated_max'],
       deliveryFee: _parseMoney(json['delivery_fee']),
-      deliveryMinOrder: _parseMoney(json['min_order_value']) ?? 
-                        _parseMoney(json['delivery_min_order']),
+      deliveryMinOrder:
+          _parseMoney(json['min_order_value']) ??
+          _parseMoney(json['delivery_min_order']),
       deliveryScope: json['delivery_scope'],
       deliveryPaused: json['delivery_paused'] ?? false,
       // Pickup
@@ -151,7 +156,9 @@ class StoreOperationConfig {
       freeDeliveryThreshold: _parseMoney(json['free_delivery_threshold']),
       scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
       // ✅ Pizza pricing strategy
-      pizzaPricingStrategy: PizzaPricingStrategy.fromString(json['pizza_multi_flavor_pricing_strategy']),
+      pizzaPricingStrategy: PizzaPricingStrategy.fromString(
+        json['pizza_multi_flavor_pricing_strategy'],
+      ),
     );
   }
 
@@ -213,11 +220,16 @@ class StoreOperationConfig {
       tableEstimatedMax: tableEstimatedMax ?? this.tableEstimatedMax,
       tableInstructions: tableInstructions ?? this.tableInstructions,
       tablePaused: tablePaused ?? this.tablePaused,
-      mainPrinterDestination: mainPrinterDestination ?? this.mainPrinterDestination,
-      kitchenPrinterDestination: kitchenPrinterDestination ?? this.kitchenPrinterDestination,
-      barPrinterDestination: barPrinterDestination ?? this.barPrinterDestination,
-      freeDeliveryThreshold: freeDeliveryThreshold ?? this.freeDeliveryThreshold,
-      scheduledOrdersEnabled: scheduledOrdersEnabled ?? this.scheduledOrdersEnabled,
+      mainPrinterDestination:
+          mainPrinterDestination ?? this.mainPrinterDestination,
+      kitchenPrinterDestination:
+          kitchenPrinterDestination ?? this.kitchenPrinterDestination,
+      barPrinterDestination:
+          barPrinterDestination ?? this.barPrinterDestination,
+      freeDeliveryThreshold:
+          freeDeliveryThreshold ?? this.freeDeliveryThreshold,
+      scheduledOrdersEnabled:
+          scheduledOrdersEnabled ?? this.scheduledOrdersEnabled,
       pizzaPricingStrategy: pizzaPricingStrategy ?? this.pizzaPricingStrategy,
     );
   }

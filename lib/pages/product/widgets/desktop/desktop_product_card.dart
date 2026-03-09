@@ -20,6 +20,7 @@ import '../../../../cubit/store_cubit.dart';
 import '../../../../models/cart_item.dart';
 import '../../../../models/cart_variant.dart';
 import '../../../../models/cart_variant_option.dart';
+import '../../../../models/option_group.dart';
 import '../../../../models/update_cart_payload.dart';
 import '../../../../widgets/dot_loading.dart';
 import '../../../cart/cart_state.dart';
@@ -404,27 +405,40 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
                                     ),
                                   ),
                                 ] else ...[
-                                  // ✅ Para pizzas: mostra "A partir de" antes de selecionar sabores
-                                  if (product.category.isCustomizable &&
-                                      product.totalPrice == 0) ...[
-                                    Text(
-                                      'A partir de ${product.startingPrice.toCurrency}',
-                                      style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green.shade700,
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    // Preço normal ou preço final da pizza
-                                    Text(
-                                      product.totalPrice.toCurrency,
-                                      style: const TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
+                                  // ✅ Exibe "A partir de" se for customizável ou preço base for 0
+                                  Builder(
+                                    builder: (context) {
+                                      final bool showAsStartingFrom =
+                                          product.category.isCustomizable ||
+                                          (product.basePrice == 0 &&
+                                              product.startingPrice > 0);
+
+                                      if (showAsStartingFrom &&
+                                          product.totalPrice ==
+                                              (product.category.isCustomizable
+                                                  ? 0
+                                                  : 0)) {
+                                        // Se for customizável e preço total ainda é 0, ou se basePrice é 0
+                                        // Mostramos o startingPrice
+                                        return Text(
+                                          'A partir de ${product.startingPrice.toCurrency}',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        );
+                                      }
+
+                                      return Text(
+                                        product.totalPrice.toCurrency,
+                                        style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      );
+                                    },
+                                  ),
                                 ],
                               ],
                             ),
@@ -594,11 +608,16 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
     final authState = context.read<AuthCubit>().state;
     final cartCubit = context.read<CartCubit>();
     final product = productState.product!;
+    final isCustomizable = product.category.isCustomizable;
+    final productIdToSend =
+        isCustomizable
+            ? (product.selectedSize?.linkedProductId ?? product.product.id!)
+            : product.product.id!;
 
     final payload = UpdateCartItemPayload(
       cartItemId:
           productState.isEditMode ? productState.originalCartItemId : null,
-      productId: product.product.id!,
+      productId: productIdToSend,
       categoryId: product.category.id!,
       quantity: product.quantity,
       note: widget.observationController.text.trim(),
@@ -606,31 +625,162 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
       sizeImageUrl:
           product.selectedSize?.image?.url, // ✅ NOVO: Envia imagem da pizza
       variants:
-          product.selectedVariants
-              .map((cartVariant) {
-                final selectedOptions =
-                    cartVariant.cartOptions
-                        .where((option) => option.quantity > 0)
-                        .toList();
-                if (selectedOptions.isEmpty) return null;
-                return CartItemVariant(
-                  variantId: cartVariant.id,
-                  name: cartVariant.name,
-                  options:
-                      selectedOptions
-                          .map(
-                            (option) => CartItemVariantOption(
-                              variantOptionId: option.id,
-                              quantity: option.quantity,
-                              name: option.name,
-                              price: option.price,
-                            ),
-                          )
-                          .toList(),
+          product.selectedVariants.expand<CartItemVariant>((cartVariant) {
+            final selectedOptions =
+                cartVariant.cartOptions
+                    .where((option) => option.quantity > 0)
+                    .toList();
+            if (selectedOptions.isEmpty) return [];
+
+            final crustOptions = <CartItemVariantOption>[];
+            final edgeOptions = <CartItemVariantOption>[];
+            final otherOptions = <CartItemVariantOption>[];
+
+            for (final option in selectedOptions) {
+              if (isCustomizable &&
+                  option.crustId != null &&
+                  option.edgeId != null) {
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.crustId,
+                    quantity: option.quantity,
+                    name:
+                        (option.crustName?.toLowerCase().startsWith('massa') ??
+                                false)
+                            ? (option.crustName ?? 'Massa')
+                            : 'Massa ${option.crustName ?? ''}',
+                    price: option.crustPrice ?? 0,
+                  ),
                 );
-              })
-              .whereType<CartItemVariant>()
-              .toList(),
+
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.edgeId,
+                    quantity: option.quantity,
+                    name:
+                        (option.edgeName?.toLowerCase().startsWith('borda') ??
+                                false)
+                            ? (option.edgeName ?? 'Borda')
+                            : 'Borda ${option.edgeName ?? ''}',
+                    price: option.edgePrice ?? 0,
+                  ),
+                );
+                continue;
+              }
+
+              if (isCustomizable &&
+                  option.parentCustomizationOptionId != null) {
+                final parts = option.name.split(' + ');
+                final mainName = parts.first;
+                final edgeName = parts.length > 1 ? parts.last : 'Borda';
+
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.id,
+                    quantity: option.quantity,
+                    name: mainName,
+                    price: option.price,
+                  ),
+                );
+
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: null,
+                    optionItemId: option.parentCustomizationOptionId,
+                    quantity: option.quantity,
+                    name: edgeName,
+                    price: 0,
+                  ),
+                );
+                continue;
+              }
+
+              final type = cartVariant.groupType;
+              if (type == 'CRUST') {
+                crustOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              } else if (type == 'EDGE') {
+                edgeOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              } else {
+                otherOptions.add(
+                  CartItemVariantOption(
+                    variantOptionId: isCustomizable ? null : option.id,
+                    optionItemId: isCustomizable ? option.id : null,
+                    quantity: option.quantity,
+                    name: option.name,
+                    price: option.price,
+                  ),
+                );
+              }
+            }
+
+            final result = <CartItemVariant>[];
+
+            if (crustOptions.isNotEmpty) {
+              final crustGroup = product.category.optionGroups.firstWhereOrNull(
+                (g) => g.groupType == OptionGroupType.crust,
+              );
+              result.add(
+                CartItemVariant(
+                  variantId: isCustomizable ? null : cartVariant.id,
+                  optionGroupId:
+                      isCustomizable
+                          ? (crustGroup?.id ?? cartVariant.id)
+                          : null,
+                  groupType: 'CRUST',
+                  name: crustGroup?.name ?? 'Massa',
+                  options: crustOptions,
+                ),
+              );
+            }
+
+            if (edgeOptions.isNotEmpty) {
+              final edgeGroup = product.category.optionGroups.firstWhereOrNull(
+                (g) => g.groupType == OptionGroupType.edge,
+              );
+              result.add(
+                CartItemVariant(
+                  variantId: null,
+                  optionGroupId: edgeGroup?.id ?? cartVariant.id,
+                  groupType: 'EDGE',
+                  name: edgeGroup?.name ?? 'Borda',
+                  options: edgeOptions,
+                ),
+              );
+            }
+
+            if (otherOptions.isNotEmpty) {
+              result.add(
+                CartItemVariant(
+                  variantId: isCustomizable ? null : cartVariant.id,
+                  optionGroupId: isCustomizable ? cartVariant.id : null,
+                  groupType: cartVariant.groupType,
+                  name: cartVariant.name,
+                  options: otherOptions,
+                ),
+              );
+            }
+
+            return result;
+          }).toList(),
     );
 
     Future<void> updateAndPop() async {
@@ -683,7 +833,9 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
           if (context.canPop()) {
             context.pop();
           }
-          context.go('/');
+          final uri = GoRouterState.of(context).uri;
+          final fromCart = uri.queryParameters['fromCart'] == 'true';
+          context.go(fromCart ? '/cart' : '/');
         }
       } catch (e) {
         if (context.mounted) {

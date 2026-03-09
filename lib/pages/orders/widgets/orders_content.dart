@@ -3,14 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:totem/helpers/order_reorder_helper.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/widgets/store_closed_widgets.dart';
-import 'package:totem/models/update_cart_payload.dart';
-import 'package:totem/models/product.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
@@ -48,53 +47,44 @@ class OrdersContent extends StatelessWidget {
         // Agrupar histórico por data
         final groupedHistory = _groupOrdersByDate(context, historyOrders);
 
-        return RefreshIndicator(
-          onRefresh: () async {
-            final customer = context.read<AuthCubit>().state.customer;
-            if (customer?.id != null) {
-              await context.read<OrdersCubit>().refreshOrders(customer!.id!);
-            }
-          },
-          child: ListView(
-            padding: EdgeInsets.all(isDesktop ? 24 : 16),
-            children: [
-              // Seção "Em andamento"
-              _buildSectionTitle('Em andamento'),
+        return ListView(
+          padding: EdgeInsets.all(isDesktop ? 24 : 16),
+          children: [
+            // Seção "Em andamento"
+            _buildSectionTitle('Em andamento'),
+            const SizedBox(height: 12),
+            if (activeOrders.isNotEmpty)
+              ...activeOrders.map(
+                (order) => _ActiveOrderCard(order: order, isDesktop: isDesktop),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24, top: 8),
+                child: Text(
+                  'Sem pedidos recentes por aqui',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                ),
+              ),
+
+            // Seção "Histórico"
+            if (historyOrders.isNotEmpty) ...[
+              _buildSectionTitle('Histórico'),
               const SizedBox(height: 12),
-              if (activeOrders.isNotEmpty)
-                ...activeOrders.map(
-                  (order) =>
-                      _ActiveOrderCard(order: order, isDesktop: isDesktop),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24, top: 8),
-                  child: Text(
-                    'Sem pedidos recentes por aqui',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              ...groupedHistory.entries.expand(
+                (entry) => [
+                  _buildDateHeader(entry.key),
+                  ...entry.value.map(
+                    (order) =>
+                        _HistoryOrderCard(order: order, isDesktop: isDesktop),
                   ),
-                ),
-
-              // Seção "Histórico"
-              if (historyOrders.isNotEmpty) ...[
-                _buildSectionTitle('Histórico'),
-                const SizedBox(height: 12),
-                ...groupedHistory.entries.expand(
-                  (entry) => [
-                    _buildDateHeader(entry.key),
-                    ...entry.value.map(
-                      (order) =>
-                          _HistoryOrderCard(order: order, isDesktop: isDesktop),
-                    ),
-                  ],
-                ),
-              ],
-
-              // Se não há pedidos em nenhuma categoria
-              if (activeOrders.isEmpty && historyOrders.isEmpty)
-                _buildEmptyState(context),
+                ],
+              ),
             ],
-          ),
+
+            // Se não há pedidos em nenhuma categoria
+            if (activeOrders.isEmpty && historyOrders.isEmpty)
+              _buildEmptyState(context),
+          ],
         );
       },
     );
@@ -724,26 +714,53 @@ class _HistoryOrderCard extends StatelessWidget {
 
               // Avaliação (apenas se concluído)
               if (isDelivered) ...[
-                const Divider(height: 1, thickness: 0.5, color: Colors.grey),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: List.generate(
-                        5,
-                        (index) => const Icon(
-                          Icons.star,
-                          size: 18,
-                          color: Colors.black,
+                InkWell(
+                  onTap: () {
+                    if (!order.details.reviewed) {
+                      context.push('/order/${order.id}/evaluate', extra: order);
+                    } else {
+                      context.push('/order/${order.id}', extra: order);
+                    }
+                  },
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: List.generate(
+                          5,
+                          (index) => Icon(
+                            Icons.star,
+                            size: 18,
+                            color:
+                                order.details.reviewed
+                                    ? Colors.black
+                                    : Colors.grey.shade300,
+                          ),
                         ),
                       ),
-                    ),
-                    const Text(
-                      'Avaliação publicada',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                  ],
+                      Row(
+                        children: [
+                          Text(
+                            order.details.reviewed
+                                ? 'Avaliação enviada'
+                                : 'Avalie seu pedido',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (!order.details.reviewed)
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: Colors.black,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
 
@@ -759,7 +776,7 @@ class _HistoryOrderCard extends StatelessWidget {
                         // Lógica de ajuda
                       },
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFEA1D2C),
+                        foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: const Text(
@@ -781,7 +798,7 @@ class _HistoryOrderCard extends StatelessWidget {
                         }
                       },
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFEA1D2C),
+                        foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: Text(
@@ -818,22 +835,13 @@ class _HistoryOrderCard extends StatelessWidget {
     }
 
     try {
-      // 2. Itera pelos itens do pedido e reconstrói payloads
-      for (final item in order.items) {
-        final product = catalogCubit.state.products?.firstWhere(
-          (p) => p.id.toString() == item.id,
-          orElse: () => Product.empty().copyWith(id: int.tryParse(item.id)),
-        );
+      final payloads = OrderReorderHelper.buildPayloads(
+        order: order,
+        products: catalogCubit.state.products ?? const [],
+        categories: catalogCubit.state.categories ?? const [],
+      );
 
-        final categoryId = product?.primaryCategoryId ?? 0;
-
-        final payload = UpdateCartItemPayload(
-          productId: int.tryParse(item.id) ?? 0,
-          categoryId: categoryId,
-          quantity: item.quantity,
-          note: item.notes,
-        );
-
+      for (final payload in payloads) {
         await cartCubit.updateItem(payload);
       }
 
@@ -863,17 +871,15 @@ class _HistoryOrderCard extends StatelessWidget {
 Widget _buildStoreAvatar(String? logoUrl) {
   final fullUrl = _formatImageUrl(logoUrl);
   return Container(
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     decoration: BoxDecoration(
       color: Colors.grey.shade100,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.grey.shade200),
+      shape: BoxShape.circle,
     ),
     child:
         fullUrl.isNotEmpty
-            ? ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            ? ClipOval(
               child: CachedNetworkImage(
                 imageUrl: fullUrl,
                 fit: BoxFit.cover,
@@ -882,8 +888,8 @@ Widget _buildStoreAvatar(String? logoUrl) {
                       color: Colors.grey.shade100,
                       child: const Center(
                         child: SizedBox(
-                          width: 20,
-                          height: 20,
+                          width: 16,
+                          height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       ),
@@ -892,11 +898,11 @@ Widget _buildStoreAvatar(String? logoUrl) {
                     (context, url, error) => Icon(
                       Icons.store,
                       color: Colors.grey.shade400,
-                      size: 28,
+                      size: 24,
                     ),
               ),
             )
-            : Icon(Icons.store, color: Colors.grey.shade400, size: 28),
+            : Icon(Icons.store, color: Colors.grey.shade400, size: 24),
   );
 }
 

@@ -7,16 +7,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/models/payment_method.dart';
 import 'package:totem/models/option_group.dart';
+import 'package:totem/helpers/order_reorder_helper.dart';
+import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/services/store_status_service.dart';
 import 'package:totem/widgets/store_closed_widgets.dart';
-import 'package:totem/models/update_cart_payload.dart';
-import 'package:totem/models/cart_item.dart';
-import 'package:totem/models/product.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:totem/pages/order/widgets/order_status_progress_bar.dart';
+import 'package:totem/core/helpers/money_amount_helper.dart';
 
 /// Página de detalhes do pedido completa - Estilo iFood
 /// ✅ Suporta pedidos cancelados, concluídos e avaliações
@@ -63,72 +63,98 @@ class _OrderDetailContent extends StatefulWidget {
 }
 
 class _OrderDetailContentState extends State<_OrderDetailContent> {
+  late Order _currentOrder;
   late String _currentStatus;
+
+  void _syncOrder(Order order) {
+    _currentOrder = order;
+    _currentStatus = order.lastStatus;
+  }
 
   @override
   void initState() {
     super.initState();
-    _currentStatus = widget.order.lastStatus;
+    _syncOrder(widget.order);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrderDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.order.id != widget.order.id ||
+        oldWidget.order.updatedAt != widget.order.updatedAt ||
+        oldWidget.order.lastStatus != widget.order.lastStatus) {
+      _syncOrder(widget.order);
+    }
   }
 
   bool get _isConcluded =>
-      _currentStatus.toUpperCase() == 'CONCLUDED' || widget.order.isConcluded;
+      _currentStatus.toUpperCase() == 'CONCLUDED' || _currentOrder.isConcluded;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return BlocListener<OrdersCubit, OrdersState>(
+      listenWhen: (previous, current) => previous.orders != current.orders,
+      listener: (context, state) {
+        final updatedOrder =
+            state.orders.where((o) => o.id == _currentOrder.id).firstOrNull;
+        if (updatedOrder == null || !mounted) return;
+        setState(() => _syncOrder(updatedOrder));
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Color(0xFFEA1D2C),
-            size: 20,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios,
+              color: Color(0xFFEA1D2C),
+              size: 20,
+            ),
+            onPressed: () => context.pop(),
           ),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'DETALHES DO PEDIDO',
-          style: TextStyle(
-            color: Color(0xFF3F3E3E),
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          TextButton(
-            onPressed: () {
-              // TODO: Implementar ajuda
-            },
-            child: const Text(
-              'Ajuda',
-              style: TextStyle(
-                color: Color(0xFFEA1D2C),
-                fontWeight: FontWeight.bold,
-              ),
+          title: const Text(
+            'DETALHES DO PEDIDO',
+            style: TextStyle(
+              color: Color(0xFF3F3E3E),
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
             ),
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildStoreHeader(context),
-            _buildStatusBanner(),
-            if (_currentStatus.toUpperCase() == 'DISPATCHED')
-              _buildConfirmArrivalCard(context),
-            _buildProductList(),
-            _buildValuesSummary(),
-            if (_isConcluded) _buildAddToBagButton(context),
-            _buildPaymentSection(),
-            _buildAddressSection(),
-            if (widget.showRating || _isConcluded) _buildReviewSection(context),
-            const SizedBox(height: 100),
+          centerTitle: true,
+          actions: [
+            TextButton(
+              onPressed: () {
+                // TODO: Implementar ajuda
+              },
+              child: const Text(
+                'Ajuda',
+                style: TextStyle(
+                  color: Color(0xFFEA1D2C),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ],
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildStoreHeader(context),
+              _buildStatusBanner(),
+              if (_currentStatus.toUpperCase() == 'DISPATCHED')
+                _buildConfirmArrivalCard(context),
+              _buildProductList(),
+              _buildValuesSummary(),
+              if (_isConcluded) _buildAddToBagButton(context),
+              _buildPaymentSection(),
+              _buildAddressSection(),
+              if (widget.showRating || _isConcluded)
+                _buildReviewSection(context),
+              const SizedBox(height: 100),
+            ],
+          ),
         ),
       ),
     );
@@ -142,14 +168,14 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         children: [
           Row(
             children: [
-              _buildStoreAvatar(widget.order.merchant.logo, 56),
+              _buildStoreAvatar(_currentOrder.merchant.logo, 56),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.order.merchant.name,
+                      _currentOrder.merchant.name,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -158,7 +184,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Pedido nº ${widget.order.sequentialId} • ${TimezoneService.formatStoreDateTime(widget.order.createdAt, context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo", format: 'dd/MM/yyyy • HH:mm')}',
+                      'Pedido nº ${_currentOrder.sequentialId} • ${TimezoneService.formatStoreDateTime(_currentOrder.createdAt, context.read<StoreCubit>().state.store?.timezone ?? "America/Sao_Paulo", format: 'dd/MM/yyyy • HH:mm')}',
                       style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFF717171),
@@ -197,7 +223,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
   Widget _buildStatusBanner() {
     // Se cancelado pelo sistema (timeout), mostra mensagem amigável atual
-    if (widget.order.isSystemCancelled) {
+    if (_currentOrder.isSystemCancelled) {
       return Container(
         width: double.infinity,
         margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -228,7 +254,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
     // Para todos os outros casos (em andamento, concluído ou cancelado pelo lojista),
     // usa o widget de progresso replicado do Admin
-    return OrderStatusProgressBar(order: widget.order);
+    return OrderStatusProgressBar(order: _currentOrder);
   }
 
   Widget _buildProductList() {
@@ -236,7 +262,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children:
-            widget.order.items.map((item) => _buildProductItem(item)).toList(),
+            _currentOrder.items.map((item) => _buildProductItem(item)).toList(),
       ),
     );
   }
@@ -555,12 +581,28 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildSummaryRow('Subtotal', widget.order.subtotalAmount),
+          _buildSummaryRow('Subtotal', _currentOrder.subtotalAmount),
           _buildSummaryRow(
             'Taxa de entrega',
-            widget.order.deliveryFeeAmount,
-            isFree: widget.order.deliveryFeeAmount == 0,
+            _currentOrder.deliveryFeeAmount,
+            isFree: _currentOrder.deliveryFeeAmount == 0,
           ),
+          ..._currentOrder.bag.benefits.map((benefit) {
+            String label = 'Desconto';
+            double value = 0;
+
+            if (benefit is Map) {
+              label = benefit['name']?.toString() ?? 'Desconto';
+              final rawValue = benefit['value'] ?? benefit['amount'];
+              value = (parseMoneyAmount(rawValue)?.toDouble() ?? 0.0) / 100.0;
+            } else {
+              value = (parseMoneyAmount(benefit)?.toDouble() ?? 0.0) / 100.0;
+            }
+
+            if (value == 0) return const SizedBox.shrink();
+
+            return _buildSummaryRow(label, -value, isFree: false);
+          }),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -576,7 +618,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               Text(
                 NumberFormat.simpleCurrency(
                   locale: 'pt_BR',
-                ).format(widget.order.totalAmount),
+                ).format(_currentOrder.totalAmount),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -663,34 +705,13 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     }
 
     try {
-      // 2. Itera pelos itens do pedido e reconstrói payloads
-      for (final item in widget.order.items) {
-        final product = catalogCubit.state.products?.firstWhere(
-          (p) => p.id.toString() == item.id,
-          orElse: () => Product.empty().copyWith(id: int.tryParse(item.id)),
-        );
+      final payloads = OrderReorderHelper.buildPayloads(
+        order: _currentOrder,
+        products: catalogCubit.state.products ?? const [],
+        categories: catalogCubit.state.categories ?? const [],
+      );
 
-        final categoryId = product?.primaryCategoryId ?? 0;
-
-        // Reconstrói variantes se existirem
-        List<CartItemVariant>? variants;
-        if (item.subItems.isNotEmpty) {
-          // Nota: BagItem -> SubItem mapeia para CartItemVariant -> CartItemVariantOption
-          // No entanto, BagItem não preserva a estrutura exata de Variant/OptionGroup
-          // Aqui fazemos uma reconstrução aproximada simplificada ou apenas enviamos o que temos
-          // Como o backend iFood simplifica isso, talvez precisemos de mais metadados
-          // Para esta implementação inicial, focamos em produtos simples.
-          // Se for pizza, o payload requer option_group_id.
-        }
-
-        final payload = UpdateCartItemPayload(
-          productId: int.tryParse(item.id) ?? 0,
-          categoryId: categoryId,
-          quantity: item.quantity,
-          note: item.notes,
-          // sizeName e variants seriam reconstruídos aqui se tivéssemos os IDs originais
-        );
-
+      for (final payload in payloads) {
         await cartCubit.updateItem(payload);
       }
 
@@ -717,7 +738,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildPaymentSection() {
-    final payment = widget.order.payments.primaryMethod;
+    final payment = _currentOrder.payments.primaryMethod;
     if (payment == null) return const SizedBox();
 
     return Padding(
@@ -750,9 +771,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                         color: Color(0xFF3F3E3E),
                       ),
                     ),
-                    if (widget.order.needsChange)
+                    if (_currentOrder.needsChange)
                       Text(
-                        'Troco para ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(widget.order.changeFor)}',
+                        'Troco para ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(_currentOrder.changeFor)}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF717171),
@@ -939,7 +960,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildAddressSection() {
-    final address = widget.order.delivery.deliveryAddress;
+    final address = _currentOrder.delivery.deliveryAddress;
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -989,6 +1010,10 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildReviewSection(BuildContext context) {
+    if (_currentOrder.details.reviewed || _currentOrder.storeRating != null) {
+      return _buildRatedReviewSection(context);
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -1007,7 +1032,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildStoreAvatar(widget.order.merchant.logo, 40),
+              _buildStoreAvatar(_currentOrder.merchant.logo, 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Row(
@@ -1034,9 +1059,153 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     );
   }
 
-  void _startEvaluation(BuildContext context) {
+  Widget _buildRatedReviewSection(BuildContext context) {
+    final customerName = _currentOrder.customer?.name ?? 'Cliente';
+    final storeRating = _currentOrder.storeRating;
+    final deliveryRating = _currentOrder.deliveryRating;
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(),
+          const SizedBox(height: 24),
+          const Text(
+            'Sua avaliação',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3F3E3E),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Avaliação da Loja
+          const Text(
+            'Avaliação da loja',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3F3E3E),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildRatingItem(
+            name: customerName,
+            stars: storeRating?.stars ?? 0,
+            comment: storeRating?.comment,
+            logoUrl: _currentOrder.merchant.logo,
+          ),
+
+          if (deliveryRating != null) ...[
+            const SizedBox(height: 24),
+            // Avaliação da Entrega
+            const Text(
+              'Avaliação da entrega',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3F3E3E),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildRatingItem(
+              name: customerName,
+              stars: deliveryRating.likedDelivery ? 5 : 1,
+              logoUrl:
+                  widget
+                      .order
+                      .merchant
+                      .logo, // Pode ser o avatar do entregador se disponível
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRatingItem({
+    required String name,
+    required int stars,
+    String? comment,
+    String? logoUrl,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _buildStoreAvatar(logoUrl, 40),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF3F3E3E),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: List.generate(
+                      5,
+                      (index) => Icon(
+                        index < stars ? Icons.star : Icons.star_border,
+                        color:
+                            index < stars ? Colors.black : Colors.grey.shade300,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'Avaliado',
+                style: TextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (comment != null && comment.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 52),
+            child: Text(
+              comment,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF717171),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _startEvaluation(BuildContext context) async {
     // Navigate to evaluation flow
-    context.push('/order/${widget.order.id}/evaluate', extra: widget.order);
+    await context.push(
+      '/order/${_currentOrder.id}/evaluate',
+      extra: _currentOrder,
+    );
   }
 
   Widget _buildStoreAvatar(String? logoUrl, double size) {

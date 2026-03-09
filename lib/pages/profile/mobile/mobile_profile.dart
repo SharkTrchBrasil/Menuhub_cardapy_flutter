@@ -17,7 +17,8 @@ class MobileProfile extends StatelessWidget {
       // ✅ Remove AppBar para ficar no estilo Menuhub (sem barra de título)
       body: SafeArea(
         child: BlocBuilder<AuthCubit, AuthState>(
-          buildWhen: (previous, current) => previous.customer != current.customer,
+          buildWhen:
+              (previous, current) => previous.customer != current.customer,
           builder: (context, state) {
             final customer = state.customer;
 
@@ -27,7 +28,9 @@ class MobileProfile extends StatelessWidget {
                   if (state.status == AuthStatus.error) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(state.errorMessage ?? 'Ocorreu um erro no login.'),
+                        content: Text(
+                          state.errorMessage ?? 'Ocorreu um erro no login.',
+                        ),
                         backgroundColor: Colors.redAccent,
                       ),
                     );
@@ -52,66 +55,32 @@ class MobileProfile extends StatelessWidget {
         children: [
           // ✅ Header do perfil
           _buildProfileHeader(context, customer),
-          
+
           const SizedBox(height: 16),
-          
-          // ✅ Menu de opções
+
+          // ✅ Menu de opções resumido conforme solicitado
           Container(
             color: Colors.white,
             child: Column(
               children: [
                 ProfileMenuItem(
-                  icon: Icons.history,
-                  title: 'Histórico de pedidos',
+                  icon:
+                      Icons
+                          .shopping_bag_outlined, // Ícone de sacola para Pedidos
+                  title: 'Pedidos',
                   onTap: () {
                     if (customer.id != null) {
-                      context.read<ProfileCubit>().loadOrderHistory(customer.id!);
+                      context.read<ProfileCubit>().loadOrderHistory(
+                        customer.id!,
+                      );
                       context.push('/orders/history');
                     }
                   },
                 ),
                 ProfileMenuItem(
-                  icon: Icons.edit,
-                  title: 'Editar perfil',
-                  onTap: () => context.push('/profile/edit'),
-                ),
-                ProfileMenuItem(
                   icon: Icons.location_on_outlined,
-                  title: 'Meus endereços',
+                  title: 'Endereços',
                   onTap: () => context.push('/select-address', extra: true),
-                ),
-                ProfileMenuItem(
-                  icon: Icons.local_offer_outlined,
-                  title: 'Cupons',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Em breve')),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          
-          // Separador
-          Container(
-            height: 8,
-            color: Colors.grey.shade100,
-          ),
-          
-          // ✅ Opções secundárias
-          Container(
-            color: Colors.white,
-            child: Column(
-              children: [
-                ProfileMenuItem(
-                  icon: Icons.help_outline,
-                  title: 'Ajuda',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Em breve')),
-                    );
-                  },
                 ),
                 ProfileMenuItem(
                   icon: Icons.logout,
@@ -126,7 +95,6 @@ class MobileProfile extends StatelessWidget {
               ],
             ),
           ),
-          
           const SizedBox(height: 32),
         ],
       ),
@@ -144,16 +112,16 @@ class MobileProfile extends StatelessWidget {
           CircleAvatar(
             radius: 32,
             backgroundColor: Colors.grey.shade200,
-            backgroundImage: customer.photo != null
-                ? NetworkImage(customer.photo!)
-                : null,
-            child: customer.photo == null
-                ? Icon(Icons.person, size: 32, color: Colors.grey.shade500)
-                : null,
+            backgroundImage:
+                customer.photo != null ? NetworkImage(customer.photo!) : null,
+            child:
+                customer.photo == null
+                    ? Icon(Icons.person, size: 32, color: Colors.grey.shade500)
+                    : null,
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Nome e email
           Expanded(
             child: Column(
@@ -171,23 +139,17 @@ class MobileProfile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     customer.email!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                   ),
                 ],
               ],
             ),
           ),
-          
+
           // Botão de editar
           IconButton(
             onPressed: () => context.push('/profile/edit'),
-            icon: Icon(
-              Icons.edit_outlined,
-              color: Colors.grey.shade600,
-            ),
+            icon: Icon(Icons.edit_outlined, color: Colors.grey.shade600),
           ),
         ],
       ),

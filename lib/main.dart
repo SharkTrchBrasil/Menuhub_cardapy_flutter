@@ -217,9 +217,9 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
             '🔌 Initializing realtime socket (Token: ${totemAuth.connectionToken.substring(0, 5)}...)',
           );
           final realtimeRepo = getIt<RealtimeRepository>();
-          await realtimeRepo
-              .initialize(totemAuth.connectionToken)
-              .timeout(const Duration(seconds: 15));
+          // ✅ CORREÇÃO: Inicializa socket em background, não aguarda conexão
+          // A conexão continua em background e o heartbeat monitora a saúde
+          await realtimeRepo.initialize(totemAuth.connectionToken);
           print('✅ Socket initialized');
 
           print('👤 Running checkInitialAuthStatus (Google Redirect check)...');

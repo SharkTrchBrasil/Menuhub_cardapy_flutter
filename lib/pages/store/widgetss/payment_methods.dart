@@ -1,5 +1,4 @@
-// ✅ ATUALIZADO: Agora segue o padrão do Admin, usando methods diretamente (sem categories)
-
+// ✅ ATUALIZADO: Agora segue o padrão do Admin e iFood para exibição premium
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:totem/models/payment_method.dart';
@@ -11,171 +10,215 @@ class PaymentMethodsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ ATUALIZADO: Filtra grupos que têm métodos ativos (seguindo padrão do Admin)
-    final activeGroups = paymentGroups
-        .where((group) => group.methods.any((method) => method.activation?.isActive == true))
-        .toList();
+    if (paymentGroups.isEmpty) return const SizedBox.shrink();
 
-    if (activeGroups.isEmpty) {
-      return const SizedBox.shrink(); // Não mostra nada se não houver pagamentos ativos
+    // ✅ SEPARAÇÃO DE VALES: Divide grupos de Vales em Refeição e Alimentação
+    final List<PaymentMethodGroup> expandedGroups = [];
+    for (final group in paymentGroups) {
+      final title = (group.title ?? group.name).toLowerCase();
+      if (title.contains('vale') ||
+          title.contains('benefício') ||
+          title.contains('beneficio')) {
+        final vrList = <PlatformPaymentMethod>[];
+        final vaList = <PlatformPaymentMethod>[];
+
+        for (final m in group.methods) {
+          final n = m.name.toLowerCase();
+          final ik = (m.iconKey ?? '').toLowerCase();
+
+          if (n.contains('refeição') ||
+              n.contains('refeicao') ||
+              n.contains(' meal') ||
+              n.contains('vr') ||
+              ik.contains('vr')) {
+            vrList.add(m);
+          } else if (n.contains('alimentação') ||
+              n.contains('alimentacao') ||
+              n.contains(' food') ||
+              n.contains('va') ||
+              ik.contains('va') ||
+              ik.contains('alelo') ||
+              ik.contains('sodexo') ||
+              ik.contains('ticket')) {
+            vaList.add(m);
+          } else {
+            vaList.add(m);
+          }
+        }
+
+        if (vrList.isNotEmpty) {
+          expandedGroups.add(
+            group.copyWith(title: 'Vale Refeição', methods: vrList),
+          );
+        }
+        if (vaList.isNotEmpty) {
+          expandedGroups.add(
+            group.copyWith(title: 'Vale Alimentação', methods: vaList),
+          );
+        }
+      } else {
+        expandedGroups.add(group);
+      }
     }
+
+    // ✅ ORDENAÇÃO: Garante que os grupos sigam a prioridade (Dinheiro > Pix > Crédito > Débito > Vales)
+    final sortedGroups = List<PaymentMethodGroup>.from(expandedGroups);
+    sortedGroups.sort((a, b) {
+      final nameA = a.title ?? a.name;
+      final nameB = b.title ?? b.name;
+      return _getGroupPriority(nameA).compareTo(_getGroupPriority(nameB));
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SizedBox(height: 24),
         const Text(
           "Formas de pagamento",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        const SizedBox(height: 16),
-        // ✅ Lista de grupos com métodos ativos (seguindo padrão do Admin - PaymentGroupView)
-        ...activeGroups.map((group) => _buildPaymentGroup(context, group)),
+        const SizedBox(height: 12),
+        ...sortedGroups.map((group) => _buildPaymentGroup(context, group)),
       ],
     );
   }
 
-  // ✅ Método que constrói um grupo de pagamento (similar ao PaymentGroupView do Admin)
   Widget _buildPaymentGroup(BuildContext context, PaymentMethodGroup group) {
     // Filtra apenas métodos ativos
-    final activeMethods = group.methods
-        .where((method) => method.activation?.isActive == true)
-        .toList();
+    final activeMethods =
+        group.methods
+            .where((method) => method.activation?.isActive == true)
+            .toList();
 
     if (activeMethods.isEmpty) {
       return const SizedBox.shrink();
     }
 
+    String groupTitle = group.title ?? group.name;
+
+    // ✅ SIMPLIFICAÇÃO: "Cartão de crédito" -> "Crédito"
+    if (groupTitle.toLowerCase().contains('crédito') ||
+        groupTitle.toLowerCase().contains('credito')) {
+      groupTitle = 'Crédito';
+    }
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24.0),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Título do grupo (ex: "Cartões de Crédito", "Pagamento Digital")
-          // ✅ Usa title se disponível, senão usa name
-          if ((group.title ?? group.name).isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: Text(
-                group.title ?? group.name,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
+          Text(
+            groupTitle,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.black54,
             ),
-          ],
-          // Lista de métodos de pagamento ativos
-          ...activeMethods.map((method) => _buildPaymentMethodTile(method)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                activeMethods.map((m) {
+                  final String displayName = _formatFlagName(
+                    m.name,
+                    groupTitle,
+                  );
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50], // Fundo muito suave
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[200]!),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildPaymentIcon(m.iconKey),
+                        const SizedBox(width: 8),
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF3F3E3E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+          ),
         ],
       ),
     );
   }
 
-  // ✅ Método que constrói um item de método de pagamento (similar ao PaymentMethodTile do Admin, mas sem edição)
-  Widget _buildPaymentMethodTile(PlatformPaymentMethod method) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: _buildPaymentIcon(method.iconKey),
-        title: Text(
-          method.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        // ✅ ENTERPRISE: Mostra taxa se houver (corrigido para usar fee_value do backend)
-        subtitle: () {
-          final activation = method.activation;
-          if (activation == null) return null;
-          
-          final details = activation.details ?? {};
-          final hasFee = details['has_fee'] as bool? ?? false;
-          final feeType = details['fee_type'] as String?;
-          final feeValue = details['fee_value'] as num?;
-          
-          // ✅ UNIFICADO: Prioriza feeValue e feeType do activation, depois details
-          final finalFeeValue = activation.feeValue ?? feeValue;
-          final finalFeeType = activation.feeType ?? feeType;
-          
-          if (hasFee && finalFeeValue != null && finalFeeValue > 0) {
-            // ✅ ENTERPRISE: fee_value está em reais (Numeric(10, 2) no backend)
-            if (finalFeeType == 'fixed' || finalFeeType == 'R\$' || finalFeeType == '\$') {
-              // Taxa fixa: fee_value já está em reais (ex: 5.50 para R$ 5,50)
-              return Text('Taxa: R\$ ${finalFeeValue.toStringAsFixed(2)}');
-            } else if (finalFeeType == '%' || finalFeeType == 'percentage') {
-              // ✅ UNIFICADO: Sempre usa feeValue (não usa feePercentage como fallback)
-              return Text('Taxa: ${finalFeeValue.toStringAsFixed(1)}%');
-            }
-          }
-          return null;
-        }(),
-      ),
-    );
+  /// Helper para definir a ordem dos grupos (Sincronizado com mobile/backend)
+  int _getGroupPriority(String title) {
+    final t = title.toLowerCase();
+    if (t.contains('dinheiro')) return 1;
+    if (t.contains('pix') || t.contains('digital')) return 2;
+    if (t.contains('crédito') || t.contains('credito')) return 3;
+    if (t.contains('débito') || t.contains('debito')) return 4;
+    if (t.contains('refeição') || t.contains('refeicao')) return 5;
+    if (t.contains('alimentação') || t.contains('alimentacao')) return 6;
+    if (t.contains('vale') ||
+        t.contains('benefício') ||
+        t.contains('beneficio')) {
+      return 7;
+    }
+    return 8;
   }
 
-  // ✅ Método para construir ícone do método de pagamento (seguindo padrão do Admin)
+  /// Limpa redundâncias no nome da flag
+  String _formatFlagName(String methodName, String groupTitle) {
+    final title = groupTitle.toLowerCase();
+    if (title.contains('dinheiro') || title.contains('pix')) return methodName;
+
+    final regex = RegExp(
+      r'crédito|credito|débito|debito|vale|alimentação|alimentacao|refeição|refeicao|voucher',
+      caseSensitive: false,
+    );
+
+    String cleaned = methodName.replaceAll(regex, '').trim();
+    return cleaned.isEmpty ? methodName : cleaned;
+  }
+
   Widget _buildPaymentIcon(String? iconKey) {
     if (iconKey != null && iconKey.isNotEmpty) {
-      // ✅ Mapeamento de iconKeys para arquivos reais
-      final String mappedIconKey = _mapIconKey(iconKey);
-      final String assetPath = 'assets/icons/$mappedIconKey';
-      
+      final cleanKey = iconKey.replaceAll('.svg', '').toLowerCase();
+      // Mapeamento simples
+      final Map<String, String> iconMap = {
+        'visa': 'visa',
+        'master': 'mastercard',
+        'mastercard': 'mastercard',
+        'elo': 'elo',
+        'hiper': 'hipercard',
+        'hipercard': 'hipercard',
+        'amex': 'amex',
+        'pix': 'pix',
+        'cash': 'cash',
+        'dinheiro': 'cash',
+      };
+
+      final String mapped = iconMap[cleanKey] ?? cleanKey;
+      final String assetPath = 'assets/icons/$mapped.svg';
+
       return SizedBox(
-        width: 32,
-        height: 32,
-        child: _SafeSvgPicture(
-          assetPath: assetPath,
-          fallback: const Icon(Icons.credit_card, size: 24),
+        width: 20,
+        height: 20,
+        child: SvgPicture.asset(
+          assetPath,
+          placeholderBuilder:
+              (context) => const Icon(Icons.credit_card, size: 16),
         ),
       );
     }
-    return const Icon(Icons.payment, size: 24);
-  }
-
-  // ✅ Mapeia iconKeys do backend para arquivos de ícones existentes
-  String _mapIconKey(String iconKey) {
-    // Remove extensão se houver
-    final cleanKey = iconKey.replaceAll('.svg', '').toLowerCase();
-    
-    // Mapeamento de iconKeys comuns para arquivos reais
-    final iconMap = {
-      'credit': 'visa', // Fallback genérico para crédito
-      'debit': 'visa_debit', // Fallback genérico para débito
-      'hiper': 'hipercard',
-      'vr': 'cash', // Vale refeição -> dinheiro como fallback
-      'alelo': 'cash', // Alelo -> dinheiro como fallback
-      'va': 'cash', // Vale alimentação -> dinheiro como fallback
-    };
-    
-    // Se existe mapeamento, usa ele
-    if (iconMap.containsKey(cleanKey)) {
-      return '${iconMap[cleanKey]}.svg';
-    }
-    
-    // Se não tem extensão, adiciona .svg
-    if (!cleanKey.endsWith('.svg')) {
-      return '$cleanKey.svg';
-    }
-    
-    return iconKey; // Retorna original se já tiver extensão
-  }
-}
-
-// ✅ Widget helper para carregar SVG com tratamento de erro
-class _SafeSvgPicture extends StatelessWidget {
-  final String assetPath;
-  final Widget fallback;
-
-  const _SafeSvgPicture({
-    required this.assetPath,
-    required this.fallback,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      assetPath,
-      placeholderBuilder: (context) => fallback,
-      // ✅ Se o asset não existir, o placeholder será usado durante o carregamento
-      // O mapeamento de iconKeys garante que a maioria dos casos funcionará
-    );
+    return const Icon(Icons.payment, size: 16, color: Colors.black45);
   }
 }

@@ -17,30 +17,39 @@ class OrderDetailCubit extends Cubit<OrderDetailState> {
     required OrderRepository orderRepository,
     required RealtimeRepository realtimeRepository,
     required this.orderId,
-  })  : _orderRepository = orderRepository,
-        _realtimeRepository = realtimeRepository,
-        super(const OrderDetailState()) {
-    _loadOrder();
+    Order? initialOrder,
+  }) : _orderRepository = orderRepository,
+       _realtimeRepository = realtimeRepository,
+       super(
+         initialOrder != null
+             ? OrderDetailState(
+               status: OrderDetailStatus.loaded,
+               order: initialOrder,
+             )
+             : const OrderDetailState(),
+       ) {
+    if (initialOrder == null) {
+      _loadOrder();
+    }
     _listenToOrderUpdates();
   }
 
   Future<void> _loadOrder() async {
     emit(state.copyWith(status: OrderDetailStatus.loading));
-    
+
     final result = await _orderRepository.getOrderById(orderId);
-    
+
     if (result.isLeft) {
-      emit(state.copyWith(
-        status: OrderDetailStatus.error,
-        errorMessage: result.left,
-      ));
+      emit(
+        state.copyWith(
+          status: OrderDetailStatus.error,
+          errorMessage: result.left,
+        ),
+      );
       return;
     }
 
-    emit(state.copyWith(
-      status: OrderDetailStatus.loaded,
-      order: result.right,
-    ));
+    emit(state.copyWith(status: OrderDetailStatus.loaded, order: result.right));
   }
 
   void _listenToOrderUpdates() {
@@ -48,9 +57,11 @@ class OrderDetailCubit extends Cubit<OrderDetailState> {
     _orderUpdateSubscription = _realtimeRepository.orderController.stream.listen(
       (updatedOrder) {
         // ✅ Só atualiza se for o mesmo pedido
-        if (updatedOrder.id == orderId) {
+        if (updatedOrder.id == orderId.toString()) {
           emit(state.copyWith(order: updatedOrder));
-          print('🔄 [OrderDetailCubit] Pedido atualizado em tempo real: ${updatedOrder.orderStatus}');
+          print(
+            '🔄 [OrderDetailCubit] Pedido atualizado em tempo real: ${updatedOrder.orderStatus}',
+          );
         }
       },
       onError: (error) {
@@ -63,13 +74,15 @@ class OrderDetailCubit extends Cubit<OrderDetailState> {
     if (state.order == null) return;
 
     final currentOrder = state.order!;
-    
+
     // ✅ Verifica se pode cancelar
     if (currentOrder.orderStatus.toUpperCase() != 'PENDING') {
-      emit(state.copyWith(
-        status: OrderDetailStatus.error,
-        errorMessage: 'Pedido não pode mais ser cancelado',
-      ));
+      emit(
+        state.copyWith(
+          status: OrderDetailStatus.error,
+          errorMessage: 'Pedido não pode mais ser cancelado',
+        ),
+      );
       return;
     }
 
@@ -81,10 +94,12 @@ class OrderDetailCubit extends Cubit<OrderDetailState> {
     );
 
     if (result.isLeft) {
-      emit(state.copyWith(
-        status: OrderDetailStatus.error,
-        errorMessage: result.left,
-      ));
+      emit(
+        state.copyWith(
+          status: OrderDetailStatus.error,
+          errorMessage: result.left,
+        ),
+      );
       return;
     }
 
@@ -102,4 +117,3 @@ class OrderDetailCubit extends Cubit<OrderDetailState> {
     return super.close();
   }
 }
-

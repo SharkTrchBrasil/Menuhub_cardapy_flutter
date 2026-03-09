@@ -35,9 +35,8 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     // Tipo padrão removido - sempre inicia com delivery
     if (state is DeliveryFeeInitial) {
       emit(const DeliveryFeeInitial(deliveryType: DeliveryType.delivery));
+      invalidateCache();
     }
-    // Sempre que a loja for reinicializada ou atualizada, invalidamos o cache
-    invalidateCache();
   }
 
   /// Limpa o cache de cálculo para forçar um novo processamento
@@ -169,6 +168,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
 
     // ✅ ENTERPRISE: Tenta usar o novo sistema de cálculo primeiro
     double? calculatedFee;
+    double? calculatedDistanceKm;
     bool eligibleForFreeDelivery = false;
     String? errorMessage;
 
@@ -275,6 +275,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             eligibleForFreeDelivery =
                 result['eligible_for_free_delivery'] as bool? ?? false;
 
+            final distanceValue = result['distance_km'];
+            if (distanceValue is num) {
+              calculatedDistanceKm = distanceValue.toDouble();
+            }
+
             // ✅ VALIDAÇÃO: Se elegível para frete grátis, força fee = 0
             if (eligibleForFreeDelivery) {
               calculatedFee = 0.0;
@@ -309,6 +314,10 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
 
           if (localResult != null) {
             calculatedFee = localResult['fee'];
+            final localDistance = localResult['distanceKm'];
+            if (localDistance is num) {
+              calculatedDistanceKm = localDistance.toDouble();
+            }
             eligibleForFreeDelivery = localResult['isFree'] ?? false;
             print(
               '✅ Frete calculado localmente: R\$ ${calculatedFee?.toStringAsFixed(2)}',
@@ -394,6 +403,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             DeliveryFeeLoaded(
               deliveryFee: 0,
               isFree: true,
+              distanceKm: calculatedDistanceKm,
               deliveryType: currentDeliveryType,
             ),
           );
@@ -408,6 +418,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           DeliveryFeeLoaded(
             deliveryFee: baseFee,
             isFree: baseFee == 0,
+            distanceKm: null,
             deliveryType: currentDeliveryType,
           ),
         );
@@ -424,6 +435,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           DeliveryFeeLoaded(
             deliveryFee: 0,
             isFree: true,
+            distanceKm: calculatedDistanceKm,
             deliveryType: currentDeliveryType,
           ),
         );
@@ -438,6 +450,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
         DeliveryFeeLoaded(
           deliveryFee: calculatedFee ?? 0,
           isFree: (calculatedFee ?? 0) == 0,
+          distanceKm: calculatedDistanceKm,
           deliveryType: currentDeliveryType,
         ),
       );
@@ -536,7 +549,7 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     try {
       // Se for retirada, frete é sempre 0
       if (deliveryType == DeliveryType.pickup) {
-        return {'fee': 0.0, 'isFree': true};
+        return {'fee': 0.0, 'isFree': true, 'distanceKm': 0.0};
       }
 
       // Verifica coordenadas
@@ -608,7 +621,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
               print(
                 '✅ Cálculo local: Faixa encontrada (até $maxKm km) = R\$ ${feeReais.toStringAsFixed(2)}',
               );
-              return {'fee': feeReais, 'isFree': feeReais == 0};
+              return {
+                'fee': feeReais,
+                'isFree': feeReais == 0,
+                'distanceKm': distanceKm,
+              };
             }
           }
 
@@ -619,7 +636,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             final feeCents = (lastRange['fee'] as num?)?.toDouble() ?? 0;
             final feeReais = feeCents / 100.0;
             print('⚠️ Cálculo local: Fora das faixas, usando última');
-            return {'fee': feeReais, 'isFree': feeReais == 0};
+            return {
+              'fee': feeReais,
+              'isFree': feeReais == 0,
+              'distanceKm': distanceKm,
+            };
           }
 
           print(
@@ -644,7 +665,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
               print(
                 '✅ Cálculo local: Dentro do raio simples ($radiusKm km) = R\$ ${feeReais.toStringAsFixed(2)}',
               );
-              return {'fee': feeReais, 'isFree': feeReais == 0};
+              return {
+                'fee': feeReais,
+                'isFree': feeReais == 0,
+                'distanceKm': distanceKm,
+              };
             } else {
               print(
                 '❌ Cálculo local: Fora do raio simples ($distanceKm km > $radiusKm km)',
@@ -671,7 +696,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
               print(
                 '⚠️ Cálculo local: Fora do raio máximo, usando outside_fee = R\$ ${feeReais.toStringAsFixed(2)}',
               );
-              return {'fee': feeReais, 'isFree': feeReais == 0};
+              return {
+                'fee': feeReais,
+                'isFree': feeReais == 0,
+                'distanceKm': distanceKm,
+              };
             }
             print(
               '❌ Cálculo local: Fora do raio máximo ($distanceKm km > $maxRadiusKm km)',
@@ -695,7 +724,11 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           print(
             '✅ Cálculo local: Raio progressivo = R\$ ${feeReais.toStringAsFixed(2)}',
           );
-          return {'fee': feeReais, 'isFree': feeReais == 0};
+          return {
+            'fee': feeReais,
+            'isFree': feeReais == 0,
+            'distanceKm': distanceKm,
+          };
         }
       }
 

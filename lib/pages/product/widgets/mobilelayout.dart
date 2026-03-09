@@ -11,7 +11,6 @@ import 'package:totem/core/di.dart'; // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/models/cart_variant.dart';
-import 'package:totem/models/option_group.dart';
 import 'package:totem/pages/product/product_page_cubit.dart';
 import 'package:totem/pages/product/widgets/variant_header_widget.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
@@ -22,7 +21,8 @@ import 'package:totem/cubit/store_cubit.dart'; // ✅ NOVO: Para obter store
 import 'package:totem/core/enums/foodtags.dart';
 import 'package:totem/core/enums/beverage.dart';
 import 'package:totem/core/enums/available_type.dart';
-import 'package:totem/models/availability_model.dart'; // Para TimeShift e ScheduleRule
+// Para TimeShift e ScheduleRule
+import 'package:totem/models/store.dart';
 import 'package:totem/services/availability_service.dart';
 
 import '../product_page_state.dart';
@@ -167,7 +167,6 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
     final product = widget.productState.product!;
     final store = context.watch<StoreCubit>().state.store;
-
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.white,
@@ -191,7 +190,15 @@ class _MobileProductPageState extends State<MobileProductPage> {
                     Icons.arrow_back,
                     color: widget.theme.primaryColor,
                   ),
-                  onPressed: () => context.go('/'),
+                  onPressed: () {
+                    final uri = GoRouterState.of(context).uri;
+                    final fromCart = uri.queryParameters['fromCart'] == 'true';
+                    context.go(
+                      (fromCart || widget.productState.isEditMode)
+                          ? '/cart'
+                          : '/',
+                    );
+                  },
                 ),
                 actions: [
                   IconButton(
@@ -237,117 +244,128 @@ class _MobileProductPageState extends State<MobileProductPage> {
                           ),
                         ),
                         // ✅ MENUHUB STYLE: Card flutuante com info da loja
+                        // ✅ Card flutuante com info da loja (clicável para voltar)
                         if (store != null)
                           Positioned(
                             bottom: 32,
                             left: 16,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.12),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Logo da loja
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: CachedNetworkImage(
-                                      imageUrl: store.image?.url ?? '',
-                                      width: 28,
-                                      height: 28,
-                                      fit: BoxFit.cover,
-                                      placeholder:
-                                          (context, url) => Container(
-                                            width: 28,
-                                            height: 28,
-                                            color: Colors.grey.shade200,
-                                          ),
-                                      errorWidget:
-                                          (context, url, error) => Container(
-                                            width: 28,
-                                            height: 28,
-                                            color: widget.theme.primaryColor
-                                                .withOpacity(0.1),
-                                            child: Icon(
-                                              Icons.store,
-                                              size: 16,
-                                              color: widget.theme.primaryColor,
-                                            ),
-                                          ),
+                            child: GestureDetector(
+                              onTap: () {
+                                final uri = GoRouterState.of(context).uri;
+                                final fromCart =
+                                    uri.queryParameters['fromCart'] == 'true';
+                                context.go(
+                                  (fromCart || widget.productState.isEditMode)
+                                      ? '/cart'
+                                      : '/',
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.12),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // Nome da loja + tempo + frete
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            store.name,
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.black87,
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Logo da loja
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: CachedNetworkImage(
+                                        imageUrl: store.image?.url ?? '',
+                                        width: 28,
+                                        height: 28,
+                                        fit: BoxFit.cover,
+                                        placeholder:
+                                            (context, url) => Container(
+                                              width: 28,
+                                              height: 28,
+                                              color: Colors.grey.shade200,
                                             ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.verified,
-                                            size: 14,
-                                            color: Colors.blue.shade600,
-                                          ),
-                                        ],
+                                        errorWidget:
+                                            (context, url, error) => Container(
+                                              width: 28,
+                                              height: 28,
+                                              color: widget.theme.primaryColor
+                                                  .withOpacity(0.1),
+                                              child: Icon(
+                                                Icons.store,
+                                                size: 16,
+                                                color:
+                                                    widget.theme.primaryColor,
+                                              ),
+                                            ),
                                       ),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            '${store.store_operation_config?.deliveryEstimatedMin ?? 30}-${store.store_operation_config?.deliveryEstimatedMax ?? 45} min',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Nome da loja + tempo + frete
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              store.name,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.black87,
+                                              ),
                                             ),
-                                          ),
-                                          Text(
-                                            ' • ',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade500,
+                                            const SizedBox(width: 4),
+                                            Icon(
+                                              Icons.verified,
+                                              size: 14,
+                                              color: Colors.blue.shade600,
                                             ),
-                                          ),
-                                          Text(
-                                            _getDeliveryFeeText(store),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w500,
-                                              color:
-                                                  store
-                                                              .store_operation_config
-                                                              ?.freeDeliveryThreshold !=
-                                                          null
-                                                      ? Colors.green.shade600
-                                                      : Colors.grey.shade600,
+                                          ],
+                                        ),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              store.getDeliveryTimeRange(),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey.shade600,
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                            Text(
+                                              ' • ',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                            Text(
+                                              _getDeliveryFeeText(store),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color:
+                                                    _isFreeDelivery(store)
+                                                        ? Colors.green.shade600
+                                                        : Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -376,7 +394,15 @@ class _MobileProductPageState extends State<MobileProductPage> {
                 elevation: 4,
                 shadowColor: Colors.black38,
                 child: InkWell(
-                  onTap: () => context.go('/'),
+                  onTap: () {
+                    final uri = GoRouterState.of(context).uri;
+                    final fromCart = uri.queryParameters['fromCart'] == 'true';
+                    context.go(
+                      (fromCart || widget.productState.isEditMode)
+                          ? '/cart'
+                          : '/',
+                    );
+                  },
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(10),
@@ -427,24 +453,6 @@ class _MobileProductPageState extends State<MobileProductPage> {
         },
       ),
     );
-  }
-
-  // ✅ Helper para obter texto do frete
-  String _getDeliveryFeeText(store) {
-    final config = store.store_operation_config;
-    if (config == null) return 'Grátis';
-
-    if (config.freeDeliveryThreshold != null &&
-        config.freeDeliveryThreshold > 0) {
-      return 'Grátis';
-    }
-
-    final fee = config.deliveryFee;
-    if (fee != null && fee > 0) {
-      return 'R\$ ${fee.toStringAsFixed(2).replaceAll('.', ',')}';
-    }
-
-    return 'Grátis';
   }
 
   // ✅ NOVO: Método para compartilhar produto
@@ -630,9 +638,13 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
               // Preço principal a ser exibido
               final int displayPriceInt =
-                  product.category.isCustomizable
+                  (product.category.isCustomizable || product.basePrice == 0)
                       ? product.startingPrice
                       : product.basePrice;
+
+              final bool showAsStartingFrom =
+                  product.category.isCustomizable ||
+                  (product.basePrice == 0 && displayPriceInt > 0);
 
               // Se tiver promoção e NÃO for customizável (pizzas têm lógica própria de "A partir de")
               // Ou se for customizável mas queremos mostrar promoção no "A partir de"
@@ -653,7 +665,9 @@ class _MobileProductPageState extends State<MobileProductPage> {
                   children: [
                     // Preço Atual (Promocional)
                     Text(
-                      displayPriceInt.toCurrency,
+                      showAsStartingFrom
+                          ? 'a partir de ${displayPriceInt.toCurrency}'
+                          : displayPriceInt.toCurrency,
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -699,7 +713,9 @@ class _MobileProductPageState extends State<MobileProductPage> {
 
               // Preço Normal
               return Text(
-                displayPriceInt.toCurrency,
+                showAsStartingFrom
+                    ? 'a partir de ${displayPriceInt.toCurrency}'
+                    : displayPriceInt.toCurrency,
                 style: const TextStyle(
                   fontSize: 22, // Aumentei um pouco para destaque
                   fontWeight: FontWeight.bold,
@@ -843,6 +859,26 @@ class _MobileProductPageState extends State<MobileProductPage> {
         ),
       ],
     );
+  }
+
+  // ✅ Helper para obter texto do frete dinâmico
+  String _getDeliveryFeeText(Store store) {
+    if (_isFreeDelivery(store)) return 'Grátis';
+
+    final fee = store.store_operation_config?.deliveryFee;
+    if (fee != null && fee > 0) {
+      return 'R\$ ${fee.toStringAsFixed(2).replaceAll('.', ',')}';
+    }
+
+    return 'Grátis';
+  }
+
+  bool _isFreeDelivery(Store store) {
+    final threshold = store.getFreeDeliveryThresholdForDelivery();
+    if (threshold != null && threshold > 0) return true;
+
+    final fee = store.store_operation_config?.deliveryFee;
+    return fee == null || fee <= 0;
   }
 }
 

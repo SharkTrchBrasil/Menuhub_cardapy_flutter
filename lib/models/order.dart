@@ -883,6 +883,50 @@ class Customer {
 }
 
 // ==========================================
+// EVALUATION / RATINGS
+// ==========================================
+
+class StoreRating {
+  final int stars;
+  final String? comment;
+  final List<String> positiveTags;
+
+  StoreRating({
+    required this.stars,
+    this.comment,
+    this.positiveTags = const [],
+  });
+
+  factory StoreRating.fromJson(Map<String, dynamic> json) {
+    return StoreRating(
+      stars: json['stars'] ?? 0,
+      comment: json['comment'],
+      positiveTags: List<String>.from(json['positiveTags'] ?? []),
+    );
+  }
+}
+
+class DeliveryRating {
+  final bool likedDelivery;
+  final List<String> negativeTags;
+  final String? comment;
+
+  DeliveryRating({
+    required this.likedDelivery,
+    this.negativeTags = const [],
+    this.comment,
+  });
+
+  factory DeliveryRating.fromJson(Map<String, dynamic> json) {
+    return DeliveryRating(
+      likedDelivery: json['likedDelivery'] ?? true,
+      negativeTags: List<String>.from(json['negativeTags'] ?? []),
+      comment: json['comment'],
+    );
+  }
+}
+
+// ==========================================
 // ORDER (PRINCIPAL)
 // ==========================================
 
@@ -916,6 +960,8 @@ class Order {
   // Extras
   final String salesChannel;
   final Customer? customer;
+  final StoreRating? storeRating;
+  final DeliveryRating? deliveryRating;
 
   Order({
     required this.id,
@@ -936,6 +982,8 @@ class Order {
     this.verificationCodes = const [],
     required this.salesChannel,
     this.customer,
+    this.storeRating,
+    this.deliveryRating,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
@@ -955,59 +1003,64 @@ class Order {
       return parseMoneyAmount(value) ?? 0;
     }
 
+    Map<String, dynamic> asMap(dynamic value) {
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return <String, dynamic>{};
+    }
+
+    List<dynamic> asList(dynamic value) {
+      if (value is List<dynamic>) return value;
+      if (value is List) return List<dynamic>.from(value);
+      return <dynamic>[];
+    }
+
     Map<String, dynamic> bagJson;
-    if (json['bag'] != null) {
-      bagJson = json['bag'];
+    if (json['bag'] is Map) {
+      bagJson = asMap(json['bag']);
     } else {
       // Reconstrói estrutura da Bag a partir do payload simplificado
-      final rawItems = json['items'] as List<dynamic>? ?? [];
+      final rawItems = asList(json['items']);
       final normalizedItems =
           rawItems.map((item) {
+            final itemMap = asMap(item);
             return {
-              'id': item['id']?.toString() ?? '',
+              'id': itemMap['id']?.toString() ?? '',
               'uniqueId':
-                  item['uniqueId']?.toString() ?? item['id']?.toString() ?? '',
-              'name': item['name'] ?? '',
-              'description': item['description'], // ✅ Mapeia descrição
-              'quantity': item['quantity'] ?? 1,
-              'unitPrice': toCents(item['unitPrice'] ?? item['price']),
-              'totalPrice': toCents(item['totalPrice'] ?? item['price']),
+                  itemMap['uniqueId']?.toString() ??
+                  itemMap['id']?.toString() ??
+                  '',
+              'name': itemMap['name'] ?? '',
+              'description': itemMap['description'],
+              'quantity': itemMap['quantity'] ?? 1,
+              'unitPrice': toCents(itemMap['unitPrice'] ?? itemMap['price']),
+              'totalPrice': toCents(itemMap['totalPrice'] ?? itemMap['price']),
               'totalPriceWithDiscount': toCents(
-                item['totalPrice'] ?? item['price'],
+                itemMap['totalPrice'] ?? itemMap['price'],
               ),
               'unitPriceWithDiscount': toCents(
-                item['unitPrice'] ?? item['price'],
+                itemMap['unitPrice'] ?? itemMap['price'],
               ),
-              'subItems':
-                  item['options'] ?? [], // Opções podem vir como subItems
-              'logoUrl': item['imageUrl'], // ✅ Mapeia imageUrl para logoUrl
+              'subItems': itemMap['options'] ?? [],
+              'logoUrl': itemMap['imageUrl'],
             };
           }).toList();
 
-      final totalData = json['total'];
+      final totalData = asMap(json['total']);
       bagJson = {
         'items': normalizedItems,
-        'subTotal':
-            totalData != null
-                ? {
-                  'value': toCents(totalData['subTotal']),
-                  'valueWithDiscount': toCents(totalData['subTotal']),
-                }
-                : {'value': 0, 'valueWithDiscount': 0},
-        'total':
-            totalData != null
-                ? {
-                  'value': toCents(totalData['orderAmount']),
-                  'valueWithDiscount': toCents(totalData['orderAmount']),
-                }
-                : {'value': 0, 'valueWithDiscount': 0},
-        'deliveryFee':
-            totalData != null
-                ? {
-                  'value': toCents(totalData['deliveryFee']),
-                  'valueWithDiscount': toCents(totalData['deliveryFee']),
-                }
-                : {'value': 0, 'valueWithDiscount': 0},
+        'subTotal': {
+          'value': toCents(totalData['subTotal']),
+          'valueWithDiscount': toCents(totalData['subTotal']),
+        },
+        'total': {
+          'value': toCents(totalData['orderAmount']),
+          'valueWithDiscount': toCents(totalData['orderAmount']),
+        },
+        'deliveryFee': {
+          'value': toCents(totalData['deliveryFee']),
+          'valueWithDiscount': toCents(totalData['deliveryFee']),
+        },
         'updated': false,
         'benefits': [],
       };
@@ -1028,42 +1081,44 @@ class Order {
 
     // 4. Normaliza DeliveryMethod (se ausente)
     final deliveryMethodJson =
-        json['deliveryMethod'] ?? {'mode': json['orderType'] ?? 'DELIVERY'};
+        asMap(json['deliveryMethod']).isNotEmpty
+            ? asMap(json['deliveryMethod'])
+            : {'mode': json['orderType'] ?? 'DELIVERY'};
 
     // 5. Normaliza Payments
     Map<String, dynamic> paymentsJson;
-    if (json['payments'] != null &&
-        json['payments']['methods'] != null &&
-        json['payments']['methods'].isNotEmpty &&
-        json['payments']['methods'][0]['method'] is Map) {
+    final rawPaymentsMap = asMap(json['payments']);
+    final rawMethods = asList(rawPaymentsMap['methods']);
+    if (rawPaymentsMap.isNotEmpty &&
+        rawMethods.isNotEmpty &&
+        asMap(rawMethods.first)['method'] is Map) {
       // Já está no formato completo
-      paymentsJson = json['payments'];
+      paymentsJson = rawPaymentsMap;
     } else {
       // Formato simplificado
-      final rawPayments = json['payments'] ?? {};
-      final rawMethods = rawPayments['methods'] as List<dynamic>? ?? [];
-
       final normalizedMethods =
           rawMethods.map((m) {
+            final methodMap = asMap(m);
+            final cashMap = asMap(methodMap['cash']);
             return {
               'id': '1', // ID fictício
               'method': {
-                'name': m['method'] ?? 'UNKNOWN',
-                'description': m['method'] ?? 'UNKNOWN',
+                'name': methodMap['method'] ?? 'UNKNOWN',
+                'description': methodMap['method'] ?? 'UNKNOWN',
               },
               'type': {
-                'name': m['type'] ?? 'OFFLINE',
-                'description': m['type'] ?? 'OFFLINE',
+                'name': methodMap['type'] ?? 'OFFLINE',
+                'description': methodMap['type'] ?? 'OFFLINE',
               },
               'amount': {
-                'value': toCents(m['value']),
-                'currency': m['currency'] ?? 'BRL',
+                'value': toCents(methodMap['amount'] ?? methodMap['value']),
+                'currency': methodMap['currency'] ?? 'BRL',
               },
               'cash':
-                  m['cash'] != null
+                  cashMap.isNotEmpty
                       ? {
                         'changeFor': {
-                          'value': toCents(m['cash']['changeFor']),
+                          'value': toCents(cashMap['changeFor']),
                           'currency': 'BRL',
                         },
                       }
@@ -1072,18 +1127,11 @@ class Order {
             };
           }).toList();
 
-      // Calcula o total de forma segura
-      final pendingValue = rawPayments['pending'];
-      final prepaidValue = rawPayments['prepaid'];
-      final pendingNum =
-          pendingValue is num
-              ? pendingValue.toDouble()
-              : (double.tryParse(pendingValue?.toString() ?? '0') ?? 0);
-      final prepaidNum =
-          prepaidValue is num
-              ? prepaidValue.toDouble()
-              : (double.tryParse(prepaidValue?.toString() ?? '0') ?? 0);
-      final totalValue = ((pendingNum + prepaidNum) * 100).round();
+      // ✅ FIX: pending/prepaid podem ser MoneyAmount (Map com value/currency)
+      // Usa parseMoneyAmount que lida com int, double, Map e String
+      final pendingCents = toCents(rawPaymentsMap['pending']);
+      final prepaidCents = toCents(rawPaymentsMap['prepaid']);
+      final totalValue = pendingCents + prepaidCents;
 
       paymentsJson = {
         'methods': normalizedMethods,
@@ -1109,7 +1157,9 @@ class Order {
       lastStatus: json['lastStatus'] ?? json['status'] ?? 'PENDING',
       details: OrderDetails.fromJson(detailsJson),
       delivery: Delivery.fromJson(
-        json['delivery'] ??
+        asMap(json['delivery']).isNotEmpty
+            ? asMap(json['delivery'])
+            :
             // Fallback para delivery vazio se necessário
             {
               'address': {
@@ -1121,24 +1171,33 @@ class Order {
               },
             },
       ),
-      merchant: Merchant.fromJson(json['merchant'] ?? {'id': '', 'name': ''}),
+      merchant: Merchant.fromJson(
+        asMap(json['merchant']).isNotEmpty
+            ? asMap(json['merchant'])
+            : {'id': '', 'name': ''},
+      ),
       payments: Payments.fromJson(paymentsJson),
       bag: Bag.fromJson(bagJson),
       origin: Origin.fromJson(originJson),
       deliveryMethod: DeliveryMethod.fromJson(deliveryMethodJson),
-      fees:
-          (json['fees'] as List<dynamic>?)
-              ?.map((e) => Fee.fromJson(e))
-              .toList() ??
-          [],
+      fees: asList(json['fees']).map((e) => Fee.fromJson(e)).toList(),
       verificationCodes:
-          (json['verificationCodes'] as List<dynamic>?)
-              ?.map((e) => VerificationCode.fromJson(e))
-              .toList() ??
-          [],
+          asList(
+            json['verificationCodes'],
+          ).map((e) => VerificationCode.fromJson(e)).toList(),
       salesChannel: json['salesChannel'] ?? 'MENUHUB',
       customer:
-          json['customer'] != null ? Customer.fromJson(json['customer']) : null,
+          asMap(json['customer']).isNotEmpty
+              ? Customer.fromJson(asMap(json['customer']))
+              : null,
+      storeRating:
+          asMap(json['storeRating']).isNotEmpty
+              ? StoreRating.fromJson(asMap(json['storeRating']))
+              : null,
+      deliveryRating:
+          asMap(json['deliveryRating']).isNotEmpty
+              ? DeliveryRating.fromJson(asMap(json['deliveryRating']))
+              : null,
     );
   }
 
@@ -1160,6 +1219,8 @@ class Order {
         return 'Pronto';
       case 'DISPATCHED':
         return 'Saiu para entrega';
+      case 'ON_ROUTE':
+        return 'A caminho';
       case 'CONCLUDED':
         return 'Concluído';
       case 'CANCELLED':
@@ -1184,7 +1245,7 @@ class Order {
     return code.value.isNotEmpty ? code.value : null;
   }
 
-  double get totalAmount => bag.total.inReais;
+  double get totalAmount => payments.total.inReais;
   double get subtotalAmount => bag.subTotal.inReais;
   double get deliveryFeeAmount => bag.deliveryFee.inReais;
   bool get needsChange => payments.primary?.needsChange ?? false;
@@ -1211,10 +1272,24 @@ class Order {
     return null;
   }
 
-  double get discountAmount => bag.benefits.fold(
-    0.0,
-    (sum, b) => sum + (double.tryParse(b.toString()) ?? 0.0),
-  );
+  double get discountAmount {
+    return bag.benefits.fold(0.0, (sum, b) {
+      if (b is Map && b.containsKey('value')) {
+        return sum + ((b['value'] as num).toDouble() / 100.0);
+      }
+      final parsed = parseMoneyAmount(b);
+      return sum + (parsed?.toDouble() ?? 0.0) / 100.0;
+    });
+  }
+
+  List<String> get benefitLabels {
+    return bag.benefits.map((b) {
+      if (b is Map && b.containsKey('name')) {
+        return b['name'].toString();
+      }
+      return 'Desconto';
+    }).toList();
+  }
 
   String get publicId => shortId;
   String? get sequentialId => orderNumber.isNotEmpty ? orderNumber : shortId;

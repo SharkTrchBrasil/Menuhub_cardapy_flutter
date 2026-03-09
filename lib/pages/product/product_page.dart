@@ -113,6 +113,10 @@ class _ProductPageState extends State<ProductPage> {
               status: productState.status,
               tryAgain: () => context.read<ProductPageCubit>().retryLoad(),
               successBuilder: (productFromState) {
+                final shouldReturnToCart =
+                    GoRouterState.of(context).uri.queryParameters['fromCart'] ==
+                        'true' ||
+                    productState.isEditMode;
                 return LayoutBuilder(
                   builder: (context, constraints) {
                     if (ResponsiveBuilder.isMobile(context)) {
@@ -140,7 +144,10 @@ class _ProductPageState extends State<ProductPage> {
                       children: [
                         // ✅ Backdrop escuro
                         GestureDetector(
-                          onTap: () => context.pop(),
+                          onTap:
+                              () => context.go(
+                                shouldReturnToCart ? '/cart' : '/',
+                              ),
                           child: Container(
                             color: Colors.black.withOpacity(
                               0.5,
@@ -583,8 +590,9 @@ class _ProductPageState extends State<ProductPage> {
           if (context.canPop()) {
             context.pop(); // Fecha tela de detalhes
           }
-          // Navega para home
-          context.go('/');
+          final uri = GoRouterState.of(context).uri;
+          final fromCart = uri.queryParameters['fromCart'] == 'true';
+          context.go((fromCart || productState.isEditMode) ? '/cart' : '/');
         }
       } catch (e) {
         print('❌ [ProductPage] Erro ao abrir sidepanel de login: $e');

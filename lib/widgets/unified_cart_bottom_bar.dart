@@ -59,7 +59,17 @@ class UnifiedCartBottomBar extends StatelessWidget {
 
         return BlocBuilder<CartCubit, CartState>(
           builder: (context, cartState) {
-            final cart = cartState.cart;
+            final isHomeOrderAgainProcessing =
+                variant == CartBottomBarVariant.home &&
+                cartState.isOrderAgainProcessing;
+            final cart =
+                isHomeOrderAgainProcessing
+                    ? (cartState.orderAgainSnapshotCart ?? cartState.cart)
+                    : cartState.cart;
+
+            if (isHomeOrderAgainProcessing && cart.isEmpty) {
+              return const SizedBox.shrink();
+            }
 
             // ✅ Não mostra se o carrinho estiver vazio
             if (cart.isEmpty) {
@@ -142,7 +152,10 @@ class UnifiedCartBottomBar extends StatelessWidget {
                 if (buttonLabel.isEmpty) {
                   switch (variant) {
                     case CartBottomBarVariant.home:
-                      buttonLabel = 'Ver sacola';
+                      buttonLabel =
+                          isHomeOrderAgainProcessing
+                              ? 'Adicionando itens...'
+                              : 'Ver sacola';
                       break;
                     case CartBottomBarVariant.cart:
                     case CartBottomBarVariant.address:
@@ -172,6 +185,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
                     isFreeDelivery: isFreeDelivery,
                     isGreenStatus: isGreenStatus,
                     buttonLabel: buttonLabel,
+                    isHomeOrderAgainProcessing: isHomeOrderAgainProcessing,
                   );
                 } else {
                   bottomBarWidget = _buildStandardVariant(
@@ -286,6 +300,7 @@ class UnifiedCartBottomBar extends StatelessWidget {
     required bool isFreeDelivery,
     required bool isGreenStatus,
     required String buttonLabel,
+    required bool isHomeOrderAgainProcessing,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -425,14 +440,28 @@ class UnifiedCartBottomBar extends StatelessWidget {
                     color: theme.primaryColor,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    buttonLabel,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child:
+                      isHomeOrderAgainProcessing
+                          ? Center(
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                          )
+                          : Text(
+                            buttonLabel,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                 ),
               ],
             ),

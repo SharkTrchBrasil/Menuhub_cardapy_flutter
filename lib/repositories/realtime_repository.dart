@@ -98,8 +98,6 @@ class RealtimeRepository {
   final BehaviorSubject<Order> orderController = BehaviorSubject<Order>();
 
   Future<void> initialize(String connectionToken) async {
-    final completer = Completer<void>();
-
     // ✅ Salva o token atual e o store_url para renovação futura
     _currentConnectionToken = connectionToken;
     _storeUrl = await _secureStorage.read(key: _keyStoreUrl);
@@ -166,8 +164,6 @@ class RealtimeRepository {
       );
       _heartbeatManager?.start();
 
-      if (!completer.isCompleted) completer.complete();
-
       // ✅ NOVO: Inicializa MenuVisitService após conexão
       _initializeMenuVisitService();
     });
@@ -185,8 +181,6 @@ class RealtimeRepository {
           '🔄 Token de conexão inválido/expirado. Iniciando renovação automática...',
         );
         _renewConnectionTokenAndReconnect();
-      } else if (!completer.isCompleted) {
-        completer.completeError('Erro ao conectar: $error');
       }
     });
 
@@ -838,14 +832,9 @@ class RealtimeRepository {
       }
     });
 
+    // ✅ CORREÇÃO: Inicia a conexão em background, não aguarda
+    // A conexão continua em background e o heartbeat monitora a saúde
     _socket.connect();
-
-    return completer.future.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        throw TimeoutException('Timeout ao conectar ao servidor');
-      },
-    );
   }
 
   // ============================================================
@@ -1952,11 +1941,6 @@ class RealtimeRepository {
       }
     });
 
-    _socket.on('store_details_updated', (data) {
-      AppLogger.d('🏪 Dados da loja atualizados recebidos após reconexão');
-      _handleStoreUpdate(data);
-    });
-
     // ✅ ADICIONADO: Listener para store_profile_updated (logo/banner) após reconexão
     _socket.on('store_profile_updated', (data) {
       AppLogger.d('👤 [TOTEM] store_profile_updated recebido (após reconexão)');
@@ -2015,8 +1999,14 @@ class RealtimeRepository {
 
     _socket.on('order_update', (data) {
       AppLogger.d('🛒 Atualização de pedido recebida');
-      final Order order = Order.fromJson(data);
-      orderController.add(order);
+      try {
+        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+        final Order order = Order.fromJson(payload);
+        orderController.add(order);
+        getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar order_update: $e');
+      }
     });
   }
 

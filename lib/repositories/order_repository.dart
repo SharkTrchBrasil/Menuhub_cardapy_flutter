@@ -41,7 +41,7 @@ class OrderRepository {
 
   Future<Either<String, Order>> getOrderStatus(int orderId) async {
     try {
-      final response = await _dio.get('/orders/$orderId');
+      final response = await _dio.get('/customer/orders/$orderId');
       return Right(Order.fromJson(response.data));
     } on DioException catch (e) {
       return Left(e.response?.data['detail'] ?? 'Erro ao buscar pedido');
@@ -50,7 +50,7 @@ class OrderRepository {
 
   Future<Either<String, Order>> getOrderById(int orderId) async {
     try {
-      final response = await _dio.get('/orders/$orderId');
+      final response = await _dio.get('/customer/orders/$orderId');
       return Right(Order.fromJson(response.data));
     } on DioException catch (e) {
       return Left(e.response?.data['detail'] ?? 'Erro ao buscar pedido');
@@ -61,6 +61,7 @@ class OrderRepository {
     required String orderPublicId,
     required int stars,
     String? comment,
+    List<String>? positiveTags,
   }) async {
     try {
       await _dio.post(
@@ -68,11 +69,38 @@ class OrderRepository {
         data: {
           'stars': stars,
           'comment': comment,
+          'positive_tags': positiveTags,
         },
       );
       return Right(null);
     } on DioException catch (e) {
-      final errorMessage = e.response?.data['detail'] ?? 'Erro ao enviar avaliação';
+      final errorMessage =
+          e.response?.data['detail'] ?? 'Erro ao enviar avaliação';
+      return Left(errorMessage);
+    } catch (e) {
+      return Left('Erro inesperado: $e');
+    }
+  }
+
+  Future<Either<String, void>> submitDeliveryReview({
+    required String orderPublicId,
+    required bool likedDelivery,
+    List<String>? negativeTags,
+    String? comment,
+  }) async {
+    try {
+      await _dio.post(
+        '/reviews/order/$orderPublicId/delivery',
+        data: {
+          'liked_delivery': likedDelivery,
+          'negative_tags': negativeTags,
+          'comment': comment,
+        },
+      );
+      return Right(null);
+    } on DioException catch (e) {
+      final errorMessage =
+          e.response?.data['detail'] ?? 'Erro ao enviar avaliação da entrega';
       return Left(errorMessage);
     } catch (e) {
       return Left('Erro inesperado: $e');
@@ -88,15 +116,14 @@ class OrderRepository {
       await _dio.post(
         '/customer/orders/$orderId/cancel',
         data: reason ?? 'Cancelado pelo cliente',
-        options: Options(
-          headers: {'Content-Type': 'application/json'},
-        ),
+        options: Options(headers: {'Content-Type': 'application/json'}),
       );
       return Right(null);
     } on DioException catch (e) {
-      final errorMessage = e.response?.data['detail'] ?? 
-                          e.response?.data['message'] ?? 
-                          'Erro ao cancelar pedido';
+      final errorMessage =
+          e.response?.data['detail'] ??
+          e.response?.data['message'] ??
+          'Erro ao cancelar pedido';
       return Left(errorMessage);
     } catch (e) {
       return Left('Erro inesperado: $e');
@@ -111,7 +138,9 @@ class OrderRepository {
       final orders = data.map((json) => Order.fromJson(json)).toList();
       return Right(orders);
     } on DioException catch (e) {
-      return Left(e.response?.data['detail'] ?? 'Erro ao buscar histórico de pedidos');
+      return Left(
+        e.response?.data['detail'] ?? 'Erro ao buscar histórico de pedidos',
+      );
     } catch (e) {
       return Left('Erro inesperado: $e');
     }

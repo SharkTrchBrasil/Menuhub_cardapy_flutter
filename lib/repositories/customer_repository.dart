@@ -34,7 +34,6 @@ class CustomerRepository {
       final response = await _dio.post(
         '/customer/google', // Seu endpoint de backend para autenticação Google
         data: {
-
           'name': firebaseUser.displayName,
           'email': firebaseUser.email,
           'photo': firebaseUser.photoURL,
@@ -46,41 +45,64 @@ class CustomerRepository {
       if (response.statusCode == 200 || response.statusCode == 201) {
         // ✅ OTIMIZAÇÃO: Usa LoginResponse que inclui addresses e orders
         final loginResponse = LoginResponse.fromJson(response.data);
-        
+
         // Salva o cliente localmente
         getIt<CustomerController>().setCustomer(loginResponse.customer);
-        
+
         // ✅ Salva tokens de customer retornados pelo backend
         final responseData = response.data as Map<String, dynamic>;
         final customerAccessToken = responseData['access_token'] as String?;
         final customerRefreshToken = responseData['refresh_token'] as String?;
         final expiresIn = responseData['expires_in'] as int? ?? 1800;
-        
+
         if (customerAccessToken != null) {
           print('✅ [CUSTOMER_REPO] Salvando tokens de customer...');
-          final customerExpiration = DateTime.now().add(Duration(seconds: expiresIn));
-          
+          final customerExpiration = DateTime.now().add(
+            Duration(seconds: expiresIn),
+          );
+
           // Salva tokens em chaves separadas (não sobrescreve tokens de menu)
-          await _secureStorage.write(key: _keyCustomerAccessToken, value: customerAccessToken);
+          await _secureStorage.write(
+            key: _keyCustomerAccessToken,
+            value: customerAccessToken,
+          );
           print('   ✅ Customer access token salvo');
-          
+
           if (customerRefreshToken != null) {
-            await _secureStorage.write(key: _keyCustomerRefreshToken, value: customerRefreshToken);
+            await _secureStorage.write(
+              key: _keyCustomerRefreshToken,
+              value: customerRefreshToken,
+            );
             print('   ✅ Customer refresh token salvo');
           }
-          
-          await _secureStorage.write(key: _keyCustomerTokenExpiration, value: customerExpiration.toIso8601String());
-          print('   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}');
-          print('✅ [CUSTOMER_REPO] Tokens de customer salvos com sucesso (expira em ${expiresIn}s)');
-          print('✅ [CUSTOMER_REPO] Login incluiu ${loginResponse.addresses.length} endereços e ${loginResponse.orders.length} pedidos');
+
+          await _secureStorage.write(
+            key: _keyCustomerTokenExpiration,
+            value: customerExpiration.toIso8601String(),
+          );
+          print(
+            '   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}',
+          );
+          print(
+            '✅ [CUSTOMER_REPO] Tokens de customer salvos com sucesso (expira em ${expiresIn}s)',
+          );
+          print(
+            '✅ [CUSTOMER_REPO] Login incluiu ${loginResponse.addresses.length} endereços e ${loginResponse.orders.length} pedidos',
+          );
         } else {
-          print('⚠️ [CUSTOMER_REPO] Backend não retornou access_token de customer');
+          print(
+            '⚠️ [CUSTOMER_REPO] Backend não retornou access_token de customer',
+          );
         }
-        
+
         return Right(loginResponse);
       } else {
-        print('Erro na API ao processar cliente Google: ${response.statusCode} - ${response.data}');
-        return Left('Erro no servidor: ${response.data['message'] ?? 'Detalhes desconhecidos'}');
+        print(
+          'Erro na API ao processar cliente Google: ${response.statusCode} - ${response.data}',
+        );
+        return Left(
+          'Erro no servidor: ${response.data['message'] ?? 'Detalhes desconhecidos'}',
+        );
       }
     } on DioException catch (e) {
       print('Erro Dio ao processar cliente Google: ${e.message}');
@@ -89,8 +111,17 @@ class CustomerRepository {
       print('Data enviado: ${e.requestOptions.data}');
       print('Resposta: ${e.response?.data}');
       String errorMessage = 'Erro de conexão ou no servidor.';
-      if (e.response?.data != null && e.response?.data['message'] != null) {
-        errorMessage = e.response!.data['message'];
+      if (e.response?.data != null) {
+        final data = e.response!.data;
+        if (data is Map) {
+          if (data['error'] != null &&
+              data['error'] is Map &&
+              data['error']['message'] != null) {
+            errorMessage = data['error']['message'];
+          } else if (data['message'] != null) {
+            errorMessage = data['message'];
+          }
+        }
       }
       return Left(errorMessage);
     } catch (e) {
@@ -112,11 +143,8 @@ class CustomerRepository {
       print('   ├─ Telefone: $phone');
       if (email != null) print('   ├─ Email: $email');
       if (cpf != null) print('   ├─ CPF: $cpf');
-      
-      final data = <String, dynamic>{
-        'name': name,
-        'phone': phone,
-      };
+
+      final data = <String, dynamic>{'name': name, 'phone': phone};
       if (email != null && email.isNotEmpty) data['email'] = email;
       if (cpf != null) data['cpf'] = cpf; // ✅ Envia o CPF
 
@@ -131,9 +159,10 @@ class CustomerRepository {
       print('   └─ Telefone: ${updatedCustomer.phone}');
       return Right(updatedCustomer);
     } on DioException catch (e) {
-      final errorMessage = e.response?.data['detail'] ?? 
-                          e.response?.data['message'] ?? 
-                          'Erro desconhecido ao atualizar cliente.';
+      final errorMessage =
+          e.response?.data['detail'] ??
+          e.response?.data['message'] ??
+          'Erro desconhecido ao atualizar cliente.';
       print('❌ [CUSTOMER_REPO] Erro ao atualizar cliente:');
       print('   ├─ Status: ${e.response?.statusCode}');
       print('   ├─ Mensagem: $errorMessage');
@@ -166,9 +195,10 @@ class CustomerRepository {
       final updatedCustomer = Customer.fromJson(response.data);
       return Right(updatedCustomer);
     } on DioException catch (e) {
-      final errorMessage = e.response?.data['detail'] ?? 
-                          e.response?.data['message'] ?? 
-                          'Erro ao fazer upload da foto.';
+      final errorMessage =
+          e.response?.data['detail'] ??
+          e.response?.data['message'] ??
+          'Erro ao fazer upload da foto.';
       return Left(errorMessage);
     } catch (e) {
       return Left('Erro inesperado: $e');
@@ -187,7 +217,8 @@ class CustomerRepository {
     }
 
     try {
-      final response = await _dio.put( // Usamos PUT para atualização
+      final response = await _dio.put(
+        // Usamos PUT para atualização
         '/customer/$customerId/addresses/${address.id}', // Inclui o ID do endereço na URL
         data: address.toJson(), // Envia o objeto CustomerAddress completo
       );
@@ -197,6 +228,7 @@ class CustomerRepository {
       return Left(null);
     }
   }
+
   /// Adiciona um novo endereço para o cliente
   Future<Either<void, CustomerAddress>> addCustomerAddress({
     required int customerId,
@@ -215,10 +247,7 @@ class CustomerRepository {
   }
 
   /// Deleta um endereço do cliente
-  Future<bool> deleteCustomerAddress(
-    int customerId,
-     int addressId,
-  ) async {
+  Future<bool> deleteCustomerAddress(int customerId, int addressId) async {
     try {
       await _dio.delete('/customer/$customerId/addresses/$addressId');
       return true;
@@ -228,11 +257,14 @@ class CustomerRepository {
     }
   }
 
-
-
-  Future<Either<void, CustomerAddress>> getCustomerAddress(int customerId, int addressId) async {
+  Future<Either<void, CustomerAddress>> getCustomerAddress(
+    int customerId,
+    int addressId,
+  ) async {
     try {
-      final response = await _dio.get('/customer/$customerId/addresses/$addressId');
+      final response = await _dio.get(
+        '/customer/$customerId/addresses/$addressId',
+      );
       // Assuming the API returns a single JSON object for a specific checkout ID
       return Right(CustomerAddress.fromJson(response.data));
     } catch (e, s) {
@@ -241,13 +273,14 @@ class CustomerRepository {
     }
   }
 
-
-
-  Future<Either<void, List<CustomerAddress>>> getCustomerAddresses(int customerId) async {
+  Future<Either<void, List<CustomerAddress>>> getCustomerAddresses(
+    int customerId,
+  ) async {
     try {
       final response = await _dio.get('/customer/$customerId/addresses');
       final data = response.data as List;
-      final addresses = data.map((json) => CustomerAddress.fromJson(json)).toList();
+      final addresses =
+          data.map((json) => CustomerAddress.fromJson(json)).toList();
       return Right(addresses);
     } on DioException catch (e) {
       print('Erro ao buscar todos os endereços: ${e.message}');

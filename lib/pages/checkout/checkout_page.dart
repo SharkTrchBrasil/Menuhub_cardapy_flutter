@@ -29,7 +29,7 @@ import '../../cubit/catalog_cubit.dart';
 import '../../models/delivery_type.dart';
 import '../../models/store.dart';
 import '../../repositories/customer_repository.dart';
-// import '../../widgets/store_header_card.dart'; // Removido - aviso agora no bottom bar
+import '../../widgets/store_header_card.dart';
 import '../../widgets/store_closed_widgets.dart';
 import '../../services/store_status_service.dart';
 import '../cart/cart_state.dart';
@@ -305,7 +305,11 @@ class CheckoutView extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // REMOVIDO: const StoreHeaderCard() -> Já temos o aviso no rodapé
+                    StoreHeaderCard(
+                      showAddItemsButton: true,
+                      onAddItemsPressed: () => context.go('/'),
+                    ),
+                    const SizedBox(height: 24),
                     BlocBuilder<CheckoutCubit, CheckoutState>(
                       buildWhen:
                           (previous, current) =>
@@ -477,169 +481,119 @@ class _PaymentMethodSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<CheckoutCubit, CheckoutState>(
       builder: (context, state) {
-        if (state.selectedPaymentMethod == null)
+        if (state.selectedPaymentMethod == null) {
           return const Center(child: CircularProgressIndicator());
+        }
+
         final method = state.selectedPaymentMethod!;
         final isCash = method.method_type == 'CASH';
         final deliveryType =
             context.read<DeliveryFeeCubit>().state.deliveryType;
-        final allPaymentGroups =
-            context.read<StoreCubit>().state.store!.paymentMethodGroups;
-        final availablePaymentGroups = allPaymentGroups.filterFor(deliveryType);
+        final store = context.read<StoreCubit>().state.store!;
+        final availablePaymentGroups = store.paymentMethodGroups.filterFor(
+          deliveryType,
+        );
 
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: Colors.grey.shade300),
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F7F7), // Cinza claro de fundo
+            borderRadius: BorderRadius.circular(16),
           ),
+          padding: const EdgeInsets.all(16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ListTile(
-                leading: _buildPaymentIcon(method.iconKey),
-                title: Text(
-                  method.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                trailing: TextButton(
-                  child: const Text('Trocar'),
-                  onPressed: () async {
-                    // ✅ Calcula total do pedido para passar ao widget de pagamento online
-                    final cartState = context.read<CartCubit>().state;
-                    final feeState = context.read<DeliveryFeeCubit>().state;
-                    final store = context.read<StoreCubit>().state.store;
+              // ✅ Conteúdo do Pagamento em Card Branco
+              InkWell(
+                onTap: () async {
+                  final cartState = context.read<CartCubit>().state;
+                  final feeState = context.read<DeliveryFeeCubit>().state;
 
-                    double deliveryFee = 0.0;
-                    if (feeState is DeliveryFeeLoaded &&
-                        feeState.deliveryType == DeliveryType.delivery) {
-                      deliveryFee = feeState.deliveryFee;
-                    }
+                  double deliveryFee = 0.0;
+                  if (feeState is DeliveryFeeLoaded &&
+                      feeState.deliveryType == DeliveryType.delivery) {
+                    deliveryFee = feeState.deliveryFee;
+                  }
 
-                    double paymentFee = 0.0;
-                    if (state.selectedPaymentMethod != null) {
-                      final subtotalInReais = cartState.cart.subtotal / 100.0;
-                      paymentFee = state.selectedPaymentMethod!.calculateFee(
-                        subtotalInReais,
-                      );
-                    }
+                  final orderTotal =
+                      (cartState.cart.total / 100.0) + deliveryFee;
 
-                    final orderTotal =
-                        (cartState.cart.total / 100.0) +
-                        deliveryFee +
-                        paymentFee;
-
-                    final selected = await Navigator.push<
-                      PlatformPaymentMethod
-                    >(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (_) => PaymentMethodSelectionList(
-                              paymentGroups: availablePaymentGroups,
-                              initialSelectedMethod: method,
-                              orderTotal:
-                                  orderTotal, // ✅ NOVO: Passa total do pedido
-                              store: store!, // ✅ NOVO: Passa loja
-                            ),
+                  final selected = await Navigator.push<PlatformPaymentMethod>(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => PaymentMethodSelectionList(
+                            paymentGroups: availablePaymentGroups,
+                            initialSelectedMethod: method,
+                            orderTotal: orderTotal,
+                            store: store,
+                          ),
+                    ),
+                  );
+                  if (selected != null) {
+                    context.read<CheckoutCubit>().updatePaymentMethod(selected);
+                  }
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
                       ),
-                    );
-                    if (selected != null) {
-                      context.read<CheckoutCubit>().updatePaymentMethod(
-                        selected,
-                      );
-                    }
-                  },
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  child: Row(
+                    children: [
+                      _buildPaymentIcon(method.iconKey),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              method.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Color(0xFF3E3E3E),
+                              ),
+                            ),
+                            if (isCash)
+                              GestureDetector(
+                                onTap: onShowChangeSheet,
+                                child: Text(
+                                  state.changeFor == null ||
+                                          state.changeFor == 0
+                                      ? 'Sem troco'
+                                      : 'Troco para ${UtilBrasilFields.obterReal(state.changeFor!)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Theme.of(context).primaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.keyboard_arrow_right,
+                        color: Colors.black87,
+                        size: 20,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              if (isCash) ...[
-                const Divider(height: 1),
-                ListTile(
-                  title: const Text('Precisa de troco?'),
-                  subtitle: Text(
-                    state.changeFor == null || state.changeFor == 0
-                        ? 'Não, obrigado'
-                        : 'Sim, para ${UtilBrasilFields.obterReal(state.changeFor!)}',
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: onShowChangeSheet,
-                ),
-              ],
-              // ✅ NOVO: Exibe chave PIX estática se configurada
-              if (method.method_type == 'MANUAL_PIX' ||
-                  method.name.toLowerCase().contains('pix')) ...[
-                Builder(
-                  builder: (context) {
-                    final pixKey = method.getStaticPixKey();
-                    final pixKeyType = method.getStaticPixKeyType();
-
-                    if (pixKey == null) return const SizedBox.shrink();
-
-                    String formattedKey = pixKey;
-                    String keyTypeLabel = '';
-
-                    // Formata a chave conforme o tipo
-                    switch (pixKeyType) {
-                      case 'CPF':
-                        keyTypeLabel = 'CPF';
-                        if (pixKey.length == 11) {
-                          formattedKey =
-                              '${pixKey.substring(0, 3)}.${pixKey.substring(3, 6)}.${pixKey.substring(6, 9)}-${pixKey.substring(9)}';
-                        }
-                        break;
-                      case 'CNPJ':
-                        keyTypeLabel = 'CNPJ';
-                        if (pixKey.length == 14) {
-                          formattedKey =
-                              '${pixKey.substring(0, 2)}.${pixKey.substring(2, 5)}.${pixKey.substring(5, 8)}/${pixKey.substring(8, 12)}-${pixKey.substring(12)}';
-                        }
-                        break;
-                      case 'phone':
-                        keyTypeLabel = 'Celular';
-                        if (pixKey.length == 11) {
-                          formattedKey =
-                              '(${pixKey.substring(0, 2)}) ${pixKey.substring(2, 7)}-${pixKey.substring(7)}';
-                        }
-                        break;
-                      case 'email':
-                        keyTypeLabel = 'E-mail';
-                        break;
-                      case 'random':
-                        keyTypeLabel = 'Chave aleatória';
-                        break;
-                      default:
-                        keyTypeLabel = 'Chave PIX';
-                    }
-
-                    return Column(
-                      children: [
-                        const Divider(height: 1),
-                        ListTile(
-                          title: Text(
-                            'Chave PIX ${keyTypeLabel.isNotEmpty ? '($keyTypeLabel)' : ''}',
-                          ),
-                          subtitle: SelectableText(
-                            formattedKey,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.copy, size: 20),
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: pixKey));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Chave PIX copiada!'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                            tooltip: 'Copiar chave PIX',
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
             ],
           ),
         );

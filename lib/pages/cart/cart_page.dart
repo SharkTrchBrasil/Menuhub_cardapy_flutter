@@ -185,7 +185,7 @@ class CartPage extends StatelessWidget {
 
     // ✅ Se tem complementos OU é pizza, abre tela de detalhes (igual na home)
     if (hasVariants || isPizza) {
-      goToProductPage(context, product);
+      goToProductPage(context, product, fromCart: true);
     } else {
       // 1. Pega o primeiro vínculo de categoria do produto.
       final firstCategoryLink = product.categoryLinks.firstOrNull;

@@ -218,7 +218,7 @@ class DesktopCart extends StatelessWidget {
 
     // ✅ Se tem complementos OU é pizza, abre tela de detalhes (igual na home)
     if (hasVariants || isPizza) {
-      goToProductPage(context, product);
+      goToProductPage(context, product, fromCart: true);
     } else {
       final firstCategoryLink = product.categoryLinks.firstOrNull;
 

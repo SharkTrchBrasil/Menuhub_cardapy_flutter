@@ -68,6 +68,16 @@ class CartCubit extends Cubit<CartState> {
     }
   }
 
+  void setOrderAgainProcessing(bool isProcessing) {
+    emit(
+      state.copyWith(
+        isOrderAgainProcessing: isProcessing,
+        orderAgainSnapshotCart: isProcessing ? state.cart : null,
+        clearOrderAgainSnapshotCart: !isProcessing,
+      ),
+    );
+  }
+
   /// ✅ ATUALIZADO: Usa modo granular para economizar banda.
   /// Atualiza apenas o item modificado localmente em vez de receber o carrinho todo.
   Future<void> updateItem(UpdateCartItemPayload payload) async {
@@ -97,6 +107,7 @@ class CartCubit extends Cubit<CartState> {
           case 'removed':
             // Remove o item da lista local
             updatedCart = currentCart.copyWith(
+              id: response.cartId,
               items:
                   currentCart.items
                       .where((i) => i.id != response.removedItemId)
@@ -112,11 +123,20 @@ class CartCubit extends Cubit<CartState> {
             if (response.item != null) {
               var newItem = response.item!;
 
+              final shouldUseLocalVariants =
+                  (payload.variants?.isNotEmpty ?? false) &&
+                  (newItem.variants.isEmpty ||
+                      newItem.variants.length != payload.variants!.length ||
+                      newItem.variants.any(
+                        (variant) =>
+                            variant.options.isEmpty ||
+                            variant.options.any((option) => option.price <= 0),
+                      ));
+
               // ✅ ROBUSTEZ VISUAL: Se o backend retornou item sem variantes (comum em pizzas recém-criadas),
               // mas nós enviamos variantes, usamos as variantes do payload para garantir a exibição correta (borda, sabores).
               // Verifica se payload.variants não é nulo antes de acessar isNotEmpty
-              if (newItem.variants.isEmpty &&
-                  (payload.variants?.isNotEmpty ?? false)) {
+              if (shouldUseLocalVariants) {
                 print(
                   "⚠️ [CartCubit] Backend retornou item sem variantes. Usando dados locais para exibição.",
                 );
@@ -124,10 +144,16 @@ class CartCubit extends Cubit<CartState> {
                   variants: payload.variants,
                   // Tenta preservar outros dados se estarem zerados
                   sizeName: newItem.sizeName ?? payload.sizeName,
+                  sizeImageUrl: newItem.sizeImageUrl ?? payload.sizeImageUrl,
                 );
+              } else if ((payload.sizeImageUrl?.isNotEmpty ?? false) &&
+                  (newItem.sizeImageUrl == null ||
+                      newItem.sizeImageUrl!.isEmpty)) {
+                newItem = newItem.copyWith(sizeImageUrl: payload.sizeImageUrl);
               }
 
               updatedCart = currentCart.copyWith(
+                id: response.cartId,
                 items: [...currentCart.items, newItem],
                 subtotal: response.cartSubtotal,
                 discount: response.cartDiscount,
@@ -135,6 +161,7 @@ class CartCubit extends Cubit<CartState> {
               );
             } else {
               updatedCart = currentCart.copyWith(
+                id: response.cartId,
                 subtotal: response.cartSubtotal,
                 discount: response.cartDiscount,
                 total: response.cartTotal,
@@ -156,6 +183,7 @@ class CartCubit extends Cubit<CartState> {
                   }).toList();
 
               updatedCart = currentCart.copyWith(
+                id: response.cartId,
                 items: updatedItems,
                 subtotal: response.cartSubtotal,
                 discount: response.cartDiscount,
@@ -163,6 +191,7 @@ class CartCubit extends Cubit<CartState> {
               );
             } else {
               updatedCart = currentCart.copyWith(
+                id: response.cartId,
                 subtotal: response.cartSubtotal,
                 discount: response.cartDiscount,
                 total: response.cartTotal,

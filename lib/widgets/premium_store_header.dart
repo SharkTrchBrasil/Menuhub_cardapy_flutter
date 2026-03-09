@@ -20,12 +20,20 @@ class PremiumStoreHeader extends StatelessWidget {
     final store = storeState.store;
     final addressState = context.watch<AddressCubit>().state;
     final userAddress = addressState.selectedAddress;
+    final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
 
     if (store == null) return const SizedBox.shrink();
 
-    // CALCULAR DISTÂNCIA (Copiado do StoreCardData para manter consistência)
+    // CALCULAR DISTÂNCIA
     String? distanceText;
-    if (userAddress?.latitude != null &&
+    if (deliveryFeeState is DeliveryFeeLoaded &&
+        deliveryFeeState.distanceKm != null) {
+      final distanceKm = deliveryFeeState.distanceKm!;
+      distanceText =
+          distanceKm < 1
+              ? '${(distanceKm * 1000).round()} m'
+              : '${distanceKm.toStringAsFixed(1)} km';
+    } else if (userAddress?.latitude != null &&
         userAddress?.longitude != null &&
         store.latitude != null &&
         store.longitude != null) {
@@ -68,7 +76,6 @@ class PremiumStoreHeader extends StatelessWidget {
     final isClosed = !statusHelper.isOpen;
     final storeStatusMsg = statusHelper.statusMessage;
 
-    final deliveryFeeState = context.watch<DeliveryFeeCubit>().state;
     final closingSoonInfo = StoreStatusService.getClosingSoonInfo(store);
 
     // LÓGICA DE FRETE (Dinâmica baseada no estado)
@@ -233,21 +240,28 @@ class PremiumStoreHeader extends StatelessWidget {
                               color: Colors.black,
                             ),
                             const SizedBox(width: 4),
-                            const Text(
-                              '4,7',
-                              style: TextStyle(
+                            Text(
+                              store.ratingsSummary != null &&
+                                      store.ratingsSummary!.totalRatings > 0
+                                  ? store.ratingsSummary!.averageRating
+                                      .toStringAsFixed(1)
+                                      .replaceAll('.', ',')
+                                  : 'Novo!',
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
                               ),
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              '(145 avaliações)',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
+                            if (store.ratingsSummary != null &&
+                                store.ratingsSummary!.totalRatings > 0)
+                              Text(
+                                '(${store.ratingsSummary!.totalRatings} ${store.ratingsSummary!.totalRatings == 1 ? "avaliação" : "avaliações"})',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
                               ),
-                            ),
                             const Spacer(),
                             const Icon(
                               Icons.chevron_right,

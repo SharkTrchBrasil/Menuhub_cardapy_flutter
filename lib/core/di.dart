@@ -167,7 +167,9 @@ Future<void> configureDependencies() async {
   // Controllers e Notifiers
   getIt.registerSingleton<DsThemeSwitcher>(DsThemeSwitcher());
   getIt.registerSingleton<MenuAppController>(MenuAppController());
-  getIt.registerLazySingleton<CustomerController>(() => CustomerController());
+  getIt.registerLazySingleton<CustomerController>(
+    () => CustomerController(getIt<EncryptedStorageService>()),
+  );
 
   // Repositories
   getIt.registerLazySingleton<AuthRepository>(

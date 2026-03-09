@@ -53,8 +53,7 @@ class CartProduct extends Equatable {
 
   // Construtor de fábrica para iniciar a configuração de um produto
   factory CartProduct.fromProduct(Product product, Category category) {
-    // ✅ CORREÇÃO: Para categorias customizáveis (pizzas), converte optionGroups em variants
-    List<CartVariant> variants;
+    List<CartVariant> variants = [];
     OptionItem? defaultSize;
 
     if (category.isCustomizable) {
@@ -63,33 +62,20 @@ class CartProduct extends Equatable {
       );
       defaultSize = sizeGroup?.items.firstOrNull;
 
-      // ✅ Estratégia de preço da pizza (default HIGHEST se não informado)
-      // Nota: Idealmente isso viria do StoreCubit, mas como estamos num factory,
-      // o CartProduct deve ser imutável com a estratégia setada.
-
       // 2. Converte grupos em variants, filtrando opções e grupos inativos
       variants =
           category.optionGroups
               .map((group) {
-                // ✅ Filtra apenas opções ativas
                 final activeItems =
                     group.items.where((item) => item.isActive).toList();
-
-                // ✅ Se não há opções ativas, retorna null (será filtrado depois)
                 if (activeItems.isEmpty) return null;
 
-                // ✅ Verifica se é grupo obrigatório com apenas 1 opção
                 final isRequired = group.minSelection > 0;
                 final hasOnlyOneOption = activeItems.length == 1;
 
                 final cartOptions =
                     activeItems.map((item) {
-                      // ✅ Auto-seleciona se grupo obrigatório tem apenas 1 opção
                       final shouldAutoSelect = isRequired && hasOnlyOneOption;
-
-                      // ✅ FIX PIZZA PREÇO: Para TOPPING groups, o backend envia price=0
-                      // com os preços reais em prices_by_size. Resolve o preço correto
-                      // usando o tamanho selecionado (defaultSize).
                       int resolvedPrice = item.price;
                       if (resolvedPrice == 0 &&
                           group.groupType == OptionGroupType.topping &&
@@ -106,36 +92,30 @@ class CartProduct extends Equatable {
                         price: resolvedPrice,
                         trackInventory: false,
                         stockQuantity: 0,
-                        isActuallyAvailable: true, // Já filtrado acima
+                        isActuallyAvailable: true,
                         description: item.description,
                         imageUrl: item.image?.url,
-                        // ✅ NOVO: Preserva parentCustomizationOptionId para combinações massa + borda
                         parentCustomizationOptionId:
                             item.parentCustomizationOptionId,
-                        // ✅ NOVO: IDs reais de combo Pizza
                         crustId: item.crustId,
                         edgeId: item.edgeId,
                         crustName: item.crustName,
                         edgeName: item.edgeName,
                         crustPrice: item.crustPrice,
                         edgePrice: item.edgePrice,
-                        quantity: shouldAutoSelect ? 1 : 0, // ✅ Auto-seleciona
+                        quantity: shouldAutoSelect ? 1 : 0,
                       );
                     }).toList();
 
-                // Determina UIDisplayMode baseado em min/max selection
                 final displayMode =
                     group.maxSelection == 1
-                        ? UIDisplayMode
-                            .SINGLE // Radio (Massa, Borda)
-                        : UIDisplayMode.MULTIPLE; // Checkbox (múltipla escolha)
+                        ? UIDisplayMode.SINGLE
+                        : UIDisplayMode.MULTIPLE;
 
                 return CartVariant(
                   id: group.id ?? 0,
                   name: group.name,
-                  groupType:
-                      group.groupType
-                          .toApiString(), // ✅ NOVO: Passa o tipo do grupo
+                  groupType: group.groupType.toApiString(),
                   uiDisplayMode: displayMode,
                   minSelectedOptions: group.minSelection,
                   maxSelectedOptions: group.maxSelection,
@@ -143,23 +123,75 @@ class CartProduct extends Equatable {
                   cartOptions: cartOptions,
                 );
               })
-              .whereType<
-                CartVariant
-              >() // ✅ Remove grupos nulos (sem opções ativas)
+              .whereType<CartVariant>()
               .toList();
     } else {
-      // Para produtos normais, usa variantLinks do produto
+      // ✅ NOVO: Para produtos normais, combina variantLinks do produto + optionGroups da categoria (ex: Pão na Chapa)
       variants =
           product.variantLinks
               .map((link) => CartVariant.fromProductVariantLink(link))
               .toList();
+
+      if (category.optionGroups.isNotEmpty) {
+        final groupVariants =
+            category.optionGroups
+                .map((group) {
+                  final activeItems =
+                      group.items.where((item) => item.isActive).toList();
+                  if (activeItems.isEmpty) return null;
+
+                  final isRequired = group.minSelection > 0;
+                  final hasOnlyOneOption = activeItems.length == 1;
+
+                  final cartOptions =
+                      activeItems.map((item) {
+                        final shouldAutoSelect = isRequired && hasOnlyOneOption;
+                        return CartVariantOption(
+                          id: item.id ?? 0,
+                          name: item.name,
+                          price: item.price,
+                          trackInventory: false,
+                          stockQuantity: 0,
+                          isActuallyAvailable: true,
+                          description: item.description,
+                          imageUrl: item.image?.url,
+                          quantity: shouldAutoSelect ? 1 : 0,
+                        );
+                      }).toList();
+
+                  final displayMode =
+                      group.maxSelection == 1
+                          ? UIDisplayMode.SINGLE
+                          : UIDisplayMode.MULTIPLE;
+
+                  return CartVariant(
+                    id: group.id ?? 0,
+                    name: group.name,
+                    groupType: group.groupType.toApiString(),
+                    uiDisplayMode: displayMode,
+                    minSelectedOptions: group.minSelection,
+                    maxSelectedOptions: group.maxSelection,
+                    maxTotalQuantity: null,
+                    cartOptions: cartOptions,
+                  );
+                })
+                .whereType<CartVariant>()
+                .toList();
+
+        // Adiciona apenas grupos que não conflitem em IDs com os variants do produto (segurança)
+        for (var gv in groupVariants) {
+          if (!variants.any((v) => v.id == gv.id)) {
+            variants.add(gv);
+          }
+        }
+      }
     }
 
     return CartProduct(
       product: product,
       category: category,
       selectedVariants: variants,
-      selectedSize: defaultSize, // Define o tamanho padrão
+      selectedSize: defaultSize,
     );
   }
 
@@ -359,42 +391,40 @@ class CartProduct extends Equatable {
   /// Para pizzas: usa o preço mínimo do tamanho (unitMinPrice)
   /// Para produtos normais: usa o preço base
   int get startingPrice {
-    if (!category.isCustomizable || selectedSize == null) return basePrice;
-
-    // ✅ CORREÇÃO: Para pizzas, usa o preço do tamanho (unitMinPrice)
-    // Este é o mesmo valor exibido na home
-    if (selectedSize!.price > 0) {
-      return selectedSize!.price;
-    }
-
-    // Fallback: se não tiver preço no tamanho, busca o menor preço dos sabores
-    // Tenta encontrar grupo pelo tipo TOPPING
-    var toppingGroup = category.optionGroups.firstWhereOrNull(
-      (g) => g.groupType == OptionGroupType.topping,
-    );
-
-    // Se não achar por tipo, tenta por nome (fallback legado)
-    toppingGroup ??= category.optionGroups.firstWhereOrNull(
-      (g) => g.name.toLowerCase().contains('sabor'),
-    );
-
-    if (toppingGroup != null) {
-      final prices =
-          toppingGroup.items
-              .where((item) => item.isActive)
-              .map((item) => item.getPriceForSize(selectedSize?.id))
-              .whereType<int>() // Filtra nulos
-              .where((p) => p > 0)
-              .toList();
-
-      if (prices.isNotEmpty) {
-        return prices.reduce((a, b) => a < b ? a : b);
-      }
-    }
-
-    // Se ainda for 0 e for pizza, tenta pegar o preço do próprio tamanho novamente
-    // (caso selectedSize esteja desatualizado ou não populado corretamente)
     if (category.isCustomizable && selectedSize != null) {
+      // ✅ CORREÇÃO: Para pizzas, usa o preço do tamanho (unitMinPrice)
+      // Este é o mesmo valor exibido na home
+      if (selectedSize!.price > 0) {
+        return selectedSize!.price;
+      }
+
+      // Fallback: se não tiver preço no tamanho, busca o menor preço dos sabores
+      // Tenta encontrar grupo pelo tipo TOPPING
+      var toppingGroup = category.optionGroups.firstWhereOrNull(
+        (g) => g.groupType == OptionGroupType.topping,
+      );
+
+      // Se não achar por tipo, tenta por nome (fallback legado)
+      toppingGroup ??= category.optionGroups.firstWhereOrNull(
+        (g) => g.name.toLowerCase().contains('sabor'),
+      );
+
+      if (toppingGroup != null) {
+        final prices =
+            toppingGroup.items
+                .where((item) => item.isActive)
+                .map((item) => item.getPriceForSize(selectedSize?.id))
+                .whereType<int>() // Filtra nulos
+                .where((p) => p > 0)
+                .toList();
+
+        if (prices.isNotEmpty) {
+          return prices.reduce((a, b) => a < b ? a : b);
+        }
+      }
+
+      // Se ainda for 0 e for pizza, tenta pegar o preço do próprio tamanho novamente
+      // (caso selectedSize esteja desatualizado ou não populado corretamente)
       final sizeGroup = category.optionGroups.firstWhereOrNull(
         (g) => g.groupType == OptionGroupType.size,
       );
@@ -406,7 +436,35 @@ class CartProduct extends Equatable {
       }
     }
 
-    return 0;
+    // ✅ NOVO: Para produtos normais com preço base 0 e complementos obrigatórios
+    if (basePrice == 0) {
+      final Map<int, int> mandatoryGroups = {};
+
+      for (final variant in selectedVariants.where((v) => v.isRequired)) {
+        int? minOptionPrice;
+        for (final option in variant.cartOptions.where(
+          (o) => o.isActuallyAvailable,
+        )) {
+          if (option.price > 0) {
+            if (minOptionPrice == null || option.price < minOptionPrice) {
+              minOptionPrice = option.price;
+            }
+          }
+        }
+
+        if (minOptionPrice != null) {
+          mandatoryGroups[variant.id] = minOptionPrice;
+        }
+      }
+
+      if (mandatoryGroups.isNotEmpty) {
+        int minTotalMandatory = 0;
+        mandatoryGroups.forEach((id, price) => minTotalMandatory += price);
+        return minTotalMandatory;
+      }
+    }
+
+    return basePrice;
   }
 
   // Preço unitário (base + complementos)
