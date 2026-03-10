@@ -257,13 +257,11 @@ class Store {
       return activeDeliveryRule.minOrder!;
     }
 
-    // Fallback para config antigo (compatibilidade)
-    return store_operation_config?.deliveryMinOrder ?? 0.0;
+    return store_operation_config?.minOrderValue ?? 0.0;
   }
 
   // ✅ NOVO: Helper para obter frete grátis das regras de frete ativas
   /// Retorna o threshold de frete grátis da regra de frete ativa para delivery
-  /// Se não houver regra ativa, retorna o valor do config antigo (compatibilidade)
   double? getFreeDeliveryThresholdForDelivery() {
     // Prioriza regras de frete ativas para delivery
     final activeDeliveryRule =
@@ -276,8 +274,7 @@ class Store {
       return activeDeliveryRule.freeDeliveryThreshold;
     }
 
-    // Fallback para config antigo (compatibilidade)
-    return store_operation_config?.freeDeliveryThreshold;
+    return null;
   }
 
   // ✅ NOVO: Helper para obter o tempo de entrega formatado
@@ -295,8 +292,10 @@ class Store {
       return '$min-$max min';
     }
 
-    final min = store_operation_config?.deliveryEstimatedMin ?? 30;
-    final max = store_operation_config?.deliveryEstimatedMax ?? 45;
+    final prepMin = store_operation_config?.deliveryPrepMin;
+    final prepMax = store_operation_config?.deliveryPrepMax;
+    final min = prepMin ?? 30;
+    final max = prepMax ?? (prepMin != null ? prepMin + 15 : 45);
     return '$min-$max min';
   }
 }

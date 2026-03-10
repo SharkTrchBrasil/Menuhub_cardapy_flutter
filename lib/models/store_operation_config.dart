@@ -31,10 +31,9 @@ class StoreOperationConfig {
 
   // --- Configurações de Entrega (Delivery) ---
   final bool deliveryEnabled;
-  final int? deliveryEstimatedMin;
-  final int? deliveryEstimatedMax;
-  final double? deliveryFee;
-  final double? deliveryMinOrder;
+  final double minOrderValue;
+  final int? deliveryPrepMin;
+  final int? deliveryPrepMax;
   final String? deliveryScope;
   final bool deliveryPaused;
 
@@ -56,8 +55,6 @@ class StoreOperationConfig {
   final String? mainPrinterDestination;
   final String? kitchenPrinterDestination;
   final String? barPrinterDestination;
-
-  final double? freeDeliveryThreshold;
   final bool scheduledOrdersEnabled;
 
   // --- ✅ NOVO: Configuração de preço para pizzas ---
@@ -72,10 +69,9 @@ class StoreOperationConfig {
     this.is_operational = true,
     // Delivery
     this.deliveryEnabled = false,
-    this.deliveryEstimatedMin,
-    this.deliveryEstimatedMax,
-    this.deliveryFee,
-    this.deliveryMinOrder,
+    this.minOrderValue = 0.0,
+    this.deliveryPrepMin,
+    this.deliveryPrepMax,
     this.deliveryScope = 'neighborhood',
     this.deliveryPaused = false,
     // Pickup
@@ -94,7 +90,6 @@ class StoreOperationConfig {
     this.mainPrinterDestination,
     this.kitchenPrinterDestination,
     this.barPrinterDestination,
-    this.freeDeliveryThreshold,
     this.scheduledOrdersEnabled = false,
     // Pizza
     this.pizzaPricingStrategy = PizzaPricingStrategy.highest,
@@ -129,12 +124,9 @@ class StoreOperationConfig {
       is_operational: json['is_operational'] ?? true,
       // Delivery
       deliveryEnabled: json['delivery_enabled'] ?? false,
-      deliveryEstimatedMin: json['delivery_estimated_min'],
-      deliveryEstimatedMax: json['delivery_estimated_max'],
-      deliveryFee: _parseMoney(json['delivery_fee']),
-      deliveryMinOrder:
-          _parseMoney(json['min_order_value']) ??
-          _parseMoney(json['delivery_min_order']),
+      minOrderValue: _parseMoney(json['min_order_value']) ?? 0.0,
+      deliveryPrepMin: json['delivery_prep_min'] as int?,
+      deliveryPrepMax: json['delivery_prep_max'] as int?,
       deliveryScope: json['delivery_scope'],
       deliveryPaused: json['delivery_paused'] ?? false,
       // Pickup
@@ -153,7 +145,6 @@ class StoreOperationConfig {
       mainPrinterDestination: json['main_printer_destination'],
       kitchenPrinterDestination: json['kitchen_printer_destination'],
       barPrinterDestination: json['bar_printer_destination'],
-      freeDeliveryThreshold: _parseMoney(json['free_delivery_threshold']),
       scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
       // ✅ Pizza pricing strategy
       pizzaPricingStrategy: PizzaPricingStrategy.fromString(
@@ -174,10 +165,9 @@ class StoreOperationConfig {
     bool? autoPrintOrders,
     bool? is_operational,
     bool? deliveryEnabled,
-    int? deliveryEstimatedMin,
-    int? deliveryEstimatedMax,
-    double? deliveryFee,
-    double? deliveryMinOrder,
+    double? minOrderValue,
+    int? deliveryPrepMin,
+    int? deliveryPrepMax,
     String? deliveryScope,
     bool? deliveryPaused,
     bool? pickupEnabled,
@@ -193,7 +183,6 @@ class StoreOperationConfig {
     String? mainPrinterDestination,
     String? kitchenPrinterDestination,
     String? barPrinterDestination,
-    double? freeDeliveryThreshold,
     bool? scheduledOrdersEnabled,
     PizzaPricingStrategy? pizzaPricingStrategy,
   }) {
@@ -204,10 +193,9 @@ class StoreOperationConfig {
       autoPrintOrders: autoPrintOrders ?? this.autoPrintOrders,
       is_operational: is_operational ?? this.is_operational,
       deliveryEnabled: deliveryEnabled ?? this.deliveryEnabled,
-      deliveryEstimatedMin: deliveryEstimatedMin ?? this.deliveryEstimatedMin,
-      deliveryEstimatedMax: deliveryEstimatedMax ?? this.deliveryEstimatedMax,
-      deliveryFee: deliveryFee ?? this.deliveryFee,
-      deliveryMinOrder: deliveryMinOrder ?? this.deliveryMinOrder,
+      minOrderValue: minOrderValue ?? this.minOrderValue,
+      deliveryPrepMin: deliveryPrepMin ?? this.deliveryPrepMin,
+      deliveryPrepMax: deliveryPrepMax ?? this.deliveryPrepMax,
       deliveryScope: deliveryScope ?? this.deliveryScope,
       deliveryPaused: deliveryPaused ?? this.deliveryPaused,
       pickupEnabled: pickupEnabled ?? this.pickupEnabled,
@@ -226,8 +214,6 @@ class StoreOperationConfig {
           kitchenPrinterDestination ?? this.kitchenPrinterDestination,
       barPrinterDestination:
           barPrinterDestination ?? this.barPrinterDestination,
-      freeDeliveryThreshold:
-          freeDeliveryThreshold ?? this.freeDeliveryThreshold,
       scheduledOrdersEnabled:
           scheduledOrdersEnabled ?? this.scheduledOrdersEnabled,
       pizzaPricingStrategy: pizzaPricingStrategy ?? this.pizzaPricingStrategy,

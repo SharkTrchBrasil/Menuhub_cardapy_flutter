@@ -139,6 +139,12 @@ class Coupon extends Equatable {
       return null;
     }
 
+    T? pick<T>(String camelKey, String snakeKey) {
+      final value =
+          json.containsKey(camelKey) ? json[camelKey] : json[snakeKey];
+      return value as T?;
+    }
+
     // Parse rules
     var rulesList = <CouponRule>[];
     if (json['rules'] != null && json['rules'] is List) {
@@ -153,40 +159,50 @@ class Coupon extends Equatable {
       code: json['code'] as String? ?? 'N/A',
       title: json['title'] as String?,
       description: json['description'] as String?,
-      discountType: json['discountType'] as String? ?? 'FIXED_AMOUNT',
-      discountValue: (parseMoney(json['discountValue']) ?? 0).toDouble(),
-      maxDiscountAmount: parseMoney(json['maxDiscountAmount']),
+      discountType:
+          pick<String>('discountType', 'discount_type') ?? 'FIXED_AMOUNT',
+      discountValue:
+          (parseMoney(pick<dynamic>('discountValue', 'discount_value')) ?? 0)
+              .toDouble(),
+      maxDiscountAmount: parseMoney(
+        pick<dynamic>('maxDiscountAmount', 'max_discount_amount'),
+      ),
       startDate:
-          json['startDate'] != null
-              ? DateTime.parse(json['startDate'] as String)
+          pick<String>('startDate', 'start_date') != null
+              ? DateTime.parse(pick<String>('startDate', 'start_date')!)
               : null,
       endDate:
-          json['endDate'] != null
-              ? DateTime.parse(json['endDate'] as String)
+          pick<String>('endDate', 'end_date') != null
+              ? DateTime.parse(pick<String>('endDate', 'end_date')!)
               : null,
-      isActive: json['isActive'] as bool? ?? true,
+      isActive: pick<bool>('isActive', 'is_active') ?? true,
       rules: rulesList,
       // Campos enterprise
-      promotionType: json['promotionType'] as String?,
-      discountSubtype: json['discountSubtype'] as String?,
+      promotionType: pick<String>('promotionType', 'promotion_type'),
+      discountSubtype: pick<String>('discountSubtype', 'discount_subtype'),
       objective: json['objective'] as String?,
       mechanic: json['mechanic'] as String?,
       status: json['status'] as String?,
-      targetAudience: json['targetAudience'] as String?,
+      targetAudience: pick<String>('targetAudience', 'target_audience'),
       periodicity: json['periodicity'] as String?,
-      deliveryRadius: json['deliveryRadius'] as String?,
-      minimumOrder: parseMoney(json['minimumOrder']),
-      voucherValue: parseMoney(json['voucherValue']),
-      voucherValueLimit: parseMoney(json['voucherValueLimit']),
-      merchantInvestment: json['merchantInvestment'] as String?,
+      deliveryRadius: pick<String>('deliveryRadius', 'delivery_radius'),
+      minimumOrder: parseMoney(pick<dynamic>('minimumOrder', 'minimum_order')),
+      voucherValue: parseMoney(pick<dynamic>('voucherValue', 'voucher_value')),
+      voucherValueLimit: parseMoney(
+        pick<dynamic>('voucherValueLimit', 'voucher_value_limit'),
+      ),
+      merchantInvestment: pick<String>(
+        'merchantInvestment',
+        'merchant_investment',
+      ),
       // Campos de parceria
-      partnerName: json['partnerName'] as String?,
-      commissionType: json['commissionType'] as String?,
+      partnerName: pick<String>('partnerName', 'partner_name'),
+      commissionType: pick<String>('commissionType', 'commission_type'),
       commissionValue:
-          json['commissionValue'] != null
-              ? (json['commissionValue'] as num).toDouble()
+          pick<num>('commissionValue', 'commission_value') != null
+              ? pick<num>('commissionValue', 'commission_value')!.toDouble()
               : null,
-      isListed: json['isListed'] as bool?,
+      isListed: pick<bool>('isListed', 'is_listed'),
     );
   }
 

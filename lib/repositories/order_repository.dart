@@ -115,8 +115,7 @@ class OrderRepository {
     try {
       await _dio.post(
         '/customer/orders/$orderId/cancel',
-        data: reason ?? 'Cancelado pelo cliente',
-        options: Options(headers: {'Content-Type': 'application/json'}),
+        data: {'reason': reason ?? 'Cancelado pelo cliente'},
       );
       return Right(null);
     } on DioException catch (e) {

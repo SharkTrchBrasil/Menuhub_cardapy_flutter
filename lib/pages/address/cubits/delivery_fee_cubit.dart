@@ -169,6 +169,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     // ✅ ENTERPRISE: Tenta usar o novo sistema de cálculo primeiro
     double? calculatedFee;
     double? calculatedDistanceKm;
+    int? prepMinMinutes;
+    int? prepMaxMinutes;
+    int? travelMinMinutes;
+    int? travelMaxMinutes;
+    int? estimatedMinMinutes;
+    int? estimatedMaxMinutes;
     bool eligibleForFreeDelivery = false;
     String? errorMessage;
 
@@ -279,6 +285,13 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             if (distanceValue is num) {
               calculatedDistanceKm = distanceValue.toDouble();
             }
+
+            prepMinMinutes = result['prep_min_minutes'] as int?;
+            prepMaxMinutes = result['prep_max_minutes'] as int?;
+            travelMinMinutes = result['travel_min_minutes'] as int?;
+            travelMaxMinutes = result['travel_max_minutes'] as int?;
+            estimatedMinMinutes = result['estimated_min_minutes'] as int?;
+            estimatedMaxMinutes = result['estimated_max_minutes'] as int?;
 
             // ✅ VALIDAÇÃO: Se elegível para frete grátis, força fee = 0
             if (eligibleForFreeDelivery) {
@@ -404,6 +417,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
               deliveryFee: 0,
               isFree: true,
               distanceKm: calculatedDistanceKm,
+              prepMinMinutes: prepMinMinutes,
+              prepMaxMinutes: prepMaxMinutes,
+              travelMinMinutes: travelMinMinutes,
+              travelMaxMinutes: travelMaxMinutes,
+              estimatedMinMinutes: estimatedMinMinutes,
+              estimatedMaxMinutes: estimatedMaxMinutes,
               deliveryType: currentDeliveryType,
             ),
           );
@@ -419,6 +438,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             deliveryFee: baseFee,
             isFree: baseFee == 0,
             distanceKm: null,
+            prepMinMinutes: null,
+            prepMaxMinutes: null,
+            travelMinMinutes: null,
+            travelMaxMinutes: null,
+            estimatedMinMinutes: null,
+            estimatedMaxMinutes: null,
             deliveryType: currentDeliveryType,
           ),
         );
@@ -436,6 +461,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
             deliveryFee: 0,
             isFree: true,
             distanceKm: calculatedDistanceKm,
+            prepMinMinutes: prepMinMinutes,
+            prepMaxMinutes: prepMaxMinutes,
+            travelMinMinutes: travelMinMinutes,
+            travelMaxMinutes: travelMaxMinutes,
+            estimatedMinMinutes: estimatedMinMinutes,
+            estimatedMaxMinutes: estimatedMaxMinutes,
             deliveryType: currentDeliveryType,
           ),
         );
@@ -451,6 +482,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
           deliveryFee: calculatedFee ?? 0,
           isFree: (calculatedFee ?? 0) == 0,
           distanceKm: calculatedDistanceKm,
+          prepMinMinutes: prepMinMinutes,
+          prepMaxMinutes: prepMaxMinutes,
+          travelMinMinutes: travelMinMinutes,
+          travelMaxMinutes: travelMaxMinutes,
+          estimatedMinMinutes: estimatedMinMinutes,
+          estimatedMaxMinutes: estimatedMaxMinutes,
           deliveryType: currentDeliveryType,
         ),
       );

@@ -1067,13 +1067,24 @@ class Order {
     }
 
     // 2. Normaliza Details (se ausente)
-    final detailsJson =
-        json['details'] ??
-        {
-          'mode': json['orderType'] ?? 'DELIVERY',
-          'scheduled': json['orderTiming'] == 'SCHEDULED',
-          // Outros campos assumem default
-        };
+    final Map<String, dynamic> detailsJson = Map<String, dynamic>.from(
+      json['details'] ??
+          {
+            'mode': json['orderType'] ?? 'DELIVERY',
+            'scheduled': json['orderTiming'] == 'SCHEDULED',
+          },
+    );
+
+    // ✅ Suporte para cancellation_reason vindo do topo do JSON (Backend legacy ou PDV)
+    if (json['cancellation_reason'] != null ||
+        json['cancellationReason'] != null) {
+      final reason = json['cancellation_reason'] ?? json['cancellationReason'];
+      final cancelMap = Map<String, dynamic>.from(
+        detailsJson['cancellation'] ?? {},
+      );
+      cancelMap['reason'] = reason;
+      detailsJson['cancellation'] = cancelMap;
+    }
 
     // 3. Normaliza Origin (se ausente)
     final originJson =
@@ -1224,6 +1235,7 @@ class Order {
       case 'CONCLUDED':
         return 'Concluído';
       case 'CANCELLED':
+      case 'CANCELED':
         return 'Cancelado';
       default:
         return lastStatus;
@@ -1233,7 +1245,9 @@ class Order {
   String get orderStatus => lastStatus;
   bool get isDelivery => details.isDelivery;
   bool get isTakeout => details.isTakeout;
-  bool get isCancelled => lastStatus.toUpperCase() == 'CANCELLED';
+  bool get isCancelled =>
+      lastStatus.toUpperCase() == 'CANCELLED' ||
+      lastStatus.toUpperCase() == 'CANCELED';
   bool get isConcluded => lastStatus.toUpperCase() == 'CONCLUDED';
   bool get isActive => !isCancelled && !isConcluded;
 

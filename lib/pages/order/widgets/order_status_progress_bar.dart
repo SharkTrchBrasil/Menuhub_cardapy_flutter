@@ -51,7 +51,7 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
 
     // Mapeamento de status para índice
     int currentStatusIndex = -1;
-    if (currentStatus == 'CANCELLED') {
+    if (currentStatus == 'CANCELLED' || currentStatus == 'CANCELED') {
       currentStatusIndex = -1; // Permanecerá -1
     } else if (currentStatus == 'CONCLUDED' || currentStatus == 'FINALIZED') {
       currentStatusIndex = displayStatuses.length - 1;
@@ -62,7 +62,9 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
     }
 
     // Se não encontrou, talvez seja um status intermediário ou especial
-    if (currentStatusIndex == -1 && currentStatus != 'CANCELLED') {
+    if (currentStatusIndex == -1 &&
+        currentStatus != 'CANCELLED' &&
+        currentStatus != 'CANCELED') {
       // Fallback
       if (currentStatus.contains('PREPAR'))
         currentStatusIndex = displayStatuses.indexOf('PREPARING');
@@ -94,7 +96,8 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
                     const TextSpan(text: 'Status do pedido: '),
                     TextSpan(
                       text:
-                          currentStatus == 'CANCELLED'
+                          (currentStatus == 'CANCELLED' ||
+                                  currentStatus == 'CANCELED')
                               ? 'Cancelado'
                               : widget.order.statusLabel,
                       style: TextStyle(
@@ -102,6 +105,17 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if ((currentStatus == 'CANCELLED' ||
+                            currentStatus == 'CANCELED') &&
+                        widget.order.details.cancellation?.reason != null)
+                      TextSpan(
+                        text: '\n${widget.order.details.cancellation!.reason}',
+                        style: TextStyle(
+                          color: statusColor.withOpacity(0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.normal,
+                        ),
+                      ),
                     if (currentStatus == 'CONCLUDED' ||
                         currentStatus == 'FINALIZED') ...[
                       const TextSpan(text: ' • '),
@@ -188,6 +202,7 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
       case 'FINALIZED':
         return Colors.green;
       case 'CANCELLED':
+      case 'CANCELED':
         return Colors.red;
       default:
         return Colors.grey;

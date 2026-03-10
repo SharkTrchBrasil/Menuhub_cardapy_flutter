@@ -101,13 +101,18 @@ class StoreCardData extends StatelessWidget {
 
     // Tempo de entrega (Prioriza regra, depois config da loja)
     String deliveryTimeText;
-    if (activeDeliveryRule?.estimatedMinMinutes != null) {
+    if (deliveryFeeState is DeliveryFeeLoaded &&
+        deliveryFeeState.estimatedMinMinutes != null) {
+      final minEta = deliveryFeeState.estimatedMinMinutes!;
+      final maxEta = deliveryFeeState.estimatedMaxMinutes ?? (minEta + 10);
+      deliveryTimeText = '$minEta-$maxEta min';
+    } else if (activeDeliveryRule?.estimatedMinMinutes != null) {
       deliveryTimeText =
           '${activeRuleValue(activeDeliveryRule?.estimatedMinMinutes)}-${activeRuleValue(activeDeliveryRule?.estimatedMaxMinutes)} min';
     } else {
       deliveryTimeText =
           store.store_operation_config != null
-              ? '${store.store_operation_config!.deliveryEstimatedMin}-${store.store_operation_config!.deliveryEstimatedMax} min'
+              ? '${store.store_operation_config!.deliveryPrepMin ?? 30}-${store.store_operation_config!.deliveryPrepMax ?? 45} min'
               : '30-45 min';
     }
 

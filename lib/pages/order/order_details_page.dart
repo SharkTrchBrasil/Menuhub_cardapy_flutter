@@ -152,6 +152,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               _buildAddressSection(),
               if (widget.showRating || _isConcluded)
                 _buildReviewSection(context),
+              _buildCancelOrderButton(context),
               const SizedBox(height: 100),
             ],
           ),
@@ -1262,5 +1263,102 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   String _formatImageUrl(String url) {
     if (url.startsWith('http')) return url;
     return 'https://menuhub-dev.s3.us-east-1.amazonaws.com/$url';
+  }
+
+  Widget _buildCancelOrderButton(BuildContext context) {
+    if (_currentOrder.orderStatus.toUpperCase() != 'PENDING') {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Column(
+        children: [
+          const Divider(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => _confirmCancel(context),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF717171)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'CANCELAR PEDIDO',
+                style: TextStyle(
+                  color: Color(0xFF717171),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Você pode cancelar enquanto o pedido não for aceito.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF717171)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmCancel(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Cancelar Pedido?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text(
+                'MANTER PEDIDO',
+                style: TextStyle(color: Colors.black87),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                // ✅ Captura referências ANTES de fechar o dialog
+                final messenger = ScaffoldMessenger.of(context);
+                final cubit = context.read<OrdersCubit>();
+                final orderId = int.tryParse(_currentOrder.id.toString()) ?? 0;
+
+                Navigator.pop(dialogContext);
+
+                cubit.cancelOrder(
+                  orderId,
+                  reason: 'Cancelado pelo cliente pelo Totem',
+                );
+
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Cancelando pedido...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: const Text(
+                'SIM, CANCELAR',
+                style: TextStyle(
+                  color: Color(0xFFEA1D2C),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

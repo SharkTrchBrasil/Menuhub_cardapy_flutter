@@ -93,12 +93,9 @@ class _StoreDetailsState extends State<StoreDetails>
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 4),
-                                  if (store
-                                          .store_operation_config
-                                          ?.deliveryMinOrder !=
-                                      null)
+                                  if (store.getMinOrderForDelivery() > 0)
                                     Text(
-                                      'Pedido mínimo: R\$ ${store.store_operation_config!.deliveryMinOrder!.toStringAsFixed(2)}',
+                                      'Pedido mínimo: R\$ ${store.getMinOrderForDelivery().toStringAsFixed(2)}',
                                       style: const TextStyle(fontSize: 14),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,

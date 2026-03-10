@@ -31,20 +31,19 @@ class DeliveryOptionSelection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     final bool isFreeShipping =
-        deliveryEnabled && subtotal >= minOrderForFreeShipping && minOrderForFreeShipping > 0;
+        deliveryEnabled &&
+        subtotal >= minOrderForFreeShipping &&
+        minOrderForFreeShipping > 0;
     final store = context.watch<StoreCubit>().state.store;
 
+    final minDeliveryTime = store?.store_operation_config?.deliveryPrepMin;
+    final maxDeliveryTime = store?.store_operation_config?.deliveryPrepMax;
 
-    final minDeliveryTime = store?.store_operation_config?.deliveryEstimatedMin;
-        final maxDeliveryTime =  store?.store_operation_config?.deliveryEstimatedMax;
-
-
-    final minPickupDeliveryTime = store?.store_operation_config?.pickupEstimatedMin;
-    final maxPickupDeliveryTime =  store?.store_operation_config?.pickupEstimatedMax;
-
-
+    final minPickupDeliveryTime =
+        store?.store_operation_config?.pickupEstimatedMin;
+    final maxPickupDeliveryTime =
+        store?.store_operation_config?.pickupEstimatedMax;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,13 +65,13 @@ class DeliveryOptionSelection extends StatelessWidget {
             context: context,
             deliveryType: DeliveryType.pickup,
             title: 'Retirada na Loja',
-            subtitle: '$minPickupDeliveryTime - $maxPickupDeliveryTime min', // Pode adicionar tempo de preparo aqui se tiver
-            cost: 0.0 , // Retirada geralmente não tem custo
+            subtitle:
+                '$minPickupDeliveryTime - $maxPickupDeliveryTime min', // Pode adicionar tempo de preparo aqui se tiver
+            cost: 0.0, // Retirada geralmente não tem custo
             isSelected: selectedDeliveryType == DeliveryType.pickup,
             onChanged: onDeliveryTypeChanged,
             isFreeShipping: false, // Frete grátis não se aplica a retirada
           ),
-
       ],
     );
   }
@@ -91,19 +90,29 @@ class DeliveryOptionSelection extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         border: Border.all(
-            color: isSelected ? Colors.black : Colors.transparent,
-            width: isSelected ? 1 : 0),
+          color: isSelected ? Colors.black : Colors.transparent,
+          width: isSelected ? 1 : 0,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: RadioListTile<DeliveryType>(
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle),
-        secondary: isSelected && isFreeShipping && deliveryType == DeliveryType.delivery
-            ? const Text('GRÁTIS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
-            : Text(cost.toCurrency(), style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12),),
+        secondary:
+            isSelected &&
+                    isFreeShipping &&
+                    deliveryType == DeliveryType.delivery
+                ? const Text(
+                  'GRÁTIS',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+                : Text(
+                  cost.toCurrency(),
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                ),
         value: deliveryType,
         groupValue: selectedDeliveryType,
         onChanged: onChanged,

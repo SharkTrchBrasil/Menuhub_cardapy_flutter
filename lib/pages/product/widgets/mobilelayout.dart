@@ -865,7 +865,15 @@ class _MobileProductPageState extends State<MobileProductPage> {
   String _getDeliveryFeeText(Store store) {
     if (_isFreeDelivery(store)) return 'Grátis';
 
-    final fee = store.store_operation_config?.deliveryFee;
+    final activeRule =
+        store.deliveryFeeRules
+            .where((r) => r.isActive && r.deliveryMethod == 'delivery')
+            .firstOrNull;
+    final config = activeRule?.config;
+    final feeCents =
+        (config?['base_fee'] as num?)?.toDouble() ??
+        (config?['fee'] as num?)?.toDouble();
+    final fee = feeCents != null ? feeCents / 100.0 : null;
     if (fee != null && fee > 0) {
       return 'R\$ ${fee.toStringAsFixed(2).replaceAll('.', ',')}';
     }
@@ -877,8 +885,15 @@ class _MobileProductPageState extends State<MobileProductPage> {
     final threshold = store.getFreeDeliveryThresholdForDelivery();
     if (threshold != null && threshold > 0) return true;
 
-    final fee = store.store_operation_config?.deliveryFee;
-    return fee == null || fee <= 0;
+    final activeRule =
+        store.deliveryFeeRules
+            .where((r) => r.isActive && r.deliveryMethod == 'delivery')
+            .firstOrNull;
+    final config = activeRule?.config;
+    final feeCents =
+        (config?['base_fee'] as num?)?.toDouble() ??
+        (config?['fee'] as num?)?.toDouble();
+    return feeCents == null || feeCents <= 0;
   }
 }
 

@@ -407,7 +407,7 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
     final nextOpeningMessage = statusHelper.statusMessage;
     final storeName = store.name;
     final rating = store.ratingsSummary?.averageRating ?? 0.0;
-    final minOrder = store.store_operation_config?.deliveryMinOrder ?? 0;
+    final minOrder = store.getMinOrderForDelivery() ?? 0;
     final bannerUrl =
         store.banner?.url ??
         'https://placehold.co/1200x220/e0e0e0/a0a0a0?text=Banner';

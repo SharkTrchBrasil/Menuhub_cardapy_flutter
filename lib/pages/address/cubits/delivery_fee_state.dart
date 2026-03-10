@@ -9,7 +9,7 @@ abstract class DeliveryFeeState extends Equatable {
   const DeliveryFeeState({this.deliveryType = DeliveryType.delivery});
 
   @override
-  List<Object> get props => [deliveryType];
+  List<Object?> get props => [deliveryType];
 }
 
 // Estado Inicial: Nada foi calculado ainda.
@@ -28,27 +28,62 @@ class DeliveryFeeLoaded extends DeliveryFeeState {
   final double deliveryFee;
   final bool isFree;
   final double? distanceKm;
+  final int? prepMinMinutes;
+  final int? prepMaxMinutes;
+  final int? travelMinMinutes;
+  final int? travelMaxMinutes;
+  final int? estimatedMinMinutes;
+  final int? estimatedMaxMinutes;
 
   const DeliveryFeeLoaded({
     required this.deliveryFee,
     required this.isFree,
     this.distanceKm,
+    this.prepMinMinutes,
+    this.prepMaxMinutes,
+    this.travelMinMinutes,
+    this.travelMaxMinutes,
+    this.estimatedMinMinutes,
+    this.estimatedMaxMinutes,
     required super.deliveryType, // ✅ USA O PARÂMETRO DA CLASSE PAI
   });
 
   @override
-  List<Object?> get props => [deliveryFee, isFree, distanceKm, deliveryType];
+  List<Object?> get props => [
+    deliveryFee,
+    isFree,
+    distanceKm,
+    prepMinMinutes,
+    prepMaxMinutes,
+    travelMinMinutes,
+    travelMaxMinutes,
+    estimatedMinMinutes,
+    estimatedMaxMinutes,
+    deliveryType,
+  ];
 
   DeliveryFeeLoaded copyWith({
     double? deliveryFee,
     bool? isFree,
     double? distanceKm,
+    int? prepMinMinutes,
+    int? prepMaxMinutes,
+    int? travelMinMinutes,
+    int? travelMaxMinutes,
+    int? estimatedMinMinutes,
+    int? estimatedMaxMinutes,
     DeliveryType? deliveryType,
   }) {
     return DeliveryFeeLoaded(
       deliveryFee: deliveryFee ?? this.deliveryFee,
       isFree: isFree ?? this.isFree,
       distanceKm: distanceKm ?? this.distanceKm,
+      prepMinMinutes: prepMinMinutes ?? this.prepMinMinutes,
+      prepMaxMinutes: prepMaxMinutes ?? this.prepMaxMinutes,
+      travelMinMinutes: travelMinMinutes ?? this.travelMinMinutes,
+      travelMaxMinutes: travelMaxMinutes ?? this.travelMaxMinutes,
+      estimatedMinMinutes: estimatedMinMinutes ?? this.estimatedMinMinutes,
+      estimatedMaxMinutes: estimatedMaxMinutes ?? this.estimatedMaxMinutes,
       deliveryType: deliveryType ?? this.deliveryType,
     );
   }

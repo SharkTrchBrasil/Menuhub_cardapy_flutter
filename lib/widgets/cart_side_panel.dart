@@ -255,8 +255,7 @@ class CartPageBody extends StatelessWidget {
                     const SizedBox(height: 26),
                     FreeShippingProgress(
                       cartTotal: cart.subtotal / 100.0,
-                      threshold:
-                          store?.store_operation_config?.freeDeliveryThreshold,
+                      threshold: store?.getFreeDeliveryThresholdForDelivery(),
                     ),
                     const SizedBox(height: 40),
                     const OrderSummaryCard(),

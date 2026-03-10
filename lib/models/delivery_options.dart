@@ -3,24 +3,35 @@ class DeliveryOptionsModel {
 
   // DELIVERY
   final bool deliveryEnabled;
-  final int deliveryEstimatedMin;
-  final int deliveryEstimatedMax;
-  final double freeShippingMinOrder;
-  final double deliveryMinOrder;
-  final String?  deliveryScope;
+  final int deliveryPrepMin;
+  final int deliveryPrepMax;
+  final double freeDeliveryThreshold;
+  final double minOrderValue;
+  final String? deliveryScope;
 
   // PICKUP
   final bool pickupEnabled;
   final int pickupEstimatedMin;
   final int pickupEstimatedMax;
 
+  static double _parseMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is Map) {
+      final raw = value['value'] ?? value['amount'];
+      if (raw is num) {
+        return raw.toDouble() / 100.0;
+      }
+    }
+    return 0.0;
+  }
+
   DeliveryOptionsModel({
     this.id,
     required this.deliveryEnabled,
-    required this.deliveryEstimatedMin,
-    required this.deliveryEstimatedMax,
-    required this.freeShippingMinOrder,
-    required this.deliveryMinOrder,
+    required this.deliveryPrepMin,
+    required this.deliveryPrepMax,
+    required this.freeDeliveryThreshold,
+    required this.minOrderValue,
     required this.pickupEnabled,
     this.deliveryScope,
     required this.pickupEstimatedMin,
@@ -31,11 +42,11 @@ class DeliveryOptionsModel {
     return DeliveryOptionsModel(
       id: json['id'],
       deliveryEnabled: json['delivery_enabled'] ?? false,
-      deliveryEstimatedMin: json['delivery_estimated_min'] ?? 30,
-      deliveryEstimatedMax: json['delivery_estimated_max'] ?? 45,
+      deliveryPrepMin: json['delivery_prep_min'] ?? 30,
+      deliveryPrepMax: json['delivery_prep_max'] ?? 45,
       deliveryScope: json['delivery_scope'],
-      freeShippingMinOrder: (json['delivery_fee'] as num?)?.toDouble() ?? 0.0,
-      deliveryMinOrder: (json['delivery_min_order'] as num?)?.toDouble() ?? 0.0,
+      freeDeliveryThreshold: _parseMoney(json['free_delivery_threshold']),
+      minOrderValue: _parseMoney(json['min_order_value']),
       pickupEnabled: json['pickup_enabled'] ?? false,
       pickupEstimatedMin: json['pickup_estimated_min'] ?? 5,
       pickupEstimatedMax: json['pickup_estimated_max'] ?? 15,

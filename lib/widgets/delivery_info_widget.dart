@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
-import 'package:totem/core/extensions.dart';
 
 /// Widget que exibe informações de entrega (tempo e taxa)
 /// Exibe: "Hoje | 33-43 min • R$ 2,99"
@@ -22,24 +21,21 @@ class DeliveryInfoWidget extends StatelessWidget {
       builder: (context, state) {
         final store = state.store;
         final config = store?.store_operation_config;
-        
+
         if (config == null) return const SizedBox.shrink();
-        
+
         // Tempo estimado de entrega (usa valores médios da config)
-        final deliveryMin = config.deliveryEstimatedMin ?? 30;
-        final deliveryMax = config.deliveryEstimatedMax ?? 50;
-        
-        // Taxa de entrega (usa valor padrão da config)
-        // Para clientes logados com endereço, será calculado dinamicamente
-        final deliveryFee = config.deliveryFee ?? 0;
-        
+        final deliveryMin = config.deliveryPrepMin ?? 30;
+        final deliveryMax = config.deliveryPrepMax ?? 50;
+
         final isDeliveryEnabled = config.isDeliveryAvailable;
         final isPickupEnabled = config.isPickupAvailable;
-        
+
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showDeliveryTypeSelector && (isDeliveryEnabled || isPickupEnabled))
+            if (showDeliveryTypeSelector &&
+                (isDeliveryEnabled || isPickupEnabled))
               _DeliveryTypeButton(
                 isDeliveryEnabled: isDeliveryEnabled,
                 isPickupEnabled: isPickupEnabled,
@@ -66,37 +62,8 @@ class DeliveryInfoWidget extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     '$deliveryMin-$deliveryMax min',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                   ),
-                  if (deliveryFee > 0) ...[
-                    Text(
-                      ' • ',
-                      style: TextStyle(color: Colors.grey.shade400),
-                    ),
-                    Text(
-                      'R\$ ${deliveryFee.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ] else ...[
-                    Text(
-                      ' • ',
-                      style: TextStyle(color: Colors.grey.shade400),
-                    ),
-                    Text(
-                      'Grátis',
-                      style: TextStyle(
-                        color: Colors.green.shade600,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -160,10 +127,11 @@ class _DeliveryTypeButton extends StatelessWidget {
   void _showDeliveryTypeDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => DeliveryTypeDialog(
-        isDeliveryEnabled: isDeliveryEnabled,
-        isPickupEnabled: isPickupEnabled,
-      ),
+      builder:
+          (context) => DeliveryTypeDialog(
+            isDeliveryEnabled: isDeliveryEnabled,
+            isPickupEnabled: isPickupEnabled,
+          ),
     );
   }
 }
@@ -199,10 +167,7 @@ class _DeliveryTypeDialogState extends State<DeliveryTypeDialog> {
           children: [
             const Text(
               'Como quer receber o pedido?',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
             if (widget.isDeliveryEnabled)
@@ -240,7 +205,9 @@ class _DeliveryTypeDialogState extends State<DeliveryTypeDialog> {
                   ),
                 ),
                 child: Text(
-                  _selectedType == 'delivery' ? 'Confirmar entrega' : 'Confirmar retirada',
+                  _selectedType == 'delivery'
+                      ? 'Confirmar entrega'
+                      : 'Confirmar retirada',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -276,7 +243,10 @@ class _DeliveryOption extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected ? Theme.of(context).primaryColor : Colors.grey.shade300,
+            color:
+                isSelected
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey.shade300,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -286,7 +256,10 @@ class _DeliveryOption extends StatelessWidget {
             Icon(
               icon,
               size: 28,
-              color: isSelected ? Theme.of(context).primaryColor : Colors.grey.shade600,
+              color:
+                  isSelected
+                      ? Theme.of(context).primaryColor
+                      : Colors.grey.shade600,
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -302,10 +275,7 @@ class _DeliveryOption extends StatelessWidget {
                   ),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
               ),
@@ -322,5 +292,3 @@ class _DeliveryOption extends StatelessWidget {
     );
   }
 }
-
-

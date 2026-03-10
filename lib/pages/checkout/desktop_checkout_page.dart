@@ -627,8 +627,14 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
     Color primaryColor,
   ) {
     final feeState = context.watch<DeliveryFeeCubit>().state;
-    final minTime = store.store_operation_config?.deliveryEstimatedMin ?? 30;
-    final maxTime = store.store_operation_config?.deliveryEstimatedMax ?? 60;
+    final minTime =
+        feeState is DeliveryFeeLoaded && feeState.estimatedMinMinutes != null
+            ? feeState.estimatedMinMinutes!
+            : (store.store_operation_config?.deliveryPrepMin ?? 30);
+    final maxTime =
+        feeState is DeliveryFeeLoaded && feeState.estimatedMaxMinutes != null
+            ? feeState.estimatedMaxMinutes!
+            : (store.store_operation_config?.deliveryPrepMax ?? 60);
 
     double deliveryFee = 0.0;
     String deliveryFeeText = 'Grátis';

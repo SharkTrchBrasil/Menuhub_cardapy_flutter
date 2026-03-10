@@ -61,13 +61,17 @@ class PremiumStoreHeader extends StatelessWidget {
             .firstOrNull;
 
     String deliveryTimeText;
-    if (activeDeliveryRule?.estimatedMinMinutes != null) {
+    if (deliveryFeeState is DeliveryFeeLoaded &&
+        deliveryFeeState.estimatedMinMinutes != null) {
+      deliveryTimeText =
+          '${deliveryFeeState.estimatedMinMinutes}-${deliveryFeeState.estimatedMaxMinutes ?? ((deliveryFeeState.estimatedMinMinutes ?? 0) + 10)} min';
+    } else if (activeDeliveryRule?.estimatedMinMinutes != null) {
       deliveryTimeText =
           '${activeDeliveryRule?.estimatedMinMinutes ?? 0}-${activeDeliveryRule?.estimatedMaxMinutes ?? 0} min';
     } else {
       deliveryTimeText =
           store.store_operation_config != null
-              ? '${store.store_operation_config!.deliveryEstimatedMin}-${store.store_operation_config!.deliveryEstimatedMax} min'
+              ? '${store.store_operation_config!.deliveryPrepMin ?? 30}-${store.store_operation_config!.deliveryPrepMax ?? 45} min'
               : '30-45 min';
     }
 
@@ -85,6 +89,7 @@ class PremiumStoreHeader extends StatelessWidget {
     if (userAddress == null) {
       // Verifica se a loja é "Sempre Grátis" mesmo sem endereço (Threshold 0)
       if (activeDeliveryRule != null &&
+          activeDeliveryRule.freeDeliveryThreshold != null &&
           activeDeliveryRule.freeDeliveryThreshold == 0) {
         shippingText = 'Grátis';
         shippingColor = Colors.green.shade700;
