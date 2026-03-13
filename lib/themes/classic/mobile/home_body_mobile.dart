@@ -20,6 +20,7 @@ import '../../../widgets/unified_cart_bottom_bar.dart';
 import '../../../core/extensions.dart';
 import '../../../repositories/realtime_repository.dart';
 import '../../../widgets/premium_store_header.dart';
+import '../../../widgets/connection_status_banner.dart';
 
 class HomeBodyMobile extends StatefulWidget {
   final List<BannerModel> banners;
@@ -80,6 +81,34 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
         (_) => _calculateCategoryOffsets(),
       );
     }
+  }
+
+  bool _shouldShowFloatingCart({
+    required StoreState storeState,
+    required CartState cartState,
+    required AuthState authState,
+  }) {
+    final canOrder =
+        StoreStatusService.validateStoreStatus(
+          storeState.store,
+        ).canReceiveOrders;
+    final hasCartItems = cartState.cart.items.isNotEmpty;
+    final isLoggedIn = authState.isLoggedIn;
+
+    final shouldShow = isLoggedIn && canOrder && hasCartItems;
+
+    // ✅ DEBUG: Log para rastrear por que a sacola não aparece após refresh
+    if (!shouldShow) {
+      print(
+        '🛒 [FloatingCart] Não mostrando sacola: isLoggedIn=$isLoggedIn, canOrder=$canOrder, hasCartItems=$hasCartItems (${cartState.cart.items.length} itens), status=${cartState.status}',
+      );
+    } else {
+      print(
+        '✅ [FloatingCart] Mostrando sacola: ${cartState.cart.items.length} itens',
+      );
+    }
+
+    return shouldShow;
   }
 
   @override
@@ -343,227 +372,271 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
     return Scaffold(
       body: Stack(
         children: [
-          CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: PremiumStoreHeader()),
+          Column(
+            children: [
+              const ConnectionStatusBanner(), // ✅ P0: Aviso visual de conexão perdida
+              Expanded(
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    const SliverToBoxAdapter(child: PremiumStoreHeader()),
 
-              // const SliverToBoxAdapter(child: SizedBox(height: 80)), // Removed as per request to reduce whitespace
-              const SliverToBoxAdapter(
-                child: OrderAgainListWidget(),
-              ), // ✅ Peça Novamente
+                    // const SliverToBoxAdapter(child: SizedBox(height: 80)), // Removed as per request to reduce whitespace
+                    const SliverToBoxAdapter(
+                      child: OrderAgainListWidget(),
+                    ), // ✅ Peça Novamente
 
-              SliverToBoxAdapter(
-                child: FeaturedProductGrid(
-                  products: _filteredProducts,
-                  categories: widget.categories,
-                ),
-              ),
-              // Sticky Header movido para o Stack overlay
-              SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final category = widget.categories[index];
-                  final key = _categoryKeys[category.id];
+                    SliverToBoxAdapter(
+                      child: FeaturedProductGrid(
+                        products: _filteredProducts,
+                        categories: widget.categories,
+                      ),
+                    ),
+                    // Sticky Header movido para o Stack overlay
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final category = widget.categories[index];
+                        final key = _categoryKeys[category.id];
 
-                  // ✅ Filtra produtos da categoria considerando múltiplas formas de associação
-                  var productsInCategory =
-                      _filteredProducts.where((p) {
-                        // 1. Verifica se tem categoryLinks apontando para esta categoria
-                        final hasCategoryLinks = p.categoryLinks.any(
-                          (link) => link.categoryId == category.id,
-                        );
+                        // ✅ Filtra produtos da categoria considerando múltiplas formas de associação
+                        var productsInCategory =
+                            _filteredProducts.where((p) {
+                              // 1. Verifica se tem categoryLinks apontando para esta categoria
+                              final hasCategoryLinks = p.categoryLinks.any(
+                                (link) => link.categoryId == category.id,
+                              );
 
-                        // 2. Verifica se primaryCategoryId aponta para esta categoria
-                        final hasPrimaryCategory =
-                            p.primaryCategoryId == category.id;
+                              // 2. Verifica se primaryCategoryId aponta para esta categoria
+                              final hasPrimaryCategory =
+                                  p.primaryCategoryId == category.id;
 
-                        // 3. Verifica se a categoria tem productLinks que apontam para este produto
-                        final hasProductLink = category.productLinks.any(
-                          (link) => link.productId == p.id,
-                        );
+                              // 3. Verifica se a categoria tem productLinks que apontam para este produto
+                              final hasProductLink = category.productLinks.any(
+                                (link) => link.productId == p.id,
+                              );
 
-                        return hasCategoryLinks ||
-                            hasPrimaryCategory ||
-                            hasProductLink;
-                      }).toList();
+                              return hasCategoryLinks ||
+                                  hasPrimaryCategory ||
+                                  hasProductLink;
+                            }).toList();
 
-                  // ✅ Removemos o fallback que ignorava a busca
-                  // Se productsInCategory está vazio, a categoria não deve exibir nada extras.
+                        // ✅ Removemos o fallback que ignorava a busca
+                        // Se productsInCategory está vazio, a categoria não deve exibir nada extras.
 
-                  if (productsInCategory.isEmpty)
-                    return const SizedBox.shrink();
+                        if (productsInCategory.isEmpty)
+                          return const SizedBox.shrink();
 
-                  // ✅ Lógica para categorias customizáveis (Pizzas) - mostra tamanhos primeiro
-                  if (category.isCustomizable) {
-                    final sizeGroup = category.optionGroups.firstWhereOrNull(
-                      (g) => g.groupType == OptionGroupType.size,
-                    );
+                        // ✅ Lógica para categorias customizáveis (Pizzas) - mostra tamanhos primeiro
+                        if (category.isCustomizable) {
+                          final sizeGroup = category.optionGroups
+                              .firstWhereOrNull(
+                                (g) => g.groupType == OptionGroupType.size,
+                              );
 
-                    // ✅ Se houver OptionGroup de tamanhos, usa ele
-                    if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
-                      final activeSizes =
-                          sizeGroup.items.where((s) => s.isActive).toList();
+                          // ✅ Se houver OptionGroup de tamanhos, usa ele
+                          if (sizeGroup != null && sizeGroup.items.isNotEmpty) {
+                            final activeSizes =
+                                sizeGroup.items
+                                    .where((s) => s.isActive)
+                                    .toList();
 
-                      if (activeSizes.isEmpty) return const SizedBox.shrink();
+                            if (activeSizes.isEmpty)
+                              return const SizedBox.shrink();
 
-                      // Calcula preço mínimo para cada tamanho
-                      final Map<int, int> minPrices = {};
-                      for (var size in activeSizes) {
-                        int minP = 99999999;
-                        bool found = false;
+                            // Calcula preço mínimo para cada tamanho
+                            final Map<int, int> minPrices = {};
+                            for (var size in activeSizes) {
+                              int minP = 99999999;
+                              bool found = false;
 
-                        for (var product in productsInCategory) {
-                          final priceObj = product.prices.firstWhereOrNull(
-                            (p) =>
-                                p.sizeOptionId.toString() == size.id.toString(),
-                          );
-                          if (priceObj != null &&
-                              priceObj.price > 0 &&
-                              priceObj.price < minP) {
-                            minP = priceObj.price;
-                            found = true;
-                          }
-                        }
-
-                        if (!found || minP == 0) {
-                          if (size.price > 0) {
-                            minP = size.price;
-                            found = true;
-                          }
-                        }
-
-                        minPrices[size.id!] = found ? minP : 0;
-                      }
-
-                      return Container(
-                        key: key,
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                              child: Text(
-                                category.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1F1F1F),
-                                ),
-                              ),
-                            ),
-                            // ✅ Lista de tamanhos como cards de produto (igual ProductItem)
-                            ...activeSizes.map((size) {
-                              final minPrice = minPrices[size.id] ?? 0;
-                              // Extrai informações do nome
-                              final slicesMatch = RegExp(
-                                r'(\d+)\s*PEDAÇOS?',
-                                caseSensitive: false,
-                              ).firstMatch(size.name);
-                              final flavorsMatch = RegExp(
-                                r'(\d+)\s*SABORES?',
-                                caseSensitive: false,
-                              ).firstMatch(size.name);
-                              final slices =
-                                  size.slices ??
-                                  (slicesMatch != null
-                                      ? int.tryParse(slicesMatch.group(1)!)
-                                      : null);
-                              final maxFlavors =
-                                  size.maxFlavors ??
-                                  (flavorsMatch != null
-                                      ? int.tryParse(flavorsMatch.group(1)!)
-                                      : null);
-
-                              // Monta descrição
-                              final description = [
-                                if (slices != null) '$slices Pedaços',
-                                if (maxFlavors != null && maxFlavors > 1)
-                                  '$maxFlavors Sabores',
-                              ].join(' • ');
-
-                              return GestureDetector(
-                                onTap: () {
-                                  if (productsInCategory.isNotEmpty) {
-                                    NavigationHelper.showProductDialog(
-                                      context: context,
-                                      product: productsInCategory.first,
-                                      category: category,
-                                      sizeId: size.id,
+                              for (var product in productsInCategory) {
+                                final priceObj = product.prices
+                                    .firstWhereOrNull(
+                                      (p) =>
+                                          p.sizeOptionId.toString() ==
+                                          size.id.toString(),
                                     );
-                                  }
-                                },
-                                behavior: HitTestBehavior.opaque,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0,
-                                    vertical: 12.0,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Informações do tamanho (igual ProductItem - texto à esquerda)
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              size.name.toUpperCase(),
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (description.isNotEmpty) ...[
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                description,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: Colors.black87,
-                                                ),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ],
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'A partir de ${minPrice.toCurrency}',
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                if (priceObj != null &&
+                                    priceObj.price > 0 &&
+                                    priceObj.price < minP) {
+                                  minP = priceObj.price;
+                                  found = true;
+                                }
+                              }
+
+                              if (!found || minP == 0) {
+                                if (size.price > 0) {
+                                  minP = size.price;
+                                  found = true;
+                                }
+                              }
+
+                              minPrices[size.id!] = found ? minP : 0;
+                            }
+
+                            return Container(
+                              key: key,
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      8,
+                                      16,
+                                      8,
+                                    ),
+                                    child: Text(
+                                      category.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1F1F1F),
                                       ),
-                                      const SizedBox(width: 16),
-                                      // Imagem à direita (igual ProductItem)
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(
-                                          8.0,
+                                    ),
+                                  ),
+                                  // ✅ Lista de tamanhos como cards de produto (igual ProductItem)
+                                  ...activeSizes.map((size) {
+                                    final minPrice = minPrices[size.id] ?? 0;
+                                    // Extrai informações do nome
+                                    final slicesMatch = RegExp(
+                                      r'(\d+)\s*PEDAÇOS?',
+                                      caseSensitive: false,
+                                    ).firstMatch(size.name);
+                                    final flavorsMatch = RegExp(
+                                      r'(\d+)\s*SABORES?',
+                                      caseSensitive: false,
+                                    ).firstMatch(size.name);
+                                    final slices =
+                                        size.slices ??
+                                        (slicesMatch != null
+                                            ? int.tryParse(
+                                              slicesMatch.group(1)!,
+                                            )
+                                            : null);
+                                    final maxFlavors =
+                                        size.maxFlavors ??
+                                        (flavorsMatch != null
+                                            ? int.tryParse(
+                                              flavorsMatch.group(1)!,
+                                            )
+                                            : null);
+
+                                    // Monta descrição
+                                    final description = [
+                                      if (slices != null) '$slices Pedaços',
+                                      if (maxFlavors != null && maxFlavors > 1)
+                                        '$maxFlavors Sabores',
+                                    ].join(' • ');
+
+                                    return GestureDetector(
+                                      onTap: () {
+                                        if (productsInCategory.isNotEmpty) {
+                                          NavigationHelper.showProductDialog(
+                                            context: context,
+                                            product: productsInCategory.first,
+                                            category: category,
+                                            sizeId: size.id,
+                                          );
+                                        }
+                                      },
+                                      behavior: HitTestBehavior.opaque,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16.0,
+                                          vertical: 12.0,
                                         ),
-                                        child: SizedBox(
-                                          width: 80,
-                                          height: 80,
-                                          child:
-                                              (size.image?.url != null ||
-                                                      category.image?.url !=
-                                                          null)
-                                                  ? Image.network(
-                                                    size.image?.url ??
-                                                        category.image!.url,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder:
-                                                        (
-                                                          _,
-                                                          __,
-                                                          ___,
-                                                        ) => Container(
+                                        child: Row(
+                                          children: [
+                                            // Informações do tamanho (igual ProductItem - texto à esquerda)
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    size.name.toUpperCase(),
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                  if (description
+                                                      .isNotEmpty) ...[
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      description,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        fontWeight:
+                                                            FontWeight.w400,
+                                                        color: Colors.black87,
+                                                      ),
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    'A partir de ${minPrice.toCurrency}',
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            // Imagem à direita (igual ProductItem)
+                                            ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8.0),
+                                              child: SizedBox(
+                                                width: 80,
+                                                height: 80,
+                                                child:
+                                                    (size.image?.url != null ||
+                                                            category
+                                                                    .image
+                                                                    ?.url !=
+                                                                null)
+                                                        ? Image.network(
+                                                          size.image?.url ??
+                                                              category
+                                                                  .image!
+                                                                  .url,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder:
+                                                              (
+                                                                _,
+                                                                __,
+                                                                ___,
+                                                              ) => Container(
+                                                                color:
+                                                                    Colors
+                                                                        .grey
+                                                                        .shade100,
+                                                                child: Icon(
+                                                                  Icons
+                                                                      .local_pizza,
+                                                                  color:
+                                                                      Colors
+                                                                          .grey
+                                                                          .shade400,
+                                                                  size: 32,
+                                                                ),
+                                                              ),
+                                                        )
+                                                        : Container(
                                                           color:
                                                               Colors
                                                                   .grey
@@ -577,108 +650,113 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                                                             size: 32,
                                                           ),
                                                         ),
-                                                  )
-                                                  : Container(
-                                                    color: Colors.grey.shade100,
-                                                    child: Icon(
-                                                      Icons.local_pizza,
-                                                      color:
-                                                          Colors.grey.shade400,
-                                                      size: 32,
-                                                    ),
-                                                  ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                    ],
+                                    );
+                                  }),
+                                ],
+                              ),
+                            );
+                          } else {
+                            // ✅ FORMATO ANTIGO: Se não houver OptionGroup de tamanhos, exibe os produtos como tamanhos
+                            return Container(
+                              key: key,
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      8,
+                                      16,
+                                      8,
+                                    ),
+                                    child: Text(
+                                      category.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1F1F1F),
+                                      ),
+                                    ),
+                                  ),
+                                  // ✅ Exibe cada produto como um tamanho
+                                  ...productsInCategory.map((product) {
+                                    final minPrice =
+                                        product.price ??
+                                        product.categoryLinks
+                                            .firstWhereOrNull(
+                                              (link) =>
+                                                  link.categoryId ==
+                                                  category.id,
+                                            )
+                                            ?.price ??
+                                        0;
+
+                                    return ProductItem(
+                                      product: product,
+                                      category: category,
+                                      onTap: () {
+                                        NavigationHelper.showProductDialog(
+                                          context: context,
+                                          product: product,
+                                          category: category,
+                                        );
+                                      },
+                                    );
+                                  }),
+                                ],
+                              ),
+                            );
+                          }
+                        }
+
+                        // ✅ Lógica padrão para produtos normais
+                        return Container(
+                          key: key,
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  8,
+                                  16,
+                                  8,
+                                ),
+                                child: Text(
+                                  category.name,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1F1F1F),
                                   ),
                                 ),
-                              );
-                            }),
-                          ],
-                        ),
-                      );
-                    } else {
-                      // ✅ FORMATO ANTIGO: Se não houver OptionGroup de tamanhos, exibe os produtos como tamanhos
-                      return Container(
-                        key: key,
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                              child: Text(
-                                category.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1F1F1F),
+                              ),
+                              ...productsInCategory.map(
+                                (product) => ProductItem(
+                                  product: product,
+                                  onTap:
+                                      () => goToProductPage(context, product),
+                                  category: category,
                                 ),
                               ),
-                            ),
-                            // ✅ Exibe cada produto como um tamanho
-                            ...productsInCategory.map((product) {
-                              final minPrice =
-                                  product.price ??
-                                  product.categoryLinks
-                                      .firstWhereOrNull(
-                                        (link) =>
-                                            link.categoryId == category.id,
-                                      )
-                                      ?.price ??
-                                  0;
-
-                              return ProductItem(
-                                product: product,
-                                category: category,
-                                onTap: () {
-                                  NavigationHelper.showProductDialog(
-                                    context: context,
-                                    product: product,
-                                    category: category,
-                                  );
-                                },
-                              );
-                            }),
-                          ],
-                        ),
-                      );
-                    }
-                  }
-
-                  // ✅ Lógica padrão para produtos normais
-                  return Container(
-                    key: key,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                          child: Text(
-                            category.name,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1F1F1F),
-                            ),
+                            ],
                           ),
-                        ),
-                        ...productsInCategory.map(
-                          (product) => ProductItem(
-                            product: product,
-                            onTap: () => goToProductPage(context, product),
-                            category: category,
-                          ),
-                        ),
-                      ],
+                        );
+                      }, childCount: widget.categories.length),
                     ),
-                  );
-                }, childCount: widget.categories.length),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
-          ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                  ],
+                ),
+              ), // Close Expanded
+            ], // Close Column children
+          ), // Close Column
           // ✅ Floating Sticky Header (Search + Categories)
           if (_showStickySearch)
             Positioned(
@@ -744,36 +822,43 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
             bottom: 0,
             left: 0,
             right: 0,
-            child: BlocBuilder<StoreCubit, StoreState>(
-              builder: (context, storeState) {
-                final canOrder =
-                    StoreStatusService.validateStoreStatus(
-                      storeState.store,
-                    ).canReceiveOrders;
+            child: SafeArea(
+              top: false,
+              child: BlocBuilder<StoreCubit, StoreState>(
+                builder: (context, storeState) {
+                  return BlocBuilder<CartCubit, CartState>(
+                    builder: (context, cartState) {
+                      return BlocBuilder<AuthCubit, AuthState>(
+                        builder: (context, authState) {
+                          final shouldShowFloatingCart =
+                              _shouldShowFloatingCart(
+                                storeState: storeState,
+                                cartState: cartState,
+                                authState: authState,
+                              );
 
-                if (!canOrder) return const SizedBox.shrink();
+                          if (shouldShowFloatingCart) {
+                            return const UnifiedCartBottomBar(
+                              variant: CartBottomBarVariant.home,
+                            );
+                          }
 
-                return BlocBuilder<CartCubit, CartState>(
-                  builder: (context, cartState) {
-                    final hasCartItems = cartState.cart.items.isNotEmpty;
+                          final canOrder =
+                              StoreStatusService.validateStoreStatus(
+                                storeState.store,
+                              ).canReceiveOrders;
 
-                    if (hasCartItems) {
-                      return const UnifiedCartBottomBar(
-                        variant: CartBottomBarVariant.home,
+                          if (!canOrder || authState.isLoggedIn) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return const _LoginPromoCard();
+                        },
                       );
-                    }
-
-                    return BlocBuilder<AuthCubit, AuthState>(
-                      builder: (context, authState) {
-                        if (authState.customer != null) {
-                          return const SizedBox.shrink();
-                        }
-                        return const _LoginPromoCard();
-                      },
-                    );
-                  },
-                );
-              },
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],

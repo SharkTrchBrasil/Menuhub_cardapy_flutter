@@ -39,6 +39,12 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     }
   }
 
+  void reset() {
+    _isCalculating = false;
+    _lastCalculationKey = null;
+    emit(const DeliveryFeeInitial(deliveryType: DeliveryType.delivery));
+  }
+
   /// Limpa o cache de cálculo para forçar um novo processamento
   void invalidateCache() {
     _lastCalculationKey = null;

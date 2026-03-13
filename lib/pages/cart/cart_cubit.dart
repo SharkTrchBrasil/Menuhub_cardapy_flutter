@@ -14,10 +14,13 @@ import 'cart_state.dart';
 class CartCubit extends Cubit<CartState> {
   final RealtimeRepository _realtimeRepository;
   StreamSubscription<List<Product>>? _productSubscription;
+  StreamSubscription<bool>? _socketReadySubscription;
 
   CartCubit(this._realtimeRepository) : super(CartState.initial()) {
-    fetchCart();
+    // ✅ CORREÇÃO: Não chama fetchCart() no construtor
+    // Isso evita o erro "Usuário não autenticado" antes do login
     _listenToProductUpdates();
+    _listenToSocketReady();
   }
 
   void _listenToProductUpdates() {
@@ -29,7 +32,41 @@ class CartCubit extends Cubit<CartState> {
     );
   }
 
+  /// ✅ CRITICAL FIX: Escuta quando Socket está pronto e tenta carregar carrinho
+  /// se ainda não foi carregado (initial) ou estava em erro (ex: "Usuário não autenticado")
+  void _listenToSocketReady() {
+    _socketReadySubscription?.cancel();
+    _socketReadySubscription = _realtimeRepository
+        .isSocketReadyController
+        .stream
+        .listen((isReady) {
+          // Tenta carregar se Socket pronto E (ainda não carregado OU em erro)
+          final shouldFetch =
+              isReady &&
+              (state.status == CartStatus.initial ||
+                  state.status == CartStatus.error);
+
+          if (shouldFetch) {
+            AppLogger.i(
+              '🔄 [CartCubit] Socket pronto! Carregando carrinho (status: ${state.status})...',
+              tag: 'CART',
+            );
+            fetchCart();
+          }
+        });
+  }
+
   void _onProductsUpdated(List<Product> updatedProducts) {
+    // ✅ CORREÇÃO: Se está em error, tenta recarregar o carrinho quando produtos atualizam
+    if (state.status == CartStatus.error) {
+      AppLogger.i(
+        '🔄 [CartCubit] Recuperando de estado error após atualização de produtos',
+        tag: 'CART',
+      );
+      fetchCart();
+      return;
+    }
+
     if (state.status != CartStatus.success || state.cart.isEmpty) {
       return;
     }
@@ -52,16 +89,37 @@ class CartCubit extends Cubit<CartState> {
   @override
   Future<void> close() {
     _productSubscription?.cancel();
+    _socketReadySubscription?.cancel();
     return super.close();
   }
 
   Future<void> fetchCart() async {
     if (state.status == CartStatus.loading) return;
-    emit(state.copyWith(status: CartStatus.loading));
+
+    // ✅ CORREÇÃO: Se está em error, limpa o erro antes de tentar novamente
+    final wasInErrorState = state.status == CartStatus.error;
+    if (wasInErrorState) {
+      AppLogger.i(
+        '🔄 [CartCubit] Tentando recuperação de estado error',
+        tag: 'CART',
+      );
+    }
+
+    AppLogger.d('🛒 [CartCubit] Iniciando fetchCart...', tag: 'CART');
+    emit(state.copyWith(status: CartStatus.loading, errorMessage: null));
     try {
       final cart = await _realtimeRepository.getOrCreateCart();
+      AppLogger.i(
+        '✅ [CartCubit] Carrinho carregado: ${cart.items.length} itens, total: R\$${(cart.total / 100).toStringAsFixed(2)}',
+        tag: 'CART',
+      );
       emit(state.copyWith(status: CartStatus.success, cart: cart));
     } catch (e) {
+      AppLogger.e(
+        '❌ [CartCubit] Erro ao carregar carrinho',
+        error: e,
+        tag: 'CART',
+      );
       emit(
         state.copyWith(status: CartStatus.error, errorMessage: e.toString()),
       );
@@ -283,6 +341,10 @@ class CartCubit extends Cubit<CartState> {
       // Mesmo com erro no backend, mantemos limpo localmente pois o pedido foi feito
       emit(state.copyWith(isUpdating: false));
     }
+  }
+
+  void resetCartLocally() {
+    emit(CartState.initial());
   }
 
   Future<void> applyCoupon(String code) async {

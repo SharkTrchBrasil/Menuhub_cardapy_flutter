@@ -9,7 +9,6 @@ import 'package:totem/pages/checkout/checkout_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:lottie/lottie.dart';
 import '../../core/utils/app_logger.dart';
 import '../../helpers/payment_method.dart';
 
@@ -95,14 +94,26 @@ class _OrderSubmissionPageState extends State<OrderSubmissionPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Animação Lottie de loading
-          SizedBox(
-            width: 300,
-            height: 300,
-            child: Lottie.asset(
-              'assets/animations/Cooking.json',
-              fit: BoxFit.contain,
-            ),
+          // ✅ Ícone de cozinha + loading (substituindo Lottie para evitar StackOverflow no Web)
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 150,
+                height: 150,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.orange.shade400,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.restaurant_menu,
+                size: 80,
+                color: Colors.orange.shade700,
+              ),
+            ],
           ),
           const SizedBox(height: 48),
           AnimatedSwitcher(

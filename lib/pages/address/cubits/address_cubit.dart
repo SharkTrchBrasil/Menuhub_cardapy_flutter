@@ -49,6 +49,10 @@ class AddressCubit extends Cubit<AddressState> {
     return super.close();
   }
 
+  void clearAddresses() {
+    emit(const AddressState());
+  }
+
   Future<void> loadAddresses(int customerId) async {
     emit(state.copyWith(status: AddressStatus.loading));
     try {

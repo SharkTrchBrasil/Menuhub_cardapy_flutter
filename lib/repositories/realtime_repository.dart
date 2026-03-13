@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show Random;
 
 import 'package:collection/collection.dart';
 import 'package:totem/models/option_group.dart';
@@ -41,6 +42,14 @@ import '../pages/address/cubits/address_cubit.dart';
 import '../services/realtime/heartbeat_manager.dart';
 import '../services/menu_visit_service.dart';
 
+/// ✅ ENTERPRISE: Status de conexão WebSocket para a UI
+enum WebSocketConnectionStatus {
+  connected,
+  connecting,
+  disconnected,
+  reconnecting,
+}
+
 class RealtimeRepository {
   RealtimeRepository();
 
@@ -49,6 +58,13 @@ class RealtimeRepository {
   static const int _maxReconnectAttempts = 10;
   static const int _baseReconnectDelay = 1000; // 1s
   static const int _maxReconnectDelay = 30000; // 30s
+
+  // ✅ ENTERPRISE: Backoff para renovação de token
+  int _tokenRenewalAttempts = 0;
+  static const int _maxTokenRenewalAttempts = 15;
+  static const int _baseTokenRenewalDelay = 2000; // 2s
+  static const int _maxTokenRenewalDelay = 120000; // 2min (cap)
+  final Random _random = Random();
 
   // Gerenciamento de token de conexão
   // ignore: unused_field
@@ -64,6 +80,22 @@ class RealtimeRepository {
 
   // Constante para chave de armazenamento
   static const String _keyStoreUrl = 'store_url';
+
+  /// ✅ ENTERPRISE: Stream de status de conexão WebSocket
+  /// Usado pelo ConnectionStatusBanner para mostrar aviso visual
+  final BehaviorSubject<WebSocketConnectionStatus> connectionStatusController =
+      BehaviorSubject<WebSocketConnectionStatus>.seeded(
+        WebSocketConnectionStatus.disconnected,
+      );
+
+  /// ✅ CRITICAL FIX: Stream que indica se o Socket está pronto para operações
+  /// Emite true quando Socket está conectado E cliente está vinculado à sessão
+  /// CartCubit e outros cubits devem aguardar isso antes de fazer requests
+  final BehaviorSubject<bool> isSocketReadyController =
+      BehaviorSubject<bool>.seeded(false);
+
+  /// Helper getter para verificar se Socket está pronto
+  bool get isSocketReady => isSocketReadyController.value;
 
   final BehaviorSubject<Store> storeController = BehaviorSubject<Store>();
 
@@ -97,6 +129,22 @@ class RealtimeRepository {
 
   final BehaviorSubject<Order> orderController = BehaviorSubject<Order>();
 
+  Map<String, dynamic> _buildSocketOptions(String connectionToken) {
+    final options =
+        IO.OptionBuilder()
+            .setTransports(<String>['websocket'])
+            .disableAutoConnect()
+            .enableForceNew()
+            .setReconnectionAttempts(_maxReconnectAttempts)
+            .setReconnectionDelay(_baseReconnectDelay)
+            .setReconnectionDelayMax(_maxReconnectDelay)
+            .setRandomizationFactor(0.1)
+            .build();
+
+    options['auth'] = <String, dynamic>{'connection_token': connectionToken};
+    return options;
+  }
+
   Future<void> initialize(String connectionToken) async {
     // ✅ Salva o token atual e o store_url para renovação futura
     _currentConnectionToken = connectionToken;
@@ -107,31 +155,17 @@ class RealtimeRepository {
     // --- ✅ 2. MUDANÇA NA CONSTRUÇÃO DA URL ---
     // O parâmetro da query agora é `connection_token`.
     // Usamos setQuery para maior confiabilidade na atualização do token.
-    _socket = IO.io(
-      apiUrl,
-      IO.OptionBuilder()
-          .setTransports(<String>[
-            'websocket',
-            'polling',
-          ]) // ✅ Fallback para polling se WebSocket falhar
-          .disableAutoConnect()
-          .enableForceNew() // ✅ ESSENCIAL: Garante que um novo socket seja criado com os novos parâmetros
-          .setQuery({'connection_token': connectionToken})
-          // ✅ ENTERPRISE: Melhor lógica de reconexão
-          .setReconnectionAttempts(_maxReconnectAttempts)
-          .setReconnectionDelay(_baseReconnectDelay)
-          .setReconnectionDelayMax(_maxReconnectDelay)
-          .setRandomizationFactor(
-            0.1,
-          ) // ✅ Adiciona variação aleatória para evitar thundering herd
-          .build(),
-    );
+    connectionStatusController.add(WebSocketConnectionStatus.connecting);
+
+    _socket = IO.io(apiUrl, _buildSocketOptions(connectionToken));
 
     // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
     _socket.on('connect', (_) async {
       AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
+      connectionStatusController.add(WebSocketConnectionStatus.connected);
+      _reconnectAttempts = 0;
 
-      // ✅ NOVO: Re-vincula o cliente se já estávamos autenticados
+      // ✅ ENTERPRISE: Re-vincula cliente após reconexão (se havia um vinculado antes)
       if (_lastLinkedCustomerId != null) {
         AppLogger.i(
           '🔄 Re-vinculando cliente $_lastLinkedCustomerId à nova sessão...',
@@ -143,12 +177,20 @@ class RealtimeRepository {
             '✅ Cliente re-vinculado com sucesso!',
             tag: 'REALTIME',
           );
+          // ✅ CRITICAL: Socket está pronto após re-vincular cliente
+          isSocketReadyController.add(true);
         } catch (e) {
-          AppLogger.e(
-            '❌ Falha ao re-vincular cliente na reconexão: $e',
-            tag: 'REALTIME',
-          );
+          AppLogger.e('❌ Falha ao re-vincular cliente: $e', tag: 'REALTIME');
+          // Socket conectou mas cliente não foi vinculado
+          isSocketReadyController.add(false);
         }
+      } else {
+        // Socket conectou mas não há cliente para vincular ainda
+        // isSocketReady permanece false até linkCustomerToSession ser chamado
+        AppLogger.d(
+          '⏳ Socket conectado, aguardando vinculação de cliente...',
+          tag: 'REALTIME',
+        );
       }
 
       // ✅ NOVO: Inicia monitoramento de heartbeat
@@ -166,10 +208,16 @@ class RealtimeRepository {
 
       // ✅ NOVO: Inicializa MenuVisitService após conexão
       _initializeMenuVisitService();
+
+      if (_reconnectionCompleter != null &&
+          !_reconnectionCompleter!.isCompleted) {
+        _reconnectionCompleter!.complete();
+      }
     });
 
     _socket.on('connect_error', (error) {
       AppLogger.d('❌ Socket.IO: Erro de conexão: $error');
+      connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
 
       // ✅ NOVO: Detecta erro de token inválido e renova automaticamente
       final errorString = error.toString().toLowerCase();
@@ -187,11 +235,12 @@ class RealtimeRepository {
     // ✅ MELHOR TRATAMENTO DE RECONEXÃO
     _socket.on('reconnect_attempt', (_) {
       _reconnectAttempts++;
+      connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
       final exponentialDelay =
           _baseReconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
       final delay = exponentialDelay.clamp(0, _maxReconnectDelay);
       AppLogger.d(
-        '???? Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...',
+        '🔄 Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...',
       );
     });
 
@@ -215,6 +264,7 @@ class RealtimeRepository {
 
     _socket.on('reconnect_failed', (_) {
       AppLogger.d('❌ Socket.IO: Falha ao reconectar após máximo de tentativas');
+      connectionStatusController.add(WebSocketConnectionStatus.disconnected);
       // ✅ NOVO: Tenta renovar token e reconectar quando todas as tentativas falharem
       AppLogger.d('🔄 Tentando renovar token de conexão e reconectar...');
       _renewConnectionTokenAndReconnect();
@@ -1717,17 +1767,37 @@ class RealtimeRepository {
   }
 
   void dispose() {
+    // Para os timers de ping e pong timeout
     _heartbeatManager?.stop();
     // ✅ FIX: Cancela timer de debounce para evitar emit após dispose
     _categoryDebounceTimer?.cancel();
     _categoryDebounceTimer = null;
     _pendingCategories = null;
+    connectionStatusController.add(WebSocketConnectionStatus.disconnected);
+    connectionStatusController.close();
     storeController.close();
     productsController.close();
     categoriesController.close();
     bannersController.close();
     orderController.close();
     _socket.disconnect();
+  }
+
+  /// ✅ ENTERPRISE: Calcula delay com exponential backoff + jitter
+  /// Evita thundering herd quando múltiplos dispositivos reconectam simultaneamente
+  int _calculateBackoffDelay() {
+    // Exponential: 2s, 4s, 8s, 16s, 32s, 64s, 120s (cap)
+    final exponentialDelay =
+        _baseTokenRenewalDelay * (1 << _tokenRenewalAttempts.clamp(0, 6));
+    final cappedDelay = exponentialDelay.clamp(0, _maxTokenRenewalDelay);
+
+    // ✅ Jitter: ±30% para evitar thundering herd
+    final jitterFactor = (_random.nextDouble() - 0.5) * 0.6; // -30% a +30%
+    final jitter = (cappedDelay * jitterFactor).toInt();
+    return (cappedDelay + jitter).clamp(
+      _baseTokenRenewalDelay,
+      _maxTokenRenewalDelay,
+    );
   }
 
   // ✅ NOVO: Renova token de conexão e reconecta automaticamente
@@ -1738,8 +1808,21 @@ class RealtimeRepository {
       return;
     }
 
+    // ✅ ENTERPRISE: Verifica limite de tentativas com backoff
+    _tokenRenewalAttempts++;
+    if (_tokenRenewalAttempts > _maxTokenRenewalAttempts) {
+      AppLogger.e(
+        '❌ Máximo de tentativas de renovação atingido ($_maxTokenRenewalAttempts). Parando reconexão.',
+      );
+      connectionStatusController.add(WebSocketConnectionStatus.disconnected);
+      return;
+    }
+
     _isRenewingToken = true;
-    AppLogger.d('🔄 Iniciando renovação automática de token de conexão...');
+    connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
+    AppLogger.d(
+      '🔄 Renovação de token (tentativa $_tokenRenewalAttempts/$_maxTokenRenewalAttempts)...',
+    );
 
     try {
       // Obtém o store_url salvo ou do ambiente
@@ -1753,6 +1836,7 @@ class RealtimeRepository {
           '❌ Store URL não encontrada. Não é possível renovar token.',
         );
         _isRenewingToken = false;
+        connectionStatusController.add(WebSocketConnectionStatus.disconnected);
         return;
       }
 
@@ -1776,6 +1860,7 @@ class RealtimeRepository {
       if (authResult.isLeft) {
         AppLogger.d('❌ Falha ao renovar token: ${authResult.left}');
         _isRenewingToken = false;
+        _scheduleTokenRenewalRetry();
         return;
       }
 
@@ -1794,20 +1879,35 @@ class RealtimeRepository {
       await _reconnectWithNewToken(newConnectionToken);
 
       _isRenewingToken = false;
+      _tokenRenewalAttempts = 0; // ✅ Reset ao conectar com sucesso
       AppLogger.d('✅ Reconexão automática concluída com sucesso');
     } catch (e, stackTrace) {
       AppLogger.d('❌ Erro ao renovar token de conexão: $e');
       AppLogger.d('📍 StackTrace: $stackTrace');
       _isRenewingToken = false;
-
-      // ✅ Retenta após delay (para casos de deploy ou rede instável)
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!_socket.connected) {
-          AppLogger.d('🔄 Retentando renovação de token após delay...');
-          _renewConnectionTokenAndReconnect();
-        }
-      });
+      _scheduleTokenRenewalRetry();
     }
+  }
+
+  /// ✅ ENTERPRISE: Agenda retry de renovação com exponential backoff + jitter
+  void _scheduleTokenRenewalRetry() {
+    if (_tokenRenewalAttempts >= _maxTokenRenewalAttempts) {
+      AppLogger.e('❌ Máximo de tentativas atingido. Reconexão encerrada.');
+      connectionStatusController.add(WebSocketConnectionStatus.disconnected);
+      return;
+    }
+
+    final delay = _calculateBackoffDelay();
+    AppLogger.d(
+      '🔄 Próxima tentativa em ${delay}ms '
+      '(tentativa $_tokenRenewalAttempts/$_maxTokenRenewalAttempts)',
+    );
+
+    Future.delayed(Duration(milliseconds: delay), () {
+      if (!_socket.connected) {
+        _renewConnectionTokenAndReconnect();
+      }
+    });
   }
 
   // ✅ NOVO: Reconecta com novo token de conexão
@@ -1824,80 +1924,7 @@ class RealtimeRepository {
       AppLogger.d('⚠️ Erro ao limpar socket anterior: $e');
     }
 
-    final apiUrl = dotenv.env['API_URL'] ?? '';
-
-    // Cria novo socket com novo token
-    _socket = IO.io(
-      apiUrl,
-      IO.OptionBuilder()
-          .setTransports(<String>['websocket', 'polling'])
-          .disableAutoConnect()
-          .enableForceNew() // ✅ ESSENCIAL para reconectar com novo token
-          .setQuery({'connection_token': newConnectionToken})
-          .setReconnectionAttempts(_maxReconnectAttempts)
-          .setReconnectionDelay(_baseReconnectDelay)
-          .setReconnectionDelayMax(_maxReconnectDelay)
-          .setRandomizationFactor(0.1)
-          .build(),
-    );
-
-    // ✅ Reconfigura listeners essenciais
-    _socket.on('connect', (_) {
-      AppLogger.d('✅ Socket.IO: Reconectado com novo token com sucesso!');
-      _reconnectAttempts = 0;
-
-      // ✅ NOVO: Inicia monitoramento de heartbeat após reconexão
-      _heartbeatManager?.stop();
-      _heartbeatManager = HeartbeatManager(
-        socket: _socket,
-        onConnectionDead: () {
-          AppLogger.w(
-            '💀 [Realtime] Heartbeat detectou conexão morta após reconexão! Tentando novamente...',
-          );
-          _renewConnectionTokenAndReconnect();
-        },
-      );
-      _heartbeatManager?.start();
-
-      if (!_reconnectionCompleter!.isCompleted) {
-        _reconnectionCompleter!.complete();
-      }
-    });
-
-    _socket.on('connect_error', (error) {
-      AppLogger.d('❌ Socket.IO: Erro ao reconectar com novo token: $error');
-      final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') ||
-          errorString.contains('expired') ||
-          errorString.contains('used connection token')) {
-        AppLogger.d(
-          '🔄 Novo token também inválido. Aguardando e tentando novamente...',
-        );
-        Future.delayed(const Duration(seconds: 3), () {
-          if (!_socket.connected) {
-            _renewConnectionTokenAndReconnect();
-          }
-        });
-      }
-    });
-
-    _socket.on('reconnect_error', (error) {
-      final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') ||
-          errorString.contains('expired') ||
-          errorString.contains('used connection token')) {
-        AppLogger.d(
-          '🔄 Token inválido durante reconexão. Renovando novamente...',
-        );
-        _renewConnectionTokenAndReconnect();
-      }
-    });
-
-    // Reconecta eventos de dados (mantém os mesmos handlers)
-    _setupDataListeners();
-
-    // Conecta
-    _socket.connect();
+    await initialize(newConnectionToken);
 
     // Aguarda conexão ou timeout
     try {
@@ -1909,105 +1936,9 @@ class RealtimeRepository {
       );
     } catch (e) {
       AppLogger.d('❌ Timeout ou erro ao reconectar: $e');
-      // Retenta após delay
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!_socket.connected) {
-          _renewConnectionTokenAndReconnect();
-        }
-      });
+      // ✅ ENTERPRISE: Usa backoff em vez de delay fixo
+      _scheduleTokenRenewalRetry();
     }
-  }
-
-  // ✅ NOVO: Reconfigura listeners de dados (evita duplicação)
-  void _setupDataListeners() {
-    // Reconecta listeners essenciais de dados
-    _socket.on('initial_state_loaded', (data) {
-      AppLogger.d('🎉 Estado inicial carregado recebido após reconexão!');
-      // ✅ Reutiliza a mesma lógica do handler principal
-      try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
-        final bool isNewMenuFormat =
-            payload.containsKey('data') &&
-            payload['data'] is Map &&
-            (payload['data'] as Map).containsKey('menu');
-        if (isNewMenuFormat) {
-          _processNewMenuFormat(payload);
-        } else {
-          _processOldMenuFormat(payload);
-        }
-      } catch (e, stackTrace) {
-        AppLogger.e('❌ Erro ao processar initial_state após reconexão: $e');
-        AppLogger.e('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    // ✅ ADICIONADO: Listener para store_profile_updated (logo/banner) após reconexão
-    _socket.on('store_profile_updated', (data) {
-      AppLogger.d('👤 [TOTEM] store_profile_updated recebido (após reconexão)');
-      try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) return;
-
-        final profile = payload['profile'] as Map<String, dynamic>?;
-        if (profile == null) return;
-
-        ImageModel? updatedImage;
-        ImageModel? updatedBanner;
-
-        if (profile['image_path'] != null &&
-            (profile['image_path'] as String).isNotEmpty) {
-          updatedImage = ImageModel(url: profile['image_path'] as String);
-        }
-
-        if (profile['banner_path'] != null &&
-            (profile['banner_path'] as String).isNotEmpty) {
-          updatedBanner = ImageModel(url: profile['banner_path'] as String);
-        }
-
-        final updatedStore = currentStore.copyWith(
-          name: profile['name'] ?? currentStore.name,
-          phone: profile['phone'] ?? currentStore.phone,
-          description: profile['description'] ?? currentStore.description,
-          urlSlug: profile['url_slug'] ?? currentStore.urlSlug,
-          zip_code: profile['zip_code'] ?? currentStore.zip_code,
-          street: profile['street'] ?? currentStore.street,
-          number: profile['number'] ?? currentStore.number,
-          neighborhood: profile['neighborhood'] ?? currentStore.neighborhood,
-          complement: profile['complement'] ?? currentStore.complement,
-          city: profile['city'] ?? currentStore.city,
-          state: profile['state'] ?? currentStore.state,
-          instagram: profile['instagram'] ?? currentStore.instagram,
-          facebook: profile['facebook'] ?? currentStore.facebook,
-          tiktok: profile['tiktok'] ?? currentStore.tiktok,
-          image: updatedImage ?? currentStore.image,
-          banner: updatedBanner ?? currentStore.banner,
-        );
-
-        storeController.add(updatedStore);
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar store_profile_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    // ✅ CORREÇÃO: Usa o handler unificado
-    _socket.on('products_updated', (data) => _handleProductsUpdated(data));
-
-    _socket.on('order_update', (data) {
-      AppLogger.d('🛒 Atualização de pedido recebida');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final Order order = Order.fromJson(payload);
-        orderController.add(order);
-        getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
-      } catch (e) {
-        AppLogger.e('❌ Erro ao processar order_update: $e');
-      }
-    });
   }
 
   // ✅ Processa formato antigo de menu (compatibilidade com payload sem data.menu)
@@ -2297,6 +2228,12 @@ class RealtimeRepository {
       {'customer_id': customerId},
       ack: (data) {
         if (data != null && data['success'] == true) {
+          // ✅ CRITICAL: Socket está pronto após vincular cliente
+          isSocketReadyController.add(true);
+          AppLogger.success(
+            '✅ Cliente vinculado à sessão. Socket pronto para operações!',
+            tag: 'REALTIME',
+          );
           completer.complete();
         } else {
           completer.completeError(

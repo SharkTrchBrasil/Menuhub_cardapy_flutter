@@ -4,13 +4,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:totem/controllers/customer_controller.dart';
+import 'package:totem/core/di.dart';
 import 'package:totem/models/customer.dart';
 import 'package:totem/repositories/customer_repository.dart';
+import 'package:totem/repositories/auth_repository.dart';
 import 'package:totem/core/utils/app_logger.dart';
 
 import 'package:totem/cubit/orders_cubit.dart';
 
 import '../pages/address/cubits/address_cubit.dart';
+import '../pages/address/cubits/delivery_fee_cubit.dart';
 import '../pages/cart/cart_cubit.dart';
 import '../repositories/realtime_repository.dart';
 
@@ -79,13 +82,21 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> checkInitialAuthStatus() async {
     print('🚀 [DEBUG_AUTH] checkInitialAuthStatus started');
 
+    final initialCustomer = customerController.value;
+
     // No Web, sempre verificamos se acabamos de voltar de um redirect de login
-    if (kIsWeb) {
+    // APENAS se não houver um customer logado localmente
+    if (kIsWeb && initialCustomer == null) {
       print('🚀 [DEBUG_AUTH] Web detected. Checking for redirect result...');
       await _handleRedirectResult();
+
+      // Se _handleRedirectResult encontrou login, o controller terá sido atualizado e _processFirebaseUser chamado,
+      // então nós abortamos aqui para não duplicar o fluxo abaixo.
+      if (customerController.value != null) {
+        return;
+      }
     }
 
-    final initialCustomer = customerController.value;
     if (initialCustomer != null) {
       try {
         try {
@@ -101,7 +112,18 @@ class AuthCubit extends Cubit<AuthState> {
         emit(
           state.copyWith(status: AuthStatus.success, customer: initialCustomer),
         );
-        cartCubit.fetchCart();
+
+        // ✅ CRITICAL FIX: Aguarda Socket estar pronto antes de fetchCart
+        // Evita erro "Usuário não autenticado na sessão" quando Socket ainda não conectou
+        if (realtimeRepository.isSocketReady) {
+          cartCubit.fetchCart();
+        } else {
+          print(
+            '⏳ [AuthCubit] Socket não está pronto. CartCubit irá auto-retry quando conectar.',
+          );
+          // CartCubit tem listener que tentará novamente quando Socket ficar pronto
+        }
+
         addressCubit.loadAddresses(initialCustomer.id!);
         ordersCubit.loadOrders(initialCustomer.id!);
         await _processPendingCartItem();
@@ -565,12 +587,26 @@ class AuthCubit extends Cubit<AuthState> {
     } catch (e) {
       AppLogger.d('⚠️ Erro ao fazer logout do Firebase: $e');
     }
+
+    try {
+      await getIt<AuthRepository>().logoutCustomer();
+    } catch (e) {
+      AppLogger.d('⚠️ Erro ao limpar tokens do customer: $e');
+    }
+
+    try {
+      await PendingCartService.clearPendingCartItem();
+    } catch (e) {
+      AppLogger.d('⚠️ Erro ao limpar payload pendente: $e');
+    }
+
     customerController.clearCustomer();
     realtimeRepository
         .clearCustomer(); // ✅ NOVO: Limpa ID vinculado no repositório
-    cartCubit.clearCart();
+    cartCubit.resetCartLocally();
+    addressCubit.clearAddresses();
+    getIt<DeliveryFeeCubit>().reset();
     ordersCubit.clearOrders(); // ✅ NOVO: Limpa pedidos
-    //  addressCubit.clearAddresses();
     emit(const AuthState(status: AuthStatus.unauthenticated));
   }
 }
