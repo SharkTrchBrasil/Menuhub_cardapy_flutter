@@ -2,6 +2,63 @@
 <html>
 
 <head>
+  <!-- ✅ PREVIEW SOCIAL: Injeta meta tags dinamicamente via POST /auth/subdomain -->
+  <script>
+    (async function() {
+      try {
+        const slug = window.location.hostname.split('.')[0];
+        if (!slug || slug === 'www' || slug === 'localhost') return;
+
+        const apiUrl = window.location.hostname.includes('localhost') 
+          ? 'http://localhost:8000'
+          : 'https://api.menuhub.com.br';
+
+        const res = await fetch(`${apiUrl}/app/auth/subdomain`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_url: slug, totem_token: '' })
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const name = data.store_name || 'Cardápio Digital';
+        const desc = data.store_description || ('Veja o cardápio de ' + name + ' e faça seu pedido online!');
+        const url = window.location.href;
+        const image = data.logo_url || data.banner_url || '';
+
+        document.title = name;
+
+        const metas = [
+          ['og:title', name],
+          ['og:description', desc],
+          ['og:url', url],
+          ['og:type', 'website'],
+          ['og:site_name', 'MenuHub'],
+          ['twitter:card', 'summary_large_image'],
+          ['twitter:title', name],
+          ['twitter:description', desc],
+        ];
+
+        if (image) {
+          metas.push(['og:image', image]);
+          metas.push(['og:image:width', '1200']);
+          metas.push(['og:image:height', '630']);
+          metas.push(['twitter:image', image]);
+        }
+
+        metas.forEach(([prop, content]) => {
+          const tag = document.createElement('meta');
+          tag.setAttribute('property', prop);
+          tag.setAttribute('content', content);
+          document.head.appendChild(tag);
+        });
+      } catch(e) {
+        console.error('Erro ao carregar meta tags:', e);
+      }
+    })();
+  </script>
+
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
