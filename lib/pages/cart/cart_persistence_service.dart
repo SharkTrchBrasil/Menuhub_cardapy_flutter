@@ -1,18 +1,18 @@
 // lib/pages/cart/cart_persistence_service.dart
 import 'dart:convert';
-import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:totem/models/cart.dart';
 import 'package:totem/models/cart_item.dart';
+import 'package:totem/models/product.dart';
 
 class CartPersistenceService {
-  static const String _boxName = 'cart_storage';
   static const String _cartKey = 'current_cart';
   static const String _lastSyncKey = 'last_sync';
 
   /// Salva o carrinho localmente
   static Future<void> saveCart(Cart cart) async {
     try {
-      final box = await Hive.openBox(_boxName);
+      final prefs = await SharedPreferences.getInstance();
       final cartJson = {
         'id': cart.id,
         'status': cart.status,
@@ -22,9 +22,14 @@ class CartPersistenceService {
         'subtotal': cart.subtotal,
         'discount': cart.discount,
         'total': cart.total,
+        'deliveryFee': cart.deliveryFee,
+        'deliveryDiscount': cart.deliveryDiscount,
+        'finalDeliveryFee': cart.finalDeliveryFee,
+        'promotionMessage': cart.promotionMessage,
+        'isFreeDelivery': cart.isFreeDelivery,
       };
-      await box.put(_cartKey, jsonEncode(cartJson));
-      await box.put(_lastSyncKey, DateTime.now().toIso8601String());
+      await prefs.setString(_cartKey, jsonEncode(cartJson));
+      await prefs.setString(_lastSyncKey, DateTime.now().toIso8601String());
     } catch (e) {
       print('Erro ao salvar carrinho: $e');
     }
@@ -33,15 +38,37 @@ class CartPersistenceService {
   /// Carrega o carrinho salvo localmente
   static Future<Cart?> loadCart() async {
     try {
-      final box = await Hive.openBox(_boxName);
-      final cartJsonString = box.get(_cartKey);
+      final prefs = await SharedPreferences.getInstance();
+      final cartJsonString = prefs.getString(_cartKey);
       if (cartJsonString == null) return null;
 
       final cartJson = jsonDecode(cartJsonString) as Map<String, dynamic>;
-      
-      // Não podemos recriar os produtos completos, então retorna null
-      // O carrinho será recriado pelo servidor
-      return null;
+
+      // Reconstrói os itens do carrinho
+      final itemsList = cartJson['items'] as List<dynamic>;
+      final items =
+          itemsList
+              .map(
+                (itemJson) =>
+                    _cartItemFromJson(itemJson as Map<String, dynamic>),
+              )
+              .toList();
+
+      return Cart(
+        id: cartJson['id'] as int,
+        status: cartJson['status'] as String,
+        couponCode: cartJson['couponCode'] as String?,
+        observation: cartJson['observation'] as String?,
+        items: items,
+        subtotal: cartJson['subtotal'] as int,
+        discount: (cartJson['discount'] as int?) ?? 0,
+        total: cartJson['total'] as int,
+        deliveryFee: (cartJson['deliveryFee'] as int?) ?? 0,
+        deliveryDiscount: (cartJson['deliveryDiscount'] as int?) ?? 0,
+        finalDeliveryFee: (cartJson['finalDeliveryFee'] as int?) ?? 0,
+        promotionMessage: cartJson['promotionMessage'] as String?,
+        isFreeDelivery: (cartJson['isFreeDelivery'] as bool?) ?? false,
+      );
     } catch (e) {
       print('Erro ao carregar carrinho: $e');
       return null;
@@ -51,9 +78,9 @@ class CartPersistenceService {
   /// Limpa o carrinho salvo
   static Future<void> clearCart() async {
     try {
-      final box = await Hive.openBox(_boxName);
-      await box.delete(_cartKey);
-      await box.delete(_lastSyncKey);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cartKey);
+      await prefs.remove(_lastSyncKey);
     } catch (e) {
       print('Erro ao limpar carrinho: $e');
     }
@@ -62,8 +89,8 @@ class CartPersistenceService {
   /// Verifica se há um carrinho salvo
   static Future<bool> hasSavedCart() async {
     try {
-      final box = await Hive.openBox(_boxName);
-      return box.get(_cartKey) != null;
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.containsKey(_cartKey);
     } catch (e) {
       return false;
     }
@@ -76,17 +103,76 @@ class CartPersistenceService {
       'quantity': item.quantity,
       'note': item.note,
       'sizeName': item.sizeName,
-      'variants': item.variants.map((v) => {
-        'variantId': v.variantId,
-        'name': v.name,
-        'options': v.options.map((o) => {
-          'variantOptionId': o.variantOptionId,
-          'quantity': o.quantity,
-          'name': o.name,
-          'price': o.price,
-        }).toList(),
-      }).toList(),
+      'variants':
+          item.variants
+              .map(
+                (v) => {
+                  'variantId': v.variantId,
+                  'name': v.name,
+                  'options':
+                      v.options
+                          .map(
+                            (o) => {
+                              'variantOptionId': o.variantOptionId,
+                              'quantity': o.quantity,
+                              'name': o.name,
+                              'price': o.price,
+                            },
+                          )
+                          .toList(),
+                },
+              )
+              .toList(),
     };
   }
-}
 
+  static CartItem _cartItemFromJson(Map<String, dynamic> json) {
+    // Nota: Product será um placeholder simplificado, pois não temos dados completos
+    // Em um cenário real, seria necessário buscar os dados completos do servidor
+    final productJson = json['product'] as Map<String, dynamic>?;
+    final product = Product(
+      id: productJson?['id'] as int? ?? json['productId'] as int,
+      name: productJson?['name'] as String? ?? 'Produto não disponível',
+      description: productJson?['description'] as String? ?? '',
+      price: productJson?['price'] as int? ?? 0,
+      available: productJson?['available'] as bool? ?? true,
+    );
+
+    final variantsList =
+        (json['variants'] as List<dynamic>?)
+            ?.map(
+              (v) => CartItemVariant(
+                variantId: v['variantId'] as int?,
+                optionGroupId: v['option_group_id'] as int?,
+                groupType: v['group_type'] as String?,
+                name: v['name'] as String,
+                options:
+                    (v['options'] as List<dynamic>)
+                        .map(
+                          (o) => CartItemVariantOption(
+                            variantOptionId: o['variant_option_id'] as int?,
+                            optionItemId: o['option_item_id'] as int?,
+                            quantity: o['quantity'] as int,
+                            name: o['name'] as String,
+                            price: o['price'] as int,
+                          ),
+                        )
+                        .toList(),
+              ),
+            )
+            .toList() ??
+        [];
+
+    return CartItem(
+      id: json['id'] as int,
+      product: product,
+      quantity: json['quantity'] as int,
+      note: json['note'] as String?,
+      variants: variantsList,
+      unitPrice: json['unit_price'] as int? ?? 0,
+      totalPrice: json['total_price'] as int? ?? 0,
+      sizeName: json['size_name'] as String?,
+      sizeImageUrl: json['size_image_url'] as String?,
+    );
+  }
+}

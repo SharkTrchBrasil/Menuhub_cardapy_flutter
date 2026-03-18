@@ -2,18 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/widgets/ds_primary_button.dart';
 import 'package:totem/widgets/app_text_field.dart';
 
 class EmailAuthPage extends StatefulWidget {
   final bool isSignUp;
-  
-  const EmailAuthPage({
-    super.key,
-    this.isSignUp = false,
-  });
+
+  const EmailAuthPage({super.key, this.isSignUp = false});
 
   @override
   State<EmailAuthPage> createState() => _EmailAuthPageState();
@@ -38,9 +34,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isSignUp ? 'Criar conta' : 'Entrar'),
-      ),
+      appBar: AppBar(title: Text(widget.isSignUp ? 'Criar conta' : 'Entrar')),
       body: BlocListener<AuthCubit, AuthState>(
         listener: (context, state) {
           if (state.status == AuthStatus.success) {
@@ -75,40 +69,40 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                  AppTextField(
-                    controller: _emailController,
-                    title: 'E-mail',
-                    hint: 'seu@email.com',
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value == null || !value.contains('@')) {
-                        return 'E-mail inválido';
+                AppTextField(
+                  controller: _emailController,
+                  title: 'E-mail',
+                  hint: 'seu@email.com',
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || !value.contains('@')) {
+                      return 'E-mail inválido';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  controller: _passwordController,
+                  title: 'Senha',
+                  hint: 'Digite sua senha',
+                  isHidden: true,
+                  validator: (value) {
+                    if (value == null || value.length < 6) {
+                      return 'Senha deve ter no mínimo 6 caracteres';
+                    }
+                    if (widget.isSignUp) {
+                      // Validações mais rigorosas para sign up
+                      if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
+                        return 'Senha deve conter pelo menos uma letra';
                       }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  AppTextField(
-                    controller: _passwordController,
-                    title: 'Senha',
-                    hint: 'Digite sua senha',
-                    isHidden: true,
-                    validator: (value) {
-                      if (value == null || value.length < 6) {
-                        return 'Senha deve ter no mínimo 6 caracteres';
+                      if (!RegExp(r'[0-9]').hasMatch(value)) {
+                        return 'Senha deve conter pelo menos um número';
                       }
-                      if (widget.isSignUp) {
-                        // Validações mais rigorosas para sign up
-                        if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
-                          return 'Senha deve conter pelo menos uma letra';
-                        }
-                        if (!RegExp(r'[0-9]').hasMatch(value)) {
-                          return 'Senha deve conter pelo menos um número';
-                        }
-                      }
-                      return null;
-                    },
-                  ),
+                    }
+                    return null;
+                  },
+                ),
                 if (widget.isSignUp) ...[
                   const SizedBox(height: 16),
                   AppTextField(
@@ -148,7 +142,11 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(widget.isSignUp ? 'Já tem uma conta? ' : 'Não tem uma conta? '),
+                    Text(
+                      widget.isSignUp
+                          ? 'Já tem uma conta? '
+                          : 'Não tem uma conta? ',
+                    ),
                     TextButton(
                       onPressed: () {
                         setState(() {
@@ -187,4 +185,3 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
     }
   }
 }
-

@@ -10,6 +10,7 @@ import 'order_detail_page.dart';
 
 import '../../core/di.dart';
 import '../../cubit/auth_cubit.dart';
+import '../../cubit/store_cubit.dart';
 import '../../repositories/customer_repository.dart';
 import '../../repositories/order_repository.dart';
 
@@ -128,19 +129,37 @@ class OrdersTabPage extends StatelessWidget {
   }
 
   Widget _buildInfoChips() {
+    final store = context.read<StoreCubit>().state.store;
+    if (store == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Tempo de entrega
+    String deliveryTime = '30-60min';
+    if (store.storeOperationConfig?.deliveryPrepMin != null && 
+        store.storeOperationConfig?.deliveryPrepMax != null) {
+      deliveryTime = '${store.storeOperationConfig!.deliveryPrepMin}-${store.storeOperationConfig!.deliveryPrepMax}min';
+    }
+
+    // Pedido mínimo
+    String minOrder = 'R$ 20,00';
+    if (store.storeOperationConfig?.minOrderAmount != null) {
+      minOrder = 'R\$ ${(store.storeOperationConfig!.minOrderAmount / 100.0).toStringAsFixed(2).replaceAll('.', ',')}';
+    }
+
     return Row(
       children: [
         _buildInfoChip(
           icon: Icons.access_time,
           label: 'Tempo de Entrega',
-          value: '30-60min',
+          value: deliveryTime,
           color: Colors.orange,
         ),
         const SizedBox(width: 8),
         _buildInfoChip(
           icon: Icons.shopping_cart,
           label: 'Pedido Mínimo',
-          value: 'R\$ 20,00',
+          value: minOrder,
           color: Colors.red,
         ),
       ],
@@ -333,7 +352,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm', 'pt_BR');
     final total = order.totalAmount;
 
     return Card(

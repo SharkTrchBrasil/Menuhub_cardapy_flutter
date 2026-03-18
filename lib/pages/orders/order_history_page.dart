@@ -4,11 +4,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:totem/core/helpers/side_panel.dart';
-import 'package:totem/cubit/store_cubit.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:totem/models/order.dart';
-import 'package:totem/pages/order/order_details_page.dart';
+import 'package:totem/pages/orders/order_detail_page.dart';
+import 'package:totem/pages/orders/widgets/orders_content.dart';
 import 'package:totem/pages/profile/profile_cubit.dart';
+import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/core/helpers/side_panel.dart';
 import 'package:totem/core/services/timezone_service.dart';
 
 import '../../core/di.dart';
@@ -336,7 +339,7 @@ class _InProgressOrderCard extends StatelessWidget {
 
           const SizedBox(height: 8),
           LinearProgressIndicator(
-            value: 0.4, // TODO: Calcular progresso real
+            value: _getProgressValue(order.orderStatus),
             backgroundColor: Colors.grey[200],
             valueColor: AlwaysStoppedAnimation(Theme.of(context).primaryColor),
             borderRadius: BorderRadius.circular(4),
@@ -350,9 +353,7 @@ class _InProgressOrderCard extends StatelessWidget {
               Expanded(
                 child: TextButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Ajuda em breve!')),
-                    );
+                    _showHelpDialog(context);
                   },
                   child: Text(
                     'Ajuda',
@@ -409,7 +410,7 @@ class _InProgressOrderCard extends StatelessWidget {
   void _openOrderDetails(BuildContext context, Order order) {
     showResponsiveSidePanel(
       context,
-      OrderDetailsPage(order: order, showActions: false, showRating: false),
+      OrderDetailPage(order: order),
       useFullScreenOnDesktop: false,
     );
   }
@@ -552,9 +553,7 @@ class _HistoryOrderCard extends StatelessWidget {
               Expanded(
                 child: TextButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Ajuda em breve!')),
-                    );
+                    _showHelpDialog(context);
                   },
                   child: Text(
                     'Ajuda',
@@ -611,10 +610,8 @@ class _HistoryOrderCard extends StatelessWidget {
   void _openOrderDetails(BuildContext context, Order order) {
     showResponsiveSidePanel(
       context,
-      OrderDetailsPage(
+      OrderDetailPage(
         order: order,
-        showActions: false,
-        showRating: true, // Permite avaliar no histórico
       ),
       useFullScreenOnDesktop: false,
     );
@@ -697,4 +694,68 @@ IconData _getStatusIcon(String status) {
     default:
       return Icons.info_outline;
   }
+}
+
+double _getProgressValue(String status) {
+  switch (status.toLowerCase()) {
+    case 'pending':
+      return 0.15;
+    case 'confirmed':
+      return 0.30;
+    case 'preparing':
+      return 0.50;
+    case 'ready':
+      return 0.75;
+    case 'dispatched':
+    case 'on_route':
+    case 'out_for_delivery':
+      return 0.90;
+    case 'delivered':
+    case 'finalized':
+    case 'concluded':
+      return 1.0;
+    case 'canceled':
+    case 'cancelled':
+      return 0.0;
+    default:
+      return 0.15;
+  }
+}
+
+void _showHelpDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder:
+        (context) => AlertDialog(
+          title: const Text('Ajuda - Histórico de Pedidos'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Seções:', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('• Em andamento: Pedidos em preparo ou entrega'),
+              Text('• Histórico: Pedidos finalizados ou cancelados'),
+              SizedBox(height: 16),
+              Text(
+                'Precisa de ajuda?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text('• Fale com a loja: (11) 9999-9999'),
+              Text('• E-mail: suporte@menuhub.com.br'),
+              SizedBox(height: 16),
+              Text('Dicas:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('• Clique em um pedido para ver detalhes'),
+              Text('• Use os filtros para organizar por status'),
+              Text('• Arraste para atualizar a lista'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+  );
 }

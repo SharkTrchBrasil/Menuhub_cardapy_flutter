@@ -4,6 +4,8 @@ part of 'checkout_cubit.dart';
 enum CheckoutStatus { initial, loading, success, error }
 
 class CheckoutState extends Equatable {
+  static const _undefined = Object();
+
   const CheckoutState({
     this.status = CheckoutStatus.initial,
     this.selectedPaymentMethod,
@@ -13,7 +15,7 @@ class CheckoutState extends Equatable {
     this.finalOrder,
     this.isScheduled = false,
     this.scheduledFor,
-    this.errorMessage, // ✅ 1. Adicione a propriedade aqui
+    this.errorMessage, // 1. Adicione a propriedade aqui
   });
 
   final CheckoutStatus status;
@@ -26,7 +28,6 @@ class CheckoutState extends Equatable {
   final DateTime? scheduledFor;
   final String? errorMessage;
 
-
   CheckoutState copyWith({
     CheckoutStatus? status,
     PlatformPaymentMethod? selectedPaymentMethod,
@@ -36,18 +37,22 @@ class CheckoutState extends Equatable {
     Order? finalOrder,
     bool? isScheduled,
     DateTime? scheduledFor,
-    String? errorMessage, // ✅ 2. Adicione o parâmetro aqui
+    Object? errorMessage = _undefined, // ✅ 2. Adicione o parâmetro aqui
   }) {
     return CheckoutState(
       status: status ?? this.status,
-      selectedPaymentMethod: selectedPaymentMethod ?? this.selectedPaymentMethod,
+      selectedPaymentMethod:
+          selectedPaymentMethod ?? this.selectedPaymentMethod,
       needsChange: needsChange ?? this.needsChange,
       changeFor: changeFor ?? this.changeFor,
       observation: observation ?? this.observation,
       finalOrder: finalOrder ?? this.finalOrder,
       isScheduled: isScheduled ?? this.isScheduled,
       scheduledFor: scheduledFor ?? this.scheduledFor,
-      errorMessage: errorMessage, // ✅ 3. Adicione a atribuição aqui
+      errorMessage:
+          errorMessage == _undefined
+              ? this.errorMessage
+              : errorMessage as String?, // ✅ 3. Adicione a atribuição aqui
     );
   }
 

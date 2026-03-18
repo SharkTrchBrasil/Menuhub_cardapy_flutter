@@ -446,7 +446,15 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
             final starIndex = index + 1;
             final isSelected = starIndex <= _orderRating;
             return GestureDetector(
-              onTap: () => setState(() => _orderRating = starIndex),
+              onTap: () {
+                setState(() {
+                  // Se a nota mudou, limpa as tags selecionadas
+                  if (_orderRating != starIndex) {
+                    _selectedTags.clear();
+                  }
+                  _orderRating = starIndex;
+                });
+              },
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Icon(
@@ -599,7 +607,15 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
             final starIndex = index + 1;
             final isSelected = starIndex <= _deliveryRating;
             return GestureDetector(
-              onTap: () => setState(() => _deliveryRating = starIndex),
+              onTap: () {
+                setState(() {
+                  // Se a nota mudou, limpa as tags selecionadas
+                  if (_deliveryRating != starIndex) {
+                    _deliverySelectedTags.clear();
+                  }
+                  _deliveryRating = starIndex;
+                });
+              },
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Icon(

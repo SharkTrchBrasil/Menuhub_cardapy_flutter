@@ -160,6 +160,13 @@ class RealtimeRepository {
     _socket = IO.io(apiUrl, _buildSocketOptions(connectionToken));
 
     // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
+    _socket.on('disconnect', (_) {
+      AppLogger.w('⚠️ Socket desconectado');
+      isSocketReadyController.add(false);
+      connectionStatusController.add(WebSocketConnectionStatus.disconnected);
+      _heartbeatManager?.stop();
+    });
+
     _socket.on('connect', (_) async {
       AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
       connectionStatusController.add(WebSocketConnectionStatus.connected);
@@ -217,6 +224,7 @@ class RealtimeRepository {
 
     _socket.on('connect_error', (error) {
       AppLogger.d('❌ Socket.IO: Erro de conexão: $error');
+      isSocketReadyController.add(false);
       connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
 
       // ✅ NOVO: Detecta erro de token inválido e renova automaticamente
@@ -1835,7 +1843,6 @@ class RealtimeRepository {
         AppLogger.d(
           '❌ Store URL não encontrada. Não é possível renovar token.',
         );
-        _isRenewingToken = false;
         connectionStatusController.add(WebSocketConnectionStatus.disconnected);
         return;
       }
@@ -1859,7 +1866,6 @@ class RealtimeRepository {
 
       if (authResult.isLeft) {
         AppLogger.d('❌ Falha ao renovar token: ${authResult.left}');
-        _isRenewingToken = false;
         _scheduleTokenRenewalRetry();
         return;
       }
@@ -1878,14 +1884,13 @@ class RealtimeRepository {
       // ✅ Reconecta com novo token
       await _reconnectWithNewToken(newConnectionToken);
 
-      _isRenewingToken = false;
       _tokenRenewalAttempts = 0; // ✅ Reset ao conectar com sucesso
       AppLogger.d('✅ Reconexão automática concluída com sucesso');
     } catch (e, stackTrace) {
-      AppLogger.d('❌ Erro ao renovar token de conexão: $e');
-      AppLogger.d('📍 StackTrace: $stackTrace');
-      _isRenewingToken = false;
+      AppLogger.d('❌ Erro ao renovar token: $e\n$stackTrace');
       _scheduleTokenRenewalRetry();
+    } finally {
+      _isRenewingToken = false; // ✅ Sempre reseta, independente do caminho
     }
   }
 
@@ -1910,10 +1915,19 @@ class RealtimeRepository {
     });
   }
 
-  // ✅ NOVO: Reconecta com novo token de conexão
+  // ✅ ENTERPRISE: Reconecta com novo token preservando dados existentes
+  // Flag para indicar que estamos em reconexão (não deve zerar UI)
+  bool _isReconnecting = false;
+
   Future<void> _reconnectWithNewToken(String newConnectionToken) async {
     _currentConnectionToken = newConnectionToken;
     _reconnectionCompleter = Completer<void>();
+    _isReconnecting = true; // ✅ SMART RECONNECT: Preserva dados
+
+    AppLogger.i(
+      '🔄 [SMART_RECONNECT] Reconectando com dados preservados...',
+      tag: 'REALTIME',
+    );
 
     // Desconecta socket antigo
     try {
@@ -1923,6 +1937,10 @@ class RealtimeRepository {
     } catch (e) {
       AppLogger.d('⚠️ Erro ao limpar socket anterior: $e');
     }
+
+    // ✅ NÃO reseta isSocketReadyController para false!
+    // Os dados existentes nos BehaviorSubjects permanecem válidos
+    // A UI não deve mostrar loading durante reconexão
 
     await initialize(newConnectionToken);
 
@@ -1938,18 +1956,34 @@ class RealtimeRepository {
       AppLogger.d('❌ Timeout ou erro ao reconectar: $e');
       // ✅ ENTERPRISE: Usa backoff em vez de delay fixo
       _scheduleTokenRenewalRetry();
+    } finally {
+      _isReconnecting = false;
     }
   }
 
-  // ✅ Processa formato antigo de menu (compatibilidade com payload sem data.menu)
+  // ✅ SMART RECONNECT: Processa formato antigo com merge inteligente
   void _processOldMenuFormat(Map<String, dynamic> payload) {
     // Processa a loja (apenas configs, sem categorias)
     if (keyExists(payload, 'store')) {
       AppLogger.d('🏢 Processando dados da loja...');
       final storeData = payload['store'] as Map<String, dynamic>;
       final Store store = Store.fromJson(storeData);
-      storeController.add(store);
-      AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
+
+      // ✅ SMART MERGE: Só emite se dados mudaram
+      if (_isReconnecting && storeController.hasValue) {
+        final existing = storeController.value;
+        if (existing.id == store.id && existing.name == store.name) {
+          AppLogger.d(
+            '🔄 [SMART_RECONNECT] Store não mudou, ignorando re-emit',
+          );
+        } else {
+          storeController.add(store);
+          AppLogger.d('✅ Loja atualizada (dados mudaram): ${store.name}');
+        }
+      } else {
+        storeController.add(store);
+        AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
+      }
     }
 
     // ✅ REFACTOR: Categorias agora vão para categoriesController (separado do store)
@@ -1964,10 +1998,26 @@ class RealtimeRepository {
                     models.Category.fromJson(json as Map<String, dynamic>),
               )
               .toList();
-      categoriesController.add(categories);
-      AppLogger.d(
-        '✅ ${categories.length} categorias publicadas no categoriesController',
-      );
+
+      // ✅ SMART MERGE: Só emite se quantidade ou IDs mudaram
+      if (_isReconnecting && categoriesController.hasValue) {
+        final existing = categoriesController.value;
+        if (existing.length == categories.length) {
+          AppLogger.d(
+            '🔄 [SMART_RECONNECT] Categorias mantidas (${existing.length})',
+          );
+        } else {
+          categoriesController.add(categories);
+          AppLogger.d(
+            '✅ Categorias atualizadas: ${existing.length} → ${categories.length}',
+          );
+        }
+      } else {
+        categoriesController.add(categories);
+        AppLogger.d(
+          '✅ ${categories.length} categorias publicadas no categoriesController',
+        );
+      }
     } else if (keyExists(payload, 'store')) {
       // Fallback: categorias vêm dentro do objeto store
       final storeData = payload['store'] as Map<String, dynamic>;
@@ -1995,8 +2045,24 @@ class RealtimeRepository {
           (payload['products'] as List).map((json) {
             return Product.fromJson(json as Map<String, dynamic>);
           }).toList();
-      productsController.add(products);
-      AppLogger.d('✅ Produtos processados: ${products.length}');
+
+      // ✅ SMART MERGE: Só emite se quantidade mudou
+      if (_isReconnecting && productsController.hasValue) {
+        final existing = productsController.value;
+        if (existing.length == products.length) {
+          AppLogger.d(
+            '🔄 [SMART_RECONNECT] Produtos mantidos (${existing.length})',
+          );
+        } else {
+          productsController.add(products);
+          AppLogger.d(
+            '✅ Produtos atualizados: ${existing.length} → ${products.length}',
+          );
+        }
+      } else {
+        productsController.add(products);
+        AppLogger.d('✅ Produtos processados: ${products.length}');
+      }
     }
 
     // Processa banners
@@ -2053,8 +2119,22 @@ class RealtimeRepository {
         final Store store = Store.fromJson(
           payload['store'] as Map<String, dynamic>,
         );
-        storeController.add(store);
-        AppLogger.d('✅ Loja publicada: ${store.name}');
+
+        // ✅ SMART MERGE: Só emite se dados mudaram
+        if (_isReconnecting && storeController.hasValue) {
+          final existing = storeController.value;
+          if (existing.id == store.id && existing.name == store.name) {
+            AppLogger.d(
+              '🔄 [SMART_RECONNECT] Store não mudou, ignorando re-emit',
+            );
+          } else {
+            storeController.add(store);
+            AppLogger.d('✅ Loja atualizada (dados mudaram): ${store.name}');
+          }
+        } else {
+          storeController.add(store);
+          AppLogger.d('✅ Loja publicada: ${store.name}');
+        }
       }
 
       // ✅ REFACTOR: Publica categorias no stream separado
@@ -2067,10 +2147,25 @@ class RealtimeRepository {
             categoriesList.addAll(menuCategories.cast<models.Category>());
           }
           if (categoriesList.isNotEmpty) {
-            categoriesController.add(categoriesList);
-            AppLogger.d(
-              '✅ ${categoriesList.length} categorias publicadas no categoriesController',
-            );
+            // ✅ SMART MERGE: Só emite se quantidade mudou
+            if (_isReconnecting && categoriesController.hasValue) {
+              final existing = categoriesController.value;
+              if (existing.length == categoriesList.length) {
+                AppLogger.d(
+                  '🔄 [SMART_RECONNECT] Categorias mantidas (${existing.length})',
+                );
+              } else {
+                categoriesController.add(categoriesList);
+                AppLogger.d(
+                  '✅ Categorias atualizadas: ${existing.length} → ${categoriesList.length}',
+                );
+              }
+            } else {
+              categoriesController.add(categoriesList);
+              AppLogger.d(
+                '✅ ${categoriesList.length} categorias publicadas no categoriesController',
+              );
+            }
           } else {
             AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
           }
@@ -2081,10 +2176,24 @@ class RealtimeRepository {
 
       // Publica produtos
       if (menuProducts != null && (menuProducts as List).isNotEmpty) {
-        productsController.add(menuProducts as List<Product>);
-        AppLogger.d(
-          '✅ ${(menuProducts as List).length} produtos do menu adicionados',
-        );
+        // ✅ SMART MERGE: Só emite se quantidade mudou
+        final productsList = menuProducts as List<Product>;
+        if (_isReconnecting && productsController.hasValue) {
+          final existing = productsController.value;
+          if (existing.length == productsList.length) {
+            AppLogger.d(
+              '🔄 [SMART_RECONNECT] Produtos mantidos (${existing.length})',
+            );
+          } else {
+            productsController.add(productsList);
+            AppLogger.d(
+              '✅ Produtos atualizados: ${existing.length} → ${productsList.length}',
+            );
+          }
+        } else {
+          productsController.add(productsList);
+          AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
+        }
       }
 
       // Processa banners
@@ -2399,14 +2508,20 @@ class RealtimeRepository {
     }
 
     final completer = Completer<Order>();
-    bool ackReceived = false;
     bool orderReceived = false;
 
     AppLogger.d('📤 [ORDER] Enviando pedido via Socket.IO...', tag: 'CHECKOUT');
     AppLogger.d('📤 [ORDER] Payload: ${payload.toJson()}', tag: 'CHECKOUT');
 
-    // ✅ LISTENER TEMPORÁRIO: Escuta evento order_created enquanto aguarda
     void Function(dynamic)? orderCreatedHandler;
+    void Function(dynamic)? orderErrorHandler;
+
+    void cleanup() {
+      _socket.off('order_created', orderCreatedHandler);
+      _socket.off('order_creation_error', orderErrorHandler);
+    }
+
+    // ✅ LISTENER TEMPORÁRIO: Escuta evento order_created enquanto aguarda
     orderCreatedHandler = (data) {
       AppLogger.d(
         '📥 [ORDER] Evento order_created recebido (raw): $data',
@@ -2460,7 +2575,7 @@ class RealtimeRepository {
             tag: 'CHECKOUT',
           );
           orderReceived = true;
-          _socket.off('order_created', orderCreatedHandler);
+          cleanup();
           completer.complete(order);
         } else {
           AppLogger.w(
@@ -2475,8 +2590,8 @@ class RealtimeRepository {
           stackTrace: stackTrace,
           tag: 'CHECKOUT',
         );
+        cleanup();
         if (!completer.isCompleted) {
-          _socket.off('order_created', orderCreatedHandler);
           completer.completeError(
             Exception('Erro ao processar pedido criado: $e'),
           );
@@ -2490,8 +2605,6 @@ class RealtimeRepository {
     );
     _socket.on('order_created', orderCreatedHandler);
 
-    // ✅ CORREÇÃO BUG #3: Listener para erros de criação de pedido
-    void Function(dynamic)? orderErrorHandler;
     orderErrorHandler = (data) {
       AppLogger.w(
         '⚠️ [ORDER] Evento order_creation_error recebido: $data',
@@ -2512,8 +2625,7 @@ class RealtimeRepository {
             errorData['error'] ?? 'Erro desconhecido ao criar pedido';
 
         orderReceived = true;
-        _socket.off('order_created', orderCreatedHandler);
-        _socket.off('order_creation_error', orderErrorHandler);
+        cleanup();
         completer.completeError(Exception(errorMessage));
       } catch (e) {
         AppLogger.e(
@@ -2529,103 +2641,88 @@ class RealtimeRepository {
     );
     _socket.on('order_creation_error', orderErrorHandler);
 
-    // Chama o NOVO evento do backend
-    _socket.emitWithAck(
-      'create_order_from_cart',
-      payload.toJson(),
-      ack: (data) {
-        ackReceived = true;
-        AppLogger.d(
-          '📥 [ORDER] Resposta ACK recebida do backend: $data',
-          tag: 'CHECKOUT',
-        );
+    try {
+      // Chama o NOVO evento do backend
+      _socket.emitWithAck(
+        'create_order_from_cart',
+        payload.toJson(),
+        ack: (data) {
+          AppLogger.d(
+            '📥 [ORDER] Resposta ACK recebida do backend: $data',
+            tag: 'CHECKOUT',
+          );
 
-        // ✅ Backend retorna {"success": true, "status": "processing", "job_id": ...}
-        // O pedido será enviado via evento order_created quando estiver pronto
-        if (data != null && data['success'] == true) {
-          if (data['order'] != null) {
-            // ✅ Se o pedido já vier no ACK (caso raro de processamento instantâneo)
-            try {
-              final order = Order.fromJson(data['order']);
+          // ✅ Backend retorna {"success": true, "status": "processing", "job_id": ...}
+          // O pedido será enviado via evento order_created quando estiver pronto
+          if (data != null && data['success'] == true) {
+            if (data['order'] != null) {
+              // ✅ Se o pedido já vier no ACK (caso raro de processamento instantâneo)
+              try {
+                final order = Order.fromJson(data['order']);
+                AppLogger.i(
+                  '✅ [ORDER] Pedido criado imediatamente: #${order.id}',
+                  tag: 'CHECKOUT',
+                );
+                orderReceived = true;
+                cleanup();
+                completer.complete(order);
+              } catch (e, stackTrace) {
+                AppLogger.e(
+                  '❌ [ORDER] Erro ao processar pedido do ACK',
+                  error: e,
+                  stackTrace: stackTrace,
+                  tag: 'CHECKOUT',
+                );
+                // Continua aguardando order_created
+              }
+            } else if (data['status'] == 'processing') {
+              // ✅ Normal: pedido sendo processado em background, aguarda order_created
               AppLogger.i(
-                '✅ [ORDER] Pedido criado imediatamente: #${order.id}',
+                '⏳ [ORDER] Pedido sendo processado. Aguardando order_created...',
+                tag: 'CHECKOUT',
+              );
+              // Não completa o completer aqui, aguarda order_created
+            } else {
+              // Resposta inesperada
+              final errorMsg =
+                  data['error'] ??
+                  data['message'] ??
+                  'Resposta inesperada do servidor.';
+              AppLogger.e(
+                '❌ [ORDER] Erro do backend: $errorMsg',
                 tag: 'CHECKOUT',
               );
               orderReceived = true;
-              _socket.off('order_created', orderCreatedHandler);
-              completer.complete(order);
-            } catch (e, stackTrace) {
-              AppLogger.e(
-                '❌ [ORDER] Erro ao processar pedido do ACK',
-                error: e,
-                stackTrace: stackTrace,
-                tag: 'CHECKOUT',
-              );
-              // Continua aguardando order_created
+              cleanup();
+              completer.completeError(Exception(errorMsg));
             }
-          } else if (data['status'] == 'processing') {
-            // ✅ Normal: pedido sendo processado em background, aguarda order_created
-            AppLogger.i(
-              '⏳ [ORDER] Pedido sendo processado. Aguardando order_created...',
-              tag: 'CHECKOUT',
-            );
-            // Não completa o completer aqui, aguarda order_created
           } else {
-            // Resposta inesperada
             final errorMsg =
-                data['error'] ??
-                data['message'] ??
-                'Resposta inesperada do servidor.';
+                data?['error'] ??
+                data?['message'] ??
+                'Ocorreu um erro desconhecido ao finalizar o pedido.';
             AppLogger.e(
               '❌ [ORDER] Erro do backend: $errorMsg',
               tag: 'CHECKOUT',
             );
             orderReceived = true;
-            _socket.off('order_created', orderCreatedHandler);
+            cleanup();
             completer.completeError(Exception(errorMsg));
           }
-        } else {
-          final errorMsg =
-              data?['error'] ??
-              data?['message'] ??
-              'Ocorreu um erro desconhecido ao finalizar o pedido.';
-          AppLogger.e('❌ [ORDER] Erro do backend: $errorMsg', tag: 'CHECKOUT');
-          orderReceived = true;
-          _socket.off('order_created', orderCreatedHandler);
-          completer.completeError(Exception(errorMsg));
-        }
-      },
-    );
+        },
+      );
 
-    // ✅ TIMEOUT: Se não receber resposta em 60 segundos, retorna erro
-    return completer.future.timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        // ✅ CORREÇÃO: Remove ambos os listeners no timeout
-        _socket.off('order_created', orderCreatedHandler);
-        _socket.off('order_creation_error', orderErrorHandler);
-
-        if (!ackReceived) {
-          AppLogger.e(
-            '❌ [ORDER] Timeout ao aguardar ACK do servidor (60s)',
-            tag: 'CHECKOUT',
-          );
-          throw TimeoutException(
-            'O servidor não respondeu a tempo. Por favor, tente novamente.',
-          );
-        }
-        if (!orderReceived) {
-          AppLogger.e(
-            '❌ [ORDER] Timeout ao aguardar order_created (60s)',
-            tag: 'CHECKOUT',
-          );
-          throw TimeoutException(
-            'O pedido está sendo processado, mas demorou mais que o esperado. Verifique seus pedidos.',
-          );
-        }
-        throw TimeoutException('Timeout ao processar pedido.');
-      },
-    );
+      return completer.future.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          cleanup();
+          throw TimeoutException('Timeout ao processar pedido.');
+        },
+      );
+    } catch (e) {
+      cleanup();
+      rethrow;
+    }
   }
 
   // Future<Either<String, Order>> sendOrder(NewOrder order) async {

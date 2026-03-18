@@ -17,6 +17,7 @@ import 'package:totem/repositories/customer_repository.dart';
 import 'package:totem/repositories/realtime_repository.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/services/encrypted_storage_service.dart';
+import 'package:totem/core/utils/app_logger.dart';
 
 import '../pages/address/cubits/address_cubit.dart';
 import '../pages/address/cubits/delivery_fee_cubit.dart';
@@ -71,13 +72,14 @@ Future<void> configureDependencies() async {
         if (isCustomerRequest) {
           // ✅ Para requisições de customer, usa token de CUSTOMER
           token = await authRepo.getValidCustomerAccessToken();
-          print(
+          AppLogger.i(
             '🔍 [INTERCEPTOR] Usando token de CUSTOMER para: ${options.path}',
+            tag: 'AUTH',
           );
         } else {
           // ✅ Para outras requisições, usa token de MENU/TOTEM
           token = await authRepo.getValidAccessToken();
-          print('🔍 [INTERCEPTOR] Usando token de MENU para: ${options.path}');
+          AppLogger.i('🔍 [INTERCEPTOR] Usando token de MENU para: ${options.path}', tag: 'AUTH');
         }
 
         if (token != null) {
@@ -96,11 +98,11 @@ Future<void> configureDependencies() async {
           // ✅ PROTEÇÃO CONTRA LOOP INFINITO: verifica se já tentou renovar
           final isRetry = e.requestOptions.extra['_isRetryFor401'] == true;
           if (isRetry) {
-            print('❌ Já tentou renovar token, evitando loop infinito');
+            AppLogger.w('❌ Já tentou renovar token, evitando loop infinito', tag: 'AUTH');
             return handler.next(e);
           }
 
-          print('⚠️ Token expirado (401), tentando renovar...');
+          AppLogger.w('⚠️ Token expirado (401), tentando renovar...', tag: 'AUTH');
 
           final authRepo = AuthRepository(dio, secureStorage);
 
@@ -115,11 +117,11 @@ Future<void> configureDependencies() async {
 
           if (isCustomerRequest) {
             // ✅ Para requisições de customer, renova token de CUSTOMER
-            print('🔄 Renovando token de CUSTOMER...');
+            AppLogger.i('🔄 Renovando token de CUSTOMER...', tag: 'AUTH');
             newToken = await authRepo.forceRefreshCustomerToken();
           } else {
             // ✅ Para outras requisições, renova token de MENU
-            print('🔄 Renovando token de MENU...');
+            AppLogger.i('🔄 Renovando token de MENU...', tag: 'AUTH');
             newToken = await authRepo.forceRefreshToken();
           }
 
@@ -133,15 +135,21 @@ Future<void> configureDependencies() async {
             try {
               return handler.resolve(await dio.fetch(e.requestOptions));
             } catch (retryError) {
-              print('❌ Falha ao retentar requisição: $retryError');
+              AppLogger.e('❌ Falha ao retentar requisição: $retryError', tag: 'AUTH');
               return handler.next(e);
             }
           } else {
-            print('❌ Falha ao renovar token');
+            AppLogger.e('❌ Falha ao renovar token', tag: 'AUTH');
             if (isCustomerRequest) {
               await authRepo.logoutCustomer();
+              try {
+                getIt<AuthCubit>().signOut();
+              } catch (_) {}
             } else {
               await authRepo.logout();
+              try {
+                getIt<AuthCubit>().signOut();
+              } catch (_) {}
             }
           }
         }

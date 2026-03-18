@@ -487,14 +487,29 @@ class _ActiveOrderCard extends StatelessWidget {
   }
 
   Widget _buildDeliveryInfo() {
+    // Usa a previsão real do pedido se disponível
+    String deliveryTime = '30 - 45 min';
+
+    if (order.delivery?.estimatedTimeOfArrival != null) {
+      final eta = order.delivery!.estimatedTimeOfArrival!;
+      final now = DateTime.now();
+      final diff = eta.deliversAt.difference(now);
+
+      if (diff.inMinutes > 0) {
+        deliveryTime = '${diff.inMinutes} min';
+      } else {
+        deliveryTime = 'A caminho';
+      }
+    }
+
     return Row(
       children: [
         Text(
           'Previsão de entrega: ',
           style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
         ),
-        const Text(
-          '30 - 45 min',
+        Text(
+          deliveryTime,
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
       ],

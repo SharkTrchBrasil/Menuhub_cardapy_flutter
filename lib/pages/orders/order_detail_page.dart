@@ -4,8 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:totem/models/order.dart';
-
 import 'package:totem/models/option_group.dart';
+import 'package:totem/helpers/order_reorder_helper.dart';
+import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/catalog_cubit.dart';
+import 'package:totem/pages/cart/cart_cubit.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 /// Página de detalhes do pedido completa - Estilo iFood
 /// ✅ Suporta pedidos cancelados, concluídos e avaliações
@@ -20,10 +24,17 @@ class OrderDetailPage extends StatelessWidget {
   }
 }
 
-class _OrderDetailContent extends StatelessWidget {
+class _OrderDetailContent extends StatefulWidget {
   final Order order;
 
   const _OrderDetailContent({required this.order});
+
+  @override
+  State<_OrderDetailContent> createState() => _OrderDetailContentState();
+}
+
+class _OrderDetailContentState extends State<_OrderDetailContent> {
+  Order get order => widget.order;
 
   @override
   Widget build(BuildContext context) {
@@ -575,9 +586,7 @@ class _OrderDetailContent extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextButton(
-        onPressed: () {
-          // TODO: Adicionar à sacola
-        },
+        onPressed: () => _handleReorder(context, order),
         child: const Text(
           'Adicionar à sacola',
           style: TextStyle(
@@ -841,5 +850,41 @@ class _OrderDetailContent extends StatelessWidget {
   String _formatImageUrl(String url) {
     if (url.startsWith('http')) return url;
     return 'https://menuhub-dev.s3.us-east-1.amazonaws.com/$url';
+  }
+}
+
+Future<void> _handleReorder(BuildContext context, Order order) async {
+  final catalogCubit = context.read<CatalogCubit>();
+  final cartCubit = context.read<CartCubit>();
+
+  // Verifica se o catálogo está carregado
+  if (catalogCubit.state.products == null ||
+      catalogCubit.state.products!.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Catálogo não disponível. Tente novamente.'),
+      ),
+    );
+    return;
+  }
+
+  try {
+    final payloads = OrderReorderHelper.buildPayloads(
+      order: order,
+      products: catalogCubit.state.products!,
+      categories: catalogCubit.state.categories!,
+    );
+
+    for (final payload in payloads) {
+      await cartCubit.updateItem(payload);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Itens adicionados ao carrinho!')),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Erro ao adicionar itens: $e')));
   }
 }

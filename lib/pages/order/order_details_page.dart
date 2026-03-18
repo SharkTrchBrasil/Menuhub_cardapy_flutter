@@ -914,12 +914,17 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     context.pop();
-                    // Simulando conclusão do pedido localmente
+
+                    // TODO: Implementar integração com backend
+                    // Por enquanto, apenas atualiza localmente
+                    // Futuramente: await context.read<OrdersCubit>().confirmDelivery(widget.order.id);
+
                     setState(() {
                       _currentStatus = 'CONCLUDED';
                     });
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Entrega confirmada!')),
                     );

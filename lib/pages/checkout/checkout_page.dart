@@ -43,9 +43,6 @@ import '../../core/utils/id_obfuscator.dart'; // ✅ ENTERPRISE: Ofuscação de 
 class CheckoutPage extends StatelessWidget {
   const CheckoutPage({super.key});
 
-  // ✅ CORREÇÃO: Flag estática para evitar múltiplas inicializações
-  static bool _hasInitialized = false;
-
   @override
   Widget build(BuildContext context) {
     final store = context.read<StoreCubit>().state.store;
@@ -807,11 +804,18 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
   }
 }
 
-class _UnifiedCheckoutBottomBarWrapper extends StatelessWidget {
+class _UnifiedCheckoutBottomBarWrapper extends StatefulWidget {
   const _UnifiedCheckoutBottomBarWrapper();
 
-  static bool _isChangeSheetOpen = false;
-  static bool _isConfirmationSheetOpen = false;
+  @override
+  State<_UnifiedCheckoutBottomBarWrapper> createState() =>
+      _UnifiedCheckoutBottomBarWrapperState();
+}
+
+class _UnifiedCheckoutBottomBarWrapperState
+    extends State<_UnifiedCheckoutBottomBarWrapper> {
+  bool _isChangeSheetOpen = false;
+  bool _isConfirmationSheetOpen = false;
 
   @override
   Widget build(BuildContext context) {

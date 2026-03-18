@@ -7,6 +7,7 @@ import 'package:totem/models/cart.dart'; // Importamos nosso novo modelo de carr
 enum CartStatus { initial, loading, success, error }
 
 class CartState extends Equatable {
+  static const _undefined = Object();
   const CartState({
     required this.status,
     this.isUpdating = false,
@@ -40,7 +41,7 @@ class CartState extends Equatable {
     bool clearOrderAgainSnapshotCart = false,
     Cart? orderAgainSnapshotCart,
     Cart? cart,
-    String? errorMessage,
+    Object? errorMessage = _undefined,
   }) {
     return CartState(
       status: status ?? this.status,
@@ -52,7 +53,10 @@ class CartState extends Equatable {
               ? null
               : (orderAgainSnapshotCart ?? this.orderAgainSnapshotCart),
       cart: cart ?? this.cart,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage:
+          errorMessage == _undefined
+              ? this.errorMessage
+              : errorMessage as String?,
     );
   }
 

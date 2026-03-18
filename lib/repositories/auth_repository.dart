@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../controllers/customer_controller.dart';
 import '../core/di.dart';
+import '../core/utils/app_logger.dart';
 import '../models/customer.dart';
 import '../models/totem_auth.dart';
 
@@ -14,6 +17,9 @@ class AuthRepository {
   final Dio _dio;
   final FlutterSecureStorage _secureStorage;
   Dio? _refreshDio;
+
+  static Completer<String?>? _customerRefreshCompleter;
+  static Completer<String?>? _menuRefreshCompleter;
 
   AuthRepository(this._dio, this._secureStorage);
 
@@ -25,7 +31,7 @@ class AuthRepository {
   static const String _keyStoreId = 'store_id';
   static const String _keyStoreUrl = 'store_url';
   static const String _keyStoreName = 'store_name';
-  
+
   // ✅ NOVO: Chaves de armazenamento - TOKENS DE CUSTOMER (separados)
   static const String _keyCustomerAccessToken = 'customer_access_token';
   static const String _keyCustomerRefreshToken = 'customer_refresh_token';
@@ -37,12 +43,14 @@ class AuthRepository {
 
     // Usa a mesma base URL mas sem interceptores de autenticação
     final apiUrl = _dio.options.baseUrl.replaceAll('/app', '');
-    _refreshDio = Dio(BaseOptions(
-      baseUrl: '$apiUrl/app',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 30),
-      sendTimeout: const Duration(seconds: 30),
-    ));
+    _refreshDio = Dio(
+      BaseOptions(
+        baseUrl: '$apiUrl/app',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
+      ),
+    );
     return _refreshDio!;
   }
 
@@ -51,14 +59,11 @@ class AuthRepository {
     try {
       final totemToken = await getTotemToken();
 
-      print('🔐 Autenticando com store_url: $storeSlug');
+      AppLogger.i('🔐 Autenticando com store_url: $storeSlug', tag: 'AUTH');
 
       final response = await _dio.post(
         '/auth/subdomain',
-        data: {
-          'store_url': storeSlug,
-          'totem_token': totemToken,
-        },
+        data: {'store_url': storeSlug, 'totem_token': totemToken},
       );
 
       final TotemAuth totemAuth = TotemAuth.fromJson(response.data);
@@ -66,13 +71,13 @@ class AuthRepository {
       // ✅ Salva todos os tokens e metadados
       await _saveAuthData(totemAuth);
 
-      print('✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName}');
+      AppLogger.i('✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName}', tag: 'AUTH');
       return Right(totemAuth);
     } on DioException catch (e) {
-      print('❌ Erro ao buscar token: ${e.response?.data ?? e.message}');
+      AppLogger.e('❌ Erro ao buscar token: ${e.response?.data ?? e.message}', tag: 'AUTH');
       return Left(e.response?.data?['detail'] ?? 'Erro ao autenticar');
     } catch (e) {
-      print('❌ Erro inesperado: $e');
+      AppLogger.e('❌ Erro inesperado: $e', tag: 'AUTH');
       return Left('Erro inesperado ao autenticar');
     }
   }
@@ -80,12 +85,11 @@ class AuthRepository {
   /// Handles Google Sign-In process
   Future<User?> signInWithGoogle() async {
     try {
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithPopup(
-        GoogleAuthProvider(),
-      );
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithPopup(GoogleAuthProvider());
       return userCredential.user;
     } catch (e) {
-      print('❌ Error signing in with Google: $e');
+      AppLogger.e('❌ Error signing in with Google: $e', tag: 'AUTH');
       return null;
     }
   }
@@ -95,7 +99,10 @@ class AuthRepository {
     await Future.wait(<Future<void>>[
       _secureStorage.write(key: _keyAccessToken, value: auth.accessToken),
       _secureStorage.write(key: _keyRefreshToken, value: auth.refreshToken),
-      _secureStorage.write(key: _keyTokenExpiration, value: auth.expirationTime.toIso8601String()),
+      _secureStorage.write(
+        key: _keyTokenExpiration,
+        value: auth.expirationTime.toIso8601String(),
+      ),
       _secureStorage.write(key: _keyStoreId, value: auth.storeId.toString()),
       _secureStorage.write(key: _keyStoreUrl, value: auth.storeUrl),
       _secureStorage.write(key: _keyStoreName, value: auth.storeName),
@@ -116,19 +123,35 @@ class AuthRepository {
       return null;
     }
 
-    // Se expirou ou vai expirar em menos de 1 minuto, renova
-    if (expiration.isBefore(DateTime.now().add(const Duration(minutes: 1)))) {
-      print('⏰ Token expirando, renovando...');
-      return await _refreshAccessToken();
+    // Se ainda válido, retorna
+    if (expiration.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+      return accessToken;
     }
 
-    return accessToken;
+    // Token expirando — serializa o refresh com mutex
+    if (_menuRefreshCompleter != null) {
+      return _menuRefreshCompleter!.future;
+    }
+
+    _menuRefreshCompleter = Completer<String?>();
+    try {
+      final token = await _refreshAccessToken();
+      _menuRefreshCompleter!.complete(token);
+      return token;
+    } catch (e) {
+      _menuRefreshCompleter!.complete(null);
+      rethrow;
+    } finally {
+      _menuRefreshCompleter = null;
+    }
   }
-  
+
   /// ✅ NOVO: Obtém token de acesso válido do CUSTOMER (renova se necessário)
   Future<String?> getValidCustomerAccessToken() async {
     final accessToken = await _secureStorage.read(key: _keyCustomerAccessToken);
-    final expirationStr = await _secureStorage.read(key: _keyCustomerTokenExpiration);
+    final expirationStr = await _secureStorage.read(
+      key: _keyCustomerTokenExpiration,
+    );
 
     if (accessToken == null || expirationStr == null) {
       return null;
@@ -139,13 +162,27 @@ class AuthRepository {
       return null;
     }
 
-    // Se expirou ou vai expirar em menos de 1 minuto, renova
-    if (expiration.isBefore(DateTime.now().add(const Duration(minutes: 1)))) {
-      print('⏰ Token de customer expirando, renovando...');
-      return await _refreshCustomerAccessToken();
+    // Se ainda válido, retorna
+    if (expiration.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+      return accessToken;
     }
 
-    return accessToken;
+    // Token expirando — serializa o refresh com mutex
+    if (_customerRefreshCompleter != null) {
+      return _customerRefreshCompleter!.future;
+    }
+
+    _customerRefreshCompleter = Completer<String?>();
+    try {
+      final token = await _refreshCustomerAccessToken();
+      _customerRefreshCompleter!.complete(token);
+      return token;
+    } catch (e) {
+      _customerRefreshCompleter!.complete(null);
+      rethrow;
+    } finally {
+      _customerRefreshCompleter = null;
+    }
   }
 
   /// ✅ Renova o token de acesso usando refresh token
@@ -153,7 +190,7 @@ class AuthRepository {
     try {
       final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
       if (refreshToken == null) {
-        print('❌ Refresh token não encontrado');
+        AppLogger.w('❌ Refresh token não encontrado', tag: 'AUTH');
         return null;
       }
 
@@ -167,12 +204,15 @@ class AuthRepository {
       final newExpiration = DateTime.now().add(const Duration(minutes: 30));
 
       await _secureStorage.write(key: _keyAccessToken, value: newAccessToken);
-      await _secureStorage.write(key: _keyTokenExpiration, value: newExpiration.toIso8601String());
+      await _secureStorage.write(
+        key: _keyTokenExpiration,
+        value: newExpiration.toIso8601String(),
+      );
 
-      print('✅ Token renovado com sucesso');
+      AppLogger.i('✅ Token renovado com sucesso', tag: 'AUTH');
       return newAccessToken;
     } catch (e) {
-      print('❌ Erro ao renovar token: $e');
+      AppLogger.e('❌ Erro ao renovar token: $e', tag: 'AUTH');
       return null;
     }
   }
@@ -180,23 +220,25 @@ class AuthRepository {
   /// ✅ NOVO: Força renovação do token (usado quando recebe 401) - TOKEN DE MENU
   /// Ignora cache e força chamada ao backend
   Future<String?> forceRefreshToken() async {
-    print('🔄 Forçando renovação de token de menu...');
+    AppLogger.i('🔄 Forçando renovação de token de menu...', tag: 'AUTH');
     return await _refreshAccessToken();
   }
-  
+
   /// ✅ NOVO: Força renovação do token de CUSTOMER (usado quando recebe 401)
   /// Ignora cache e força chamada ao backend
   Future<String?> forceRefreshCustomerToken() async {
-    print('🔄 Forçando renovação de token de customer...');
+    AppLogger.i('🔄 Forçando renovação de token de customer...', tag: 'AUTH');
     return await _refreshCustomerAccessToken();
   }
-  
+
   /// ✅ NOVO: Renova o token de acesso do CUSTOMER usando refresh token
   Future<String?> _refreshCustomerAccessToken() async {
     try {
-      final refreshToken = await _secureStorage.read(key: _keyCustomerRefreshToken);
+      final refreshToken = await _secureStorage.read(
+        key: _keyCustomerRefreshToken,
+      );
       if (refreshToken == null) {
-        print('❌ Refresh token de customer não encontrado');
+        AppLogger.w('❌ Refresh token de customer não encontrado', tag: 'AUTH');
         return null;
       }
 
@@ -214,18 +256,27 @@ class AuthRepository {
       final expiresIn = (responseData['expires_in'] as num?)?.toInt() ?? 1800;
       final newExpiration = DateTime.now().add(Duration(seconds: expiresIn));
 
-      await _secureStorage.write(key: _keyCustomerAccessToken, value: newAccessToken);
-      await _secureStorage.write(key: _keyCustomerTokenExpiration, value: newExpiration.toIso8601String());
-      
+      await _secureStorage.write(
+        key: _keyCustomerAccessToken,
+        value: newAccessToken,
+      );
+      await _secureStorage.write(
+        key: _keyCustomerTokenExpiration,
+        value: newExpiration.toIso8601String(),
+      );
+
       // Se o backend retornou um novo refresh token, salva também
       if (newRefreshToken != null) {
-        await _secureStorage.write(key: _keyCustomerRefreshToken, value: newRefreshToken);
+        await _secureStorage.write(
+          key: _keyCustomerRefreshToken,
+          value: newRefreshToken,
+        );
       }
 
-      print('✅ Token de customer renovado com sucesso');
+      AppLogger.i('✅ Token de customer renovado com sucesso', tag: 'AUTH');
       return newAccessToken;
     } catch (e) {
-      print('❌ Erro ao renovar token de customer: $e');
+      AppLogger.e('❌ Erro ao renovar token de customer: $e', tag: 'AUTH');
       return null;
     }
   }
@@ -241,14 +292,14 @@ class AuthRepository {
     String? token = await _secureStorage.read(key: _keyTotemToken);
 
     if (token != null && token.isNotEmpty) {
-      print('✅ Token existente encontrado');
+      AppLogger.d('✅ Token existente encontrado', tag: 'AUTH');
       return token;
     }
 
     // Gera novo token único
     token = const Uuid().v4();
     await _secureStorage.write(key: _keyTotemToken, value: token);
-    print('🆕 Novo totem token gerado: $token');
+    AppLogger.i('🆕 Novo totem token gerado: $token', tag: 'AUTH');
 
     return token;
   }
@@ -263,9 +314,9 @@ class AuthRepository {
       _secureStorage.delete(key: _keyStoreUrl),
       _secureStorage.delete(key: _keyStoreName),
     ]);
-    print('🚪 Logout de menu realizado com sucesso');
+    AppLogger.i('🚪 Logout de menu realizado com sucesso', tag: 'AUTH');
   }
-  
+
   /// ✅ NOVO: Faz logout de CUSTOMER e limpa tokens de customer
   Future<void> logoutCustomer() async {
     await Future.wait(<Future<void>>[
@@ -273,7 +324,7 @@ class AuthRepository {
       _secureStorage.delete(key: _keyCustomerRefreshToken),
       _secureStorage.delete(key: _keyCustomerTokenExpiration),
     ]);
-    print('🚪 Logout de customer realizado com sucesso');
+    AppLogger.i('🚪 Logout de customer realizado com sucesso', tag: 'AUTH');
   }
 
   /// ✅ Obtém informações da loja atual
@@ -297,21 +348,15 @@ class AuthRepository {
     String? photo,
   ) async {
     try {
-      print('🔍 [AUTH] Enviando requisição /customer/google...');
-      
+      AppLogger.d('🔍 [AUTH] Enviando requisição /customer/google...', tag: 'AUTH');
+
       final response = await _dio.post(
         '/customer/google',
-        data: {
-          'name': name,
-          'email': email,
-          'photo': photo,
-          'addresses': [],
-        },
+        data: {'name': name, 'email': email, 'photo': photo, 'addresses': []},
       );
 
-      print('🔍 [AUTH] Resposta recebida do backend');
-      print('🔍 [AUTH] response.data type: ${response.data.runtimeType}');
-      print('🔍 [AUTH] response.data: ${response.data}');
+      AppLogger.d('🔍 [AUTH] Resposta recebida do backend', tag: 'AUTH');
+      AppLogger.d('🔍 [AUTH] response.data: ${response.data}', tag: 'AUTH');
 
       final customer = Customer.fromJson(response.data);
       getIt<CustomerController>().setCustomer(customer);
@@ -321,48 +366,64 @@ class AuthRepository {
       // para operações autenticadas como adicionar endereços, fazer pedidos, etc.
       // NÃO sobrescreve os tokens de menu!
       final responseData = response.data as Map<String, dynamic>;
-      
+
       print('🔍 [AUTH] Response data keys: ${responseData.keys.toList()}');
-      
+
       final customerAccessToken = responseData['access_token'] as String?;
       final customerRefreshToken = responseData['refresh_token'] as String?;
       final expiresIn = responseData['expires_in'] as int? ?? 1800;
-      
+
       print('🔍 [AUTH] access_token presente: ${customerAccessToken != null}');
-      print('🔍 [AUTH] refresh_token presente: ${customerRefreshToken != null}');
-      
+      print(
+        '🔍 [AUTH] refresh_token presente: ${customerRefreshToken != null}',
+      );
+
       if (customerAccessToken != null) {
         print('✅ [AUTH] Salvando token de CLIENTE em chaves separadas...');
-        final customerExpiration = DateTime.now().add(Duration(seconds: expiresIn));
-        
+        final customerExpiration = DateTime.now().add(
+          Duration(seconds: expiresIn),
+        );
+
         // ✅ CORREÇÃO: Salva em chaves SEPARADAS (não sobrescreve tokens de menu)
-        await _secureStorage.write(key: _keyCustomerAccessToken, value: customerAccessToken);
+        await _secureStorage.write(
+          key: _keyCustomerAccessToken,
+          value: customerAccessToken,
+        );
         print('   ✅ Customer access token salvo');
-        
+
         // Salva refresh token se presente
         if (customerRefreshToken != null) {
-          await _secureStorage.write(key: _keyCustomerRefreshToken, value: customerRefreshToken);
+          await _secureStorage.write(
+            key: _keyCustomerRefreshToken,
+            value: customerRefreshToken,
+          );
           print('   ✅ Customer refresh token salvo');
         }
-        
+
         // Salva expiração
-        await _secureStorage.write(key: _keyCustomerTokenExpiration, value: customerExpiration.toIso8601String());
-        print('   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}');
-        
-        print('✅ [AUTH] Token de CLIENTE salvo com sucesso (expira em ${expiresIn}s)');
-        print('✅ [AUTH] Tokens de menu NÃO foram sobrescritos');
+        await _secureStorage.write(
+          key: _keyCustomerTokenExpiration,
+          value: customerExpiration.toIso8601String(),
+        );
+        print(
+          '   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}',
+        );
+
+        AppLogger.i(
+          '✅ [AUTH] Token de CLIENTE salvo com sucesso (expira em ${expiresIn}s)',
+          tag: 'AUTH',
+        );
+        AppLogger.d('✅ [AUTH] Tokens de menu NÃO foram sobrescritos', tag: 'AUTH');
       } else {
-        print('⚠️ [AUTH] Backend não retornou access_token de cliente');
+        AppLogger.w('⚠️ [AUTH] Backend não retornou access_token de cliente', tag: 'AUTH');
       }
 
       return Right(customer);
     } on DioException catch (e) {
-      print('❌ Erro Dio: ${e.message}');
-      print('Status: ${e.response?.statusCode}');
-      print('Resposta: ${e.response?.data}');
+      AppLogger.e('❌ Erro Dio: ${e.message}', error: e, tag: 'AUTH');
       return Left(e.response?.data?['detail'] ?? 'Erro ao salvar cliente');
     } catch (e) {
-      print('❌ Erro inesperado: $e');
+      AppLogger.e('❌ Erro inesperado: $e', error: e, tag: 'AUTH');
       return Left('Erro inesperado');
     }
   }

@@ -68,8 +68,11 @@ class NotificationsTabPage extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.notifications_none,
-                        size: 64, color: Colors.grey.shade400),
+                    Icon(
+                      Icons.notifications_none,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Nenhuma novidade por enquanto',
@@ -97,8 +100,11 @@ class NotificationsTabPage extends StatelessWidget {
                     color: theme.primaryColor.withOpacity(0.1),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline,
-                            color: theme.primaryColor, size: 20),
+                        Icon(
+                          Icons.info_outline,
+                          color: theme.primaryColor,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -113,9 +119,10 @@ class NotificationsTabPage extends StatelessWidget {
                     ),
                   ),
                 Expanded(
-                  child: isDesktop
-                      ? _buildDesktopList(notifications, context)
-                      : _buildMobileList(notifications, context),
+                  child:
+                      isDesktop
+                          ? _buildDesktopList(notifications, context)
+                          : _buildMobileList(notifications, context),
                 ),
               ],
             );
@@ -126,7 +133,9 @@ class NotificationsTabPage extends StatelessWidget {
   }
 
   Widget _buildDesktopList(
-      List<NotificationItem> notifications, BuildContext context) {
+    List<NotificationItem> notifications,
+    BuildContext context,
+  ) {
     return ListView.builder(
       padding: const EdgeInsets.all(24),
       itemCount: notifications.length,
@@ -134,9 +143,9 @@ class NotificationsTabPage extends StatelessWidget {
         return _NotificationCard(
           notification: notifications[index],
           onTap: () {
-            context
-                .read<NotificationsCubit>()
-                .markAsRead(notifications[index].id);
+            context.read<NotificationsCubit>().markAsRead(
+              notifications[index].id,
+            );
           },
         );
       },
@@ -144,7 +153,9 @@ class NotificationsTabPage extends StatelessWidget {
   }
 
   Widget _buildMobileList(
-      List<NotificationItem> notifications, BuildContext context) {
+    List<NotificationItem> notifications,
+    BuildContext context,
+  ) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: notifications.length,
@@ -152,9 +163,9 @@ class NotificationsTabPage extends StatelessWidget {
         return _NotificationCard(
           notification: notifications[index],
           onTap: () {
-            context
-                .read<NotificationsCubit>()
-                .markAsRead(notifications[index].id);
+            context.read<NotificationsCubit>().markAsRead(
+              notifications[index].id,
+            );
           },
         );
       },
@@ -166,10 +177,7 @@ class _NotificationCard extends StatelessWidget {
   final NotificationItem notification;
   final VoidCallback onTap;
 
-  const _NotificationCard({
-    required this.notification,
-    required this.onTap,
-  });
+  const _NotificationCard({required this.notification, required this.onTap});
 
   Color _getPriorityColor(String priority) {
     switch (priority.toUpperCase()) {
@@ -186,10 +194,10 @@ class _NotificationCard extends StatelessWidget {
 
   IconData _getIcon(String? icon) {
     if (icon == null) return Icons.notifications;
-    
+
     // Se for emoji, retorna ícone padrão
     if (icon.length > 2) return Icons.notifications;
-    
+
     // Tenta mapear tipos de notificação para ícones
     switch (notification.notificationType.toUpperCase()) {
       case 'LOW_STOCK':
@@ -209,7 +217,7 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm', 'pt_BR');
     final isRead = notification.isRead;
     final priorityColor = _getPriorityColor(notification.priority);
 
@@ -250,7 +258,8 @@ class _NotificationCard extends StatelessWidget {
                             notification.title,
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                              fontWeight:
+                                  isRead ? FontWeight.normal : FontWeight.bold,
                               color: Colors.black87,
                             ),
                           ),
@@ -289,7 +298,9 @@ class _NotificationCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: priorityColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(4),
@@ -326,4 +337,3 @@ class _NotificationCard extends StatelessWidget {
     );
   }
 }
-

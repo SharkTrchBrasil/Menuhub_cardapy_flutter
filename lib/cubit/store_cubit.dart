@@ -20,6 +20,21 @@ import '../pages/address/cubits/delivery_fee_cubit.dart';
 class StoreCubit extends Cubit<StoreState> {
   StoreCubit(this._realtimeRepository) : super(StoreState()) {
     _storeSub = _realtimeRepository.storeController.listen((storeData) {
+      // ✅ SMART RECONNECT: Diff check — só emite se dados mudaram
+      final currentStore = state.store;
+      if (currentStore != null &&
+          currentStore.id == storeData.id &&
+          currentStore.name == storeData.name &&
+          currentStore.store_operation_config?.isStoreOpen ==
+              storeData.store_operation_config?.isStoreOpen &&
+          currentStore.store_operation_config?.pausedUntil ==
+              storeData.store_operation_config?.pausedUntil) {
+        AppLogger.d(
+          '🔄 StoreCubit: Store idêntico recebido, ignorando re-emit',
+        );
+        return; // Não rebuilda UI
+      }
+
       AppLogger.d('🏪 StoreCubit: Loja recebida — ${storeData.name}');
       emit(StoreState(store: storeData));
 

@@ -1,17 +1,13 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
-
 
 final phoneMask = MaskTextInputFormatter(
   mask: '(##) #####-####', // Máscara para números internacionais
   filter: {"#": RegExp(r'[0-9]')},
   type: MaskAutoCompletionType.lazy,
 );
-
 
 final cepMask = MaskTextInputFormatter(
   mask: '##.###-###',
@@ -20,8 +16,7 @@ final cepMask = MaskTextInputFormatter(
 );
 
 final numberFormat = NumberFormat.currency(locale: 'pt_BR');
-final dateFormat = DateFormat('dd/MM/yyyy');
-
+final dateFormat = DateFormat('dd/MM/yyyy', 'pt_BR');
 
 String? formatTime(TimeOfDay? time) {
   if (time == null) return null;
@@ -40,7 +35,6 @@ String formatTimeOfDay(TimeOfDay time) {
   final minute = time.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
 }
-
 
 class DatePickerField extends StatefulWidget {
   final String title;
@@ -67,7 +61,10 @@ class _DatePickerFieldState extends State<DatePickerField> {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue ?? '');
     if (widget.initialValue != null && widget.initialValue!.isNotEmpty) {
-      _selectedDate = DateFormat('dd/MM/yyyy').parse(widget.initialValue!);
+      _selectedDate = DateFormat(
+        'dd/MM/yyyy',
+        'pt_BR',
+      ).parse(widget.initialValue!);
     }
   }
 
@@ -82,7 +79,7 @@ class _DatePickerFieldState extends State<DatePickerField> {
     );
 
     if (picked != null) {
-      final formatted = DateFormat('dd/MM/yyyy').format(picked);
+      final formatted = DateFormat('dd/MM/yyyy', 'pt_BR').format(picked);
       _controller.text = formatted;
       widget.onChanged(formatted);
       setState(() {

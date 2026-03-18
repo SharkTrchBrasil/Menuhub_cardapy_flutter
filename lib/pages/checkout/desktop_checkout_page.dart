@@ -41,14 +41,6 @@ class DesktopCheckoutPage extends StatelessWidget {
     final cart = context.read<CartCubit>().state.cart;
     final deliveryFeeCubit = context.read<DeliveryFeeCubit>();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      deliveryFeeCubit.calculate(
-        address: addressState.selectedAddress,
-        store: store,
-        cartSubtotal: cart.subtotal / 100.0,
-      );
-    });
-
     return BlocProvider(
       create: (context) {
         final cubit = CheckoutCubit(
@@ -76,6 +68,29 @@ class _DesktopCheckoutViewState extends State<_DesktopCheckoutView> {
   int _paymentTabIndex = 0;
   final _cpfController = TextEditingController();
   final _observationController = TextEditingController();
+  bool _hasCalculatedDeliveryFee = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasCalculatedDeliveryFee) {
+        final store = context.read<StoreCubit>().state.store;
+        final addressState = context.read<AddressCubit>().state;
+        final cart = context.read<CartCubit>().state.cart;
+        final deliveryFeeCubit = context.read<DeliveryFeeCubit>();
+
+        if (store != null) {
+          deliveryFeeCubit.calculate(
+            address: addressState.selectedAddress,
+            store: store,
+            cartSubtotal: cart.subtotal / 100.0,
+          );
+          _hasCalculatedDeliveryFee = true;
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {

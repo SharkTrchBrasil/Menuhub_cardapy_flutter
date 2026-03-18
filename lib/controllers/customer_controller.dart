@@ -61,8 +61,16 @@ class CustomerController extends ValueNotifier<Customer?> {
         // Salva no novo formato imediatamente
         await _saveCustomerToSecureStorage(oldCustomer);
 
-        // Limpa do antigo (opcional, mas recomendado para segurança)
-        await _oldStorage.delete(key: 'customer');
+        // Verificar se a escrita realmente persistiu antes de deletar a fonte
+        final verification = await _storage.read(key: 'customer');
+        if (verification != null) {
+          await _oldStorage.delete(key: 'customer');
+          print('✅ Migração concluída e dado original removido.');
+        } else {
+          print(
+            '⚠️ Escrita no novo storage não verificada — mantendo dado original por segurança.',
+          );
+        }
 
         print('✅ Cliente migrado com sucesso para AES-256: ${value?.name}');
       } else {

@@ -80,14 +80,14 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> checkInitialAuthStatus() async {
-    print('🚀 [DEBUG_AUTH] checkInitialAuthStatus started');
+    AppLogger.d('🚀 [DEBUG_AUTH] checkInitialAuthStatus started', tag: 'AUTH');
 
     final initialCustomer = customerController.value;
 
     // No Web, sempre verificamos se acabamos de voltar de um redirect de login
     // APENAS se não houver um customer logado localmente
     if (kIsWeb && initialCustomer == null) {
-      print('🚀 [DEBUG_AUTH] Web detected. Checking for redirect result...');
+      AppLogger.d('🚀 [DEBUG_AUTH] Web detected. Checking for redirect result...', tag: 'AUTH');
       await _handleRedirectResult();
 
       // Se _handleRedirectResult encontrou login, o controller terá sido atualizado e _processFirebaseUser chamado,
@@ -104,8 +104,9 @@ class AuthCubit extends Cubit<AuthState> {
         } catch (e) {
           // ✅ NÃO desloga se falhar o vínculo de sessão (pode ser apenas socket offline)
           // O RealtimeRepository tentará novamente ao conectar.
-          print(
+          AppLogger.w(
             '⚠️ [AuthCubit] Falha ao vincular sessão na inicialização (ignorado): $e',
+            tag: 'AUTH',
           );
         }
 
@@ -118,17 +119,24 @@ class AuthCubit extends Cubit<AuthState> {
         if (realtimeRepository.isSocketReady) {
           cartCubit.fetchCart();
         } else {
-          print(
+          AppLogger.d(
             '⏳ [AuthCubit] Socket não está pronto. CartCubit irá auto-retry quando conectar.',
+            tag: 'AUTH',
           );
           // CartCubit tem listener que tentará novamente quando Socket ficar pronto
         }
 
-        addressCubit.loadAddresses(initialCustomer.id!);
-        ordersCubit.loadOrders(initialCustomer.id!);
+        try {
+          await Future.wait([
+            addressCubit.loadAddresses(initialCustomer.id!),
+            ordersCubit.loadOrders(initialCustomer.id!),
+          ]);
+        } catch (e) {
+          AppLogger.e('Falha ao carregar dados pós-login: $e', tag: 'AUTH');
+        }
         await _processPendingCartItem();
       } catch (e) {
-        print('❌ [AuthCubit] Erro catastrófico na inicialização: $e');
+        AppLogger.e('❌ [AuthCubit] Erro catastrófico na inicialização: $e', tag: 'AUTH');
         emit(state.copyWith(status: AuthStatus.unauthenticated));
       }
     } else {
@@ -137,7 +145,7 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> signInWithGoogle() async {
-    print('🎯 [DEBUG_AUTH] BOTÃO GOOGLE CLICADO!');
+    AppLogger.d('🎯 [DEBUG_AUTH] BOTÃO GOOGLE CLICADO!', tag: 'AUTH');
     AppLogger.i('Iniciando login com Google (Redirect mode)', tag: 'AUTH');
 
     try {
@@ -156,17 +164,17 @@ class AuthCubit extends Cubit<AuthState> {
       final authProvider = GoogleAuthProvider();
 
       if (kIsWeb) {
-        print('🌐 [DEBUG_AUTH] Abrindo POPUP de login Google (Modo Original)');
+        AppLogger.d('🌐 [DEBUG_AUTH] Abrindo POPUP de login Google (Modo Original)', tag: 'AUTH');
         final userCredential = await auth.signInWithPopup(authProvider);
-        print('✅ [DEBUG_AUTH] Popup concluído com sucesso');
+        AppLogger.i('✅ [DEBUG_AUTH] Popup concluído com sucesso', tag: 'AUTH');
         await _processUserCredential(userCredential);
       } else {
-        print('📱 [DEBUG_AUTH] Usando fluxo mobile de login Google');
+        AppLogger.d('📱 [DEBUG_AUTH] Usando fluxo mobile de login Google', tag: 'AUTH');
         final userCredential = await auth.signInWithPopup(authProvider);
         await _processUserCredential(userCredential);
       }
     } on FirebaseAuthException catch (e) {
-      print('❌ [DEBUG_AUTH] ERRO Firebase Auth: ${e.code}');
+      AppLogger.e('❌ [DEBUG_AUTH] ERRO Firebase Auth: ${e.code}', error: e, tag: 'AUTH');
       emit(
         state.copyWith(
           status: AuthStatus.error,
@@ -174,7 +182,7 @@ class AuthCubit extends Cubit<AuthState> {
         ),
       );
     } catch (e) {
-      print('❌ [DEBUG_AUTH] ERRO Inesperado: $e');
+      AppLogger.e('❌ [DEBUG_AUTH] ERRO Inesperado: $e', error: e, tag: 'AUTH');
       emit(
         state.copyWith(
           status: AuthStatus.error,
@@ -198,8 +206,9 @@ class AuthCubit extends Cubit<AuthState> {
       }
 
       if (userCredential != null && userCredential.user != null) {
-        print(
+        AppLogger.i(
           '✅ [DEBUG_AUTH] Redirect Result encontrado para: ${userCredential.user?.email}',
+          tag: 'AUTH',
         );
         await _processUserCredential(userCredential);
         return;
@@ -208,8 +217,9 @@ class AuthCubit extends Cubit<AuthState> {
       // ✅ 2. Backup: Se não veio no redirect, talvez o Firebase já tenha logado em background
       final currentUser = auth.currentUser;
       if (currentUser != null) {
-        print(
+        AppLogger.i(
           '👤 [DEBUG_AUTH] Usuário já persistido encontrado: ${currentUser.email}',
+          tag: 'AUTH',
         );
         // Criamos um UserCredential fake ou apenas processamos o user
         // Como _processUserCredential usa UserCredential, vamos criar um mock
@@ -218,11 +228,12 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
-      print(
+      AppLogger.d(
         'ℹ️ [DEBUG_AUTH] Nenhum resultado de redirect ou usuário logado após 3 tentativas.',
+        tag: 'AUTH',
       );
     } catch (e) {
-      print('❌ [DEBUG_AUTH] Erro ao processar resultado do redirect: $e');
+      AppLogger.e('❌ [DEBUG_AUTH] Erro ao processar resultado do redirect: $e', error: e, tag: 'AUTH');
     }
   }
 
@@ -234,8 +245,9 @@ class AuthCubit extends Cubit<AuthState> {
 
   Future<void> _processFirebaseUser(User firebaseUser) async {
     emit(state.copyWith(status: AuthStatus.loading));
-    print(
+    AppLogger.d(
       '🚀 [DEBUG_AUTH] Calling processGoogleSignInCustomer for: ${firebaseUser.email}',
+      tag: 'AUTH',
     );
 
     try {
@@ -243,26 +255,27 @@ class AuthCubit extends Cubit<AuthState> {
           .processGoogleSignInCustomer(firebaseUser: firebaseUser)
           .timeout(const Duration(seconds: 15));
 
-      print(
+      AppLogger.d(
         '🚀 [DEBUG_AUTH] processGoogleSignInCustomer result: ${customerResult.isRight ? "SUCCESS" : "ERROR"}',
+        tag: 'AUTH',
       );
 
       customerResult.fold(
         (errorMessage) {
-          print('🚀 [DEBUG_AUTH] Error message from backend: $errorMessage');
+          AppLogger.e('🚀 [DEBUG_AUTH] Error message from backend: $errorMessage', tag: 'AUTH');
           emit(
             state.copyWith(
               status: AuthStatus.error,
               errorMessage: errorMessage,
             ),
           );
-          print('❌ [AUTH_CUBIT] Error processing customer: $errorMessage');
         },
         (loginResponse) async {
           try {
             final customer = loginResponse.customer;
-            print(
+            AppLogger.d(
               '🚀 [DEBUG_AUTH] Finalizing login for customer: ${customer.id}',
+              tag: 'AUTH',
             );
 
             await realtimeRepository.linkCustomerToSession(customer.id!);
@@ -271,6 +284,9 @@ class AuthCubit extends Cubit<AuthState> {
             );
             cartCubit.fetchCart();
 
+            // ✅ CORREÇÃO: Limpa endereços ANTES de carregar novos dados
+            addressCubit.clearAddresses();
+
             if (loginResponse.addresses.isNotEmpty) {
               addressCubit.setAddressesFromLogin(loginResponse.addresses);
             } else {
@@ -278,22 +294,12 @@ class AuthCubit extends Cubit<AuthState> {
             }
 
             if (loginResponse.orders.isNotEmpty) {
-              print(
+              AppLogger.i(
                 '📦 [AUTH] Login retornou ${loginResponse.orders.length} pedidos',
+                tag: 'AUTH',
               );
               for (var order in loginResponse.orders.take(1)) {
-                print('📦 [AUTH] Pedido ${order.id} - ${order.shortId}');
-                print('📦 [AUTH]   Bag items: ${order.bag.items.length}');
-                for (var item in order.bag.items) {
-                  print(
-                    '📦 [AUTH]     - ${item.name} | SubItems: ${item.subItems.length}',
-                  );
-                  for (var sub in item.subItems) {
-                    print(
-                      '📦 [AUTH]       - ${sub.name} | Type: ${sub.groupType} | Price: ${sub.unitPrice}',
-                    );
-                  }
-                }
+                AppLogger.d('📦 [AUTH] Pedido ${order.id} - ${order.shortId}', tag: 'AUTH');
               }
               ordersCubit.setOrdersFromLogin(loginResponse.orders);
             } else {
@@ -301,9 +307,9 @@ class AuthCubit extends Cubit<AuthState> {
             }
 
             await _processPendingCartItem();
-            print('🎉 [DEBUG_AUTH] AUTH SUCCESSFUL!');
+            AppLogger.s('🎉 [DEBUG_AUTH] AUTH SUCCESSFUL!', tag: 'AUTH');
           } catch (e) {
-            print('❌ [DEBUG_AUTH] Error linking session: $e');
+            AppLogger.e('❌ [DEBUG_AUTH] Error linking session: $e', error: e, tag: 'AUTH');
             emit(
               state.copyWith(
                 status: AuthStatus.error,
@@ -314,7 +320,7 @@ class AuthCubit extends Cubit<AuthState> {
         },
       );
     } catch (e) {
-      print('❌ [DEBUG_AUTH] Timeout ou Erro na API: $e');
+      AppLogger.e('❌ [DEBUG_AUTH] Timeout ou Erro na API: $e', error: e, tag: 'AUTH');
       emit(
         state.copyWith(
           status: AuthStatus.error,
@@ -352,6 +358,7 @@ class AuthCubit extends Cubit<AuthState> {
 
       final firebaseUser = userCredential.user;
       if (firebaseUser == null) {
+        AppLogger.e('Não foi possível obter os dados do usuário.', tag: 'AUTH');
         emit(
           state.copyWith(
             status: AuthStatus.error,
@@ -382,6 +389,9 @@ class AuthCubit extends Cubit<AuthState> {
               state.copyWith(status: AuthStatus.success, customer: customer),
             );
             cartCubit.fetchCart();
+
+            // ✅ CORREÇÃO: Limpa endereços ANTES de carregar novos dados
+            addressCubit.clearAddresses();
 
             // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login
             if (loginResponse.addresses.isNotEmpty) {
@@ -495,6 +505,7 @@ class AuthCubit extends Cubit<AuthState> {
 
       customerResult.fold(
         (errorMessage) {
+          AppLogger.e('Erro ao processar cliente pós-signup: $errorMessage', tag: 'AUTH');
           emit(
             state.copyWith(
               status: AuthStatus.error,
@@ -510,6 +521,9 @@ class AuthCubit extends Cubit<AuthState> {
               state.copyWith(status: AuthStatus.success, customer: customer),
             );
             cartCubit.fetchCart();
+
+            // ✅ CORREÇÃO: Limpa endereços ANTES de carregar novos dados
+            addressCubit.clearAddresses();
 
             // ✅ OTIMIZAÇÃO: Usa dados que já vieram no login
             if (loginResponse.addresses.isNotEmpty) {

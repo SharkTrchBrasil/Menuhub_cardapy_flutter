@@ -257,51 +257,42 @@ class CartCubit extends Cubit<CartState> {
             }
         }
 
-        emit(
-          state.copyWith(
-            status: CartStatus.success,
-            cart: updatedCart,
-            isUpdating: false,
-          ),
-        );
+        emit(state.copyWith(status: CartStatus.success, cart: updatedCart));
         calculatePromotions();
-        return;
       } on CartGranularFallbackException catch (e) {
         // Fallback: backend retornou carrinho completo (versão antiga)
         AppLogger.w(
           'Fallback: usando carrinho completo (backend antigo)',
           tag: 'CART',
         );
-        emit(
-          state.copyWith(
-            status: CartStatus.success,
-            cart: e.cart,
-            isUpdating: false,
-          ),
-        );
+        emit(state.copyWith(status: CartStatus.success, cart: e.cart));
         calculatePromotions();
-        return;
+      } on NetworkException catch (e) {
+        AppLogger.e('Erro de rede ao atualizar item', error: e, tag: 'CART');
+        await fetchCart();
+        throw CartException('Erro de conexão. Verifique sua internet.');
+      } on ServerException catch (e) {
+        AppLogger.e(
+          'Erro do servidor ao atualizar item',
+          error: e,
+          tag: 'CART',
+        );
+        await fetchCart();
+        throw CartException(e.message);
+      } catch (e, stackTrace) {
+        AppLogger.e(
+          'Erro ao atualizar item',
+          error: e,
+          stackTrace: stackTrace,
+          tag: 'CART',
+        );
+        await fetchCart();
+        throw CartException('Erro ao atualizar carrinho. Tente novamente.');
+      } finally {
+        emit(state.copyWith(isUpdating: false));
       }
-    } on NetworkException catch (e) {
-      AppLogger.e('Erro de rede ao atualizar item', error: e, tag: 'CART');
-      await fetchCart();
-      emit(state.copyWith(isUpdating: false));
-      throw CartException('Erro de conexão. Verifique sua internet.');
-    } on ServerException catch (e) {
-      AppLogger.e('Erro do servidor ao atualizar item', error: e, tag: 'CART');
-      await fetchCart();
-      emit(state.copyWith(isUpdating: false));
-      throw CartException(e.message);
-    } catch (e, stackTrace) {
-      AppLogger.e(
-        'Erro ao atualizar item',
-        error: e,
-        stackTrace: stackTrace,
-        tag: 'CART',
-      );
-      await fetchCart();
-      emit(state.copyWith(isUpdating: false));
-      throw CartException('Erro ao atualizar carrinho. Tente novamente.');
+    } catch (e) {
+      rethrow;
     }
   }
 
