@@ -65,6 +65,22 @@ class ProductPageCubit extends Cubit<ProductPageState> {
       // Se a categoria foi atualizada (ou se o produto mudou), recarrega
       // Aqui fazemos um reload simples se a categoria existir e for diferente
       if (updatedCategory != null && updatedCategory != currentCategory) {
+        // 🔍 DEBUG: DETECTAR se o reload está acontecendo durante configuração
+        final hasSelectedOptions = state.product!.selectedVariants.any(
+          (v) => v.cartOptions.any((o) => o.quantity > 0),
+        );
+        print(
+          "⚠️ [ProductPageCubit] _onCatalogStateChanged DISPARADO! "
+          "Categoria ${updatedCategory.name} mudou. "
+          "hasSelectedOptions=$hasSelectedOptions, isEditMode=${state.isEditMode}",
+        );
+        if (hasSelectedOptions) {
+          print(
+            "🚨 [ProductPageCubit] ATENÇÃO: Usuário já selecionou opções! "
+            "Se o loadProduct for chamado, as seleções serão PERDIDAS!",
+          );
+        }
+        
         print(
           "🔄 [ProductPageCubit] Detectada atualização na categoria ${updatedCategory.name}. Recarregando produto...",
         );

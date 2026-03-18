@@ -342,6 +342,21 @@ class _ProductPageState extends State<ProductPage> {
     // ✅ CORREÇÃO: Para pizzas, usamos optionItemId em vez de variantOptionId
     final isCustomizable = product.category.isCustomizable;
 
+    // 🔍 DEBUG DIAGNÓSTICO: Rastrear estado das variantes ANTES de montar o payload
+    print('🔍 [ProductPage] ━━━ DIAGNÓSTICO DE VARIANTES ━━━');
+    print('   Total de selectedVariants no CartProduct: ${product.selectedVariants.length}');
+    for (int i = 0; i < product.selectedVariants.length; i++) {
+      final v = product.selectedVariants[i];
+      final selectedCount = v.cartOptions.where((o) => o.quantity > 0).length;
+      final totalCount = v.cartOptions.length;
+      print('   [$i] CartVariant id=${v.id}, name="${v.name}", groupType=${v.groupType}');
+      print('       opções selecionadas: $selectedCount / $totalCount');
+      for (final opt in v.cartOptions.where((o) => o.quantity > 0)) {
+        print('       ✅ option id=${opt.id}, name="${opt.name}", qty=${opt.quantity}, price=${opt.price}');
+      }
+    }
+    print('🔍 [ProductPage] ━━━ FIM DIAGNÓSTICO ━━━');
+
     final payload = UpdateCartItemPayload(
       cartItemId:
           productState.isEditMode ? productState.originalCartItemId : null,
@@ -518,6 +533,22 @@ class _ProductPageState extends State<ProductPage> {
     );
 
     Future<void> updateAndPop() async {
+      // 🔍 DEBUG: Payload final que será enviado
+      print('📤 [ProductPage] ━━━ PAYLOAD FINAL ━━━');
+      print('   productId: ${payload.productId}');
+      print('   categoryId: ${payload.categoryId}');
+      print('   cartItemId: ${payload.cartItemId}');
+      print('   quantity: ${payload.quantity}');
+      print('   variants: ${payload.variants?.length ?? 0} grupo(s)');
+      if (payload.variants != null) {
+        for (int i = 0; i < payload.variants!.length; i++) {
+          final v = payload.variants![i];
+          print('   [$i] variantId=${v.variantId}, optionGroupId=${v.optionGroupId}, groupType=${v.groupType}');
+          print('       options: ${v.options.length} → ${v.options.map((o) => "id=${o.variantOptionId ?? o.optionItemId}(${o.name})").join(", ")}');
+        }
+      }
+      print('📤 [ProductPage] ━━━ FIM PAYLOAD ━━━');
+
       // ✅ SEGURANÇA: Verifica se o carrinho tem itens de outra loja
       final productStoreId = product.product.storeId;
       final canProceed = await canAddToCart(
@@ -529,7 +560,27 @@ class _ProductPageState extends State<ProductPage> {
         return; // Usuário cancelou, não adiciona
       }
 
-      await cartCubit.updateItem(payload);
+      // ✅ CORREÇÃO: Captura erros do backend para exibir feedback ao usuário
+      // Antes, exceções do CartCubit subiam sem tratamento, causando falha silenciosa
+      try {
+        await cartCubit.updateItem(payload);
+      } catch (e) {
+        print('❌ [ProductPage] Erro ao adicionar item ao carrinho: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e.toString().replaceAll('Exception: ', '').replaceAll('CartException: ', ''),
+              ),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return; // Não fecha a tela nem navega
+      }
+
       if (context.mounted) {
         // ✅ Fecha a tela de detalhes do produto
         if (context.canPop()) {

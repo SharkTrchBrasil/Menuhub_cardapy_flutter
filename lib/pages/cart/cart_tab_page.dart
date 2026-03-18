@@ -221,7 +221,7 @@ class CartTabPage extends StatelessWidget {
                           bebidaCategories: bebidaCategoryNames,
                           getRecommendedProducts: getRecommendedProducts,
                           onProductTap:
-                              (product) => handleProductTap(context, product),
+                              (product) => handleProductTap(context, product, allCategories),
                         ),
                         const SizedBox(height: 34),
                         CouponSection(couponCode: cart.couponCode),
@@ -249,13 +249,24 @@ class CartTabPage extends StatelessWidget {
     );
   }
 
-  Future<void> handleProductTap(BuildContext context, Product product) async {
+  Future<void> handleProductTap(BuildContext context, Product product, List<Category> allCategories) async {
     // ✅ CORREÇÃO: Verifica se tem variantes/complementos OU é pizza (tem prices)
     final hasVariants = product.variantLinks.isNotEmpty;
     final isPizza = product.prices.isNotEmpty; // Pizza tem preços por sabor
 
-    // ✅ Se tem complementos OU é pizza, abre tela de detalhes (igual na home)
-    if (hasVariants || isPizza) {
+    // ✅ CORREÇÃO CRÍTICA: Também verifica se a CATEGORIA do produto tem optionGroups
+    bool hasCategoryOptionGroups = false;
+    final category = allCategories.firstWhereOrNull(
+      (c) => product.categoryLinks.any((link) => link.categoryId == c.id),
+    );
+    if (category != null && category.optionGroups.isNotEmpty) {
+      hasCategoryOptionGroups = category.optionGroups.any(
+        (group) => group.items.any((item) => item.isActive),
+      );
+    }
+
+    // ✅ Se tem complementos OU é pizza OU tem optionGroups, abre tela de detalhes
+    if (hasVariants || isPizza || hasCategoryOptionGroups) {
       goToProductPage(context, product, fromCart: true);
     } else {
       final firstCategoryLink = product.categoryLinks.firstOrNull;
