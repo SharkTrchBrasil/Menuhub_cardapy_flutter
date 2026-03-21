@@ -310,9 +310,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     final flavorOptions = <SubItem>[];
     final otherOptions = <SubItem>[];
 
-    int massaPrice = 0;
-    int bordaPrice = 0;
-
     for (final sub in item.subItems) {
       if (sub.quantity <= 0) continue;
 
@@ -327,14 +324,12 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       // Detecta Massa
       if (isMassaGroup && massaText == null) {
         massaText = sub.name;
-        massaPrice = sub.totalPrice ~/ sub.quantity;
         continue;
       }
 
       // Detecta Borda
       if (isBordaGroup && bordaText == null) {
         bordaText = sub.name;
-        bordaPrice = sub.totalPrice ~/ sub.quantity;
         continue;
       }
 
@@ -350,8 +345,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           if (parts.length >= 2) {
             massaText = parts[0].trim();
             bordaText = parts[1].trim();
-            massaPrice = sub.totalPrice ~/ sub.quantity;
-            bordaPrice = 0;
             continue;
           }
         }
@@ -371,7 +364,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     if (massaText != null || bordaText != null) {
       String cleanMassa = massaText ?? '';
       String cleanBorda = bordaText ?? '';
-      int combinedPrice = massaPrice + bordaPrice;
 
       while (RegExp(
         r'^[Mm]assa\s+',
@@ -401,7 +393,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         combinedText = 'Borda $cleanBorda';
       }
       lineWidgets.add(
-        _buildVariantRow('1', combinedText, price: combinedPrice),
+        _buildVariantRow('1', combinedText, price: 0),
       );
     }
 
@@ -411,9 +403,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     for (final flavor in flavorOptions) {
       String name = flavor.name;
       name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
-      final flavorPrice = flavor.totalPrice ~/ flavor.quantity;
+      
       lineWidgets.add(
-        _buildVariantRow('1', '$fractionText$name', price: flavorPrice),
+        _buildVariantRow('1', '$fractionText$name', price: 0),
       );
     }
 
