@@ -24,6 +24,9 @@ class Cart extends Equatable {
   // ✅ NOVO: Indica quando cupom FREE_DELIVERY foi aplicado (frete grátis no checkout)
   final bool isFreeDelivery;
 
+  // ✅ BLINDAGEM: Se true, há itens indisponíveis e checkout deve ser bloqueado
+  final bool hasUnavailableItems;
+
   const Cart({
     required this.id,
     required this.status,
@@ -38,6 +41,7 @@ class Cart extends Equatable {
     this.finalDeliveryFee = 0,
     this.promotionMessage,
     this.isFreeDelivery = false,
+    this.hasUnavailableItems = false,
   });
 
   // Um construtor 'vazio' é útil para o estado inicial
@@ -54,7 +58,8 @@ class Cart extends Equatable {
       deliveryDiscount = 0,
       finalDeliveryFee = 0,
       promotionMessage = null,
-      isFreeDelivery = false;
+      isFreeDelivery = false,
+      hasUnavailableItems = false;
 
   bool get isEmpty => items.isEmpty;
 
@@ -85,6 +90,7 @@ class Cart extends Equatable {
       finalDeliveryFee: _parseMoney(json['final_delivery_fee']),
       promotionMessage: json['promotion_message'],
       isFreeDelivery: json['is_free_delivery'] ?? false,
+      hasUnavailableItems: json['has_unavailable_items'] ?? false,
     );
   }
 
@@ -111,6 +117,7 @@ class Cart extends Equatable {
     int? finalDeliveryFee,
     String? promotionMessage,
     bool? isFreeDelivery,
+    bool? hasUnavailableItems,
   }) {
     return Cart(
       id: id ?? this.id,
@@ -126,6 +133,7 @@ class Cart extends Equatable {
       finalDeliveryFee: finalDeliveryFee ?? this.finalDeliveryFee,
       promotionMessage: promotionMessage ?? this.promotionMessage,
       isFreeDelivery: isFreeDelivery ?? this.isFreeDelivery,
+      hasUnavailableItems: hasUnavailableItems ?? this.hasUnavailableItems,
     );
   }
 
@@ -146,6 +154,7 @@ class Cart extends Equatable {
       finalDeliveryFee: deliveryFee, // Frete volta ao original
       promotionMessage: null, // ✅ Limpa mensagem
       isFreeDelivery: false, // ✅ Remove flag de frete grátis
+      hasUnavailableItems: hasUnavailableItems, // Preserva estado
     );
   }
 
@@ -164,6 +173,7 @@ class Cart extends Equatable {
     finalDeliveryFee,
     promotionMessage,
     isFreeDelivery,
+    hasUnavailableItems,
   ];
 }
 

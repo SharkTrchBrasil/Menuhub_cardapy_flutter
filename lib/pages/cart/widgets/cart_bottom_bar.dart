@@ -20,7 +20,7 @@ class CartBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<DsThemeSwitcher>().theme;
-    
+
     // ✅ Reativo: Ouve alterações no StoreCubit para minOrder e cupons
     final storeState = context.watch<StoreCubit>().state;
     final minOrder = storeState.store?.getMinOrderForDelivery() ?? 0;
@@ -29,14 +29,15 @@ class CartBottomBar extends StatelessWidget {
     return BlocBuilder<CartCubit, CartState>(
       builder: (context, cartState) {
         final cart = cartState.cart;
-        
+
         return BlocBuilder<DeliveryFeeCubit, DeliveryFeeState>(
           builder: (context, feeState) {
             // ✅ Mesma lógica do OrderSummaryCard
             double deliveryFee = 0.0;
             bool isDeliveryFreeFromRule = false;
 
-            if (feeState is DeliveryFeeLoaded && feeState.deliveryType == DeliveryType.delivery) {
+            if (feeState is DeliveryFeeLoaded &&
+                feeState.deliveryType == DeliveryType.delivery) {
               deliveryFee = feeState.deliveryFee;
               isDeliveryFreeFromRule = feeState.isFree ?? false;
               if (isDeliveryFreeFromRule) {
@@ -51,10 +52,15 @@ class CartBottomBar extends StatelessWidget {
             bool hasFreeDeliveryCoupon = false;
             if (cart.couponCode != null) {
               // Busca o cupom aplicado na lista de cupons da store
-              final appliedCoupon = storeCoupons.where(
-                (c) => c.code.toUpperCase() == cart.couponCode!.toUpperCase()
-              ).firstOrNull;
-              
+              final appliedCoupon =
+                  storeCoupons
+                      .where(
+                        (c) =>
+                            c.code.toUpperCase() ==
+                            cart.couponCode!.toUpperCase(),
+                      )
+                      .firstOrNull;
+
               // Se encontrou o cupom, verifica se é do tipo FREE_DELIVERY
               if (appliedCoupon != null && appliedCoupon.isFreeDelivery) {
                 hasFreeDeliveryCoupon = true;
@@ -63,8 +69,9 @@ class CartBottomBar extends StatelessWidget {
                 hasFreeDeliveryCoupon = true;
               }
             }
-            
-            final isFreeDelivery = isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
+
+            final isFreeDelivery =
+                isDeliveryFreeFromRule || hasFreeDeliveryCoupon;
             final effectiveFee = isFreeDelivery ? 0.0 : deliveryFee;
 
             // Totais
@@ -72,13 +79,19 @@ class CartBottomBar extends StatelessWidget {
             final discountValue = cart.discount / 100.0;
             // Total Visual = (Subtotal - Desconto) + Frete Efetivo
             final finalTotal = subtotalValue - discountValue + effectiveFee;
-            
-            final itemCount = cart.items.fold<int>(0, (sum, item) => sum + (item.quantity > 0 ? item.quantity : 1));
+
+            final itemCount = cart.items.fold<int>(
+              0,
+              (sum, item) => sum + (item.quantity > 0 ? item.quantity : 1),
+            );
             // ✅ CORREÇÃO: hasCoupon considera desconto direto OU cupom de frete grátis
             final hasCoupon = cart.discount > 0 || hasFreeDeliveryCoupon;
 
             // ✅ Label do texto
-            final labelText = isFreeDelivery ? 'Total com entrega grátis' : 'Total com entrega';
+            final labelText =
+                isFreeDelivery
+                    ? 'Total com entrega grátis'
+                    : 'Total com entrega';
 
             return Container(
               color: Colors.white,
@@ -97,8 +110,14 @@ class CartBottomBar extends StatelessWidget {
                               labelText,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isFreeDelivery ? Colors.green.shade700 : Colors.grey.shade600,
-                                fontWeight: isFreeDelivery ? FontWeight.w600 : FontWeight.normal,
+                                color:
+                                    isFreeDelivery
+                                        ? Colors.green.shade700
+                                        : Colors.grey.shade600,
+                                fontWeight:
+                                    isFreeDelivery
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
                               ),
                             ),
                             Row(
@@ -109,7 +128,10 @@ class CartBottomBar extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: hasCoupon ? Colors.green.shade700 : Colors.black87,
+                                    color:
+                                        hasCoupon
+                                            ? Colors.green.shade700
+                                            : Colors.black87,
                                   ),
                                 ),
                                 Text(
@@ -129,19 +151,39 @@ class CartBottomBar extends StatelessWidget {
                         child: DsPrimaryButton(
                           label: 'Continuar',
                           onPressed: () {
+                            // BLINDAGEM: Validação de itens indisponíveis
+                            final cartState = context.read<CartCubit>().state;
+                            if (cartState.cart.hasUnavailableItems) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text(
+                                    'Remova os itens indisponíveis antes de continuar',
+                                  ),
+                                  backgroundColor: Colors.red.shade600,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              return;
+                            }
+
                             // Validação de loja fechada
-                            final activeStore = context.read<StoreCubit>().state.store;
+                            final activeStore =
+                                context.read<StoreCubit>().state.store;
                             if (activeStore != null) {
-                              final status = StoreStatusService.validateStoreStatus(activeStore);
-                              
+                              final status =
+                                  StoreStatusService.validateStoreStatus(
+                                    activeStore,
+                                  );
+
                               if (!status.canReceiveOrders) {
                                 StoreClosedHelper.showModal(
                                   context,
                                   isCartPage: true,
-                                  isDesktop: MediaQuery.of(context).size.width >= 768,
-                                  nextOpenTime: status.message, 
+                                  isDesktop:
+                                      MediaQuery.of(context).size.width >= 768,
+                                  nextOpenTime: status.message,
                                   onSeeOtherOptions: () {
-                                    Navigator.of(context).pop(); 
+                                    Navigator.of(context).pop();
                                   },
                                 );
                                 return;
@@ -156,59 +198,64 @@ class CartBottomBar extends StatelessWidget {
                                     top: Radius.circular(20),
                                   ),
                                 ),
-                                builder: (_) => Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        'Valor mínimo do pedido.',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: theme.cartTextColor,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      Text(
-                                        'O valor mínimo para entrega é de R\$ ${minOrder.toCurrency()}.',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
-                                      const SizedBox(height: 24),
-                                      Row(
+                                builder:
+                                    (_) => Padding(
+                                      padding: const EdgeInsets.all(20),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
                                         children: [
-                                          Expanded(
-                                            child: DsPrimaryButton(
-                                              onPressed: () => context.pop(),
-                                              label: 'Adicionar mais itens',
+                                          Text(
+                                            'Valor mínimo do pedido.',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: theme.cartTextColor,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
-                                          const SizedBox(width: 12),
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            'O valor mínimo para entrega é de R\$ ${minOrder.toCurrency()}.',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 24),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: DsPrimaryButton(
+                                                  onPressed:
+                                                      () => context.pop(),
+                                                  label: 'Adicionar mais itens',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 24),
+                                          GestureDetector(
+                                            onTap: () => Navigator.pop(context),
+                                            child: Text(
+                                              'Ok, entendi',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: theme.primaryColor,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
                                         ],
                                       ),
-                                      const SizedBox(height: 24),
-                                      GestureDetector(
-                                        onTap: () => Navigator.pop(context),
-                                        child: Text(
-                                          'Ok, entendi',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: theme.primaryColor,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-                                    ],
-                                  ),
-                                ),
+                                    ),
                               );
                             } else {
                               final authState = context.read<AuthCubit>().state;
-                              
+
                               if (authState.isLoggedIn) {
                                 context.push('/address');
                               } else {

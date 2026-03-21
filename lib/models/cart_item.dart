@@ -12,6 +12,9 @@ class CartItemVariantOption extends Equatable {
   final int quantity;
   final String name;
   final int price;
+  // ✅ BLINDAGEM: Disponibilidade da opção
+  final bool isAvailable;
+  final String? unavailableReason;
 
   const CartItemVariantOption({
     this.variantOptionId,
@@ -19,6 +22,8 @@ class CartItemVariantOption extends Equatable {
     required this.quantity,
     required this.name,
     required this.price,
+    this.isAvailable = true,
+    this.unavailableReason,
   });
 
   factory CartItemVariantOption.fromJson(Map<String, dynamic> json) {
@@ -28,6 +33,8 @@ class CartItemVariantOption extends Equatable {
       quantity: json['quantity'] ?? 1,
       name: json['name'] ?? '',
       price: _parseMoney(json['price']),
+      isAvailable: json['is_available'] ?? true,
+      unavailableReason: json['unavailable_reason'],
     );
   }
 
@@ -58,6 +65,8 @@ class CartItemVariantOption extends Equatable {
     quantity,
     name,
     price,
+    isAvailable,
+    unavailableReason,
   ];
 
   // ✅ IMPORTANTE: toString() retorna o nome para exibição correta
@@ -128,6 +137,9 @@ class CartItem extends Equatable {
   final String?
   sizeName; // ✅ Para exibir o tamanho escolhido (ex: "Pizza Grande")
   final String? sizeImageUrl; // ✅ NOVO: Imagem do tamanho escolhido
+  // ✅ BLINDAGEM: Disponibilidade do item
+  final bool isAvailable;
+  final String? unavailableReason;
 
   const CartItem({
     required this.id,
@@ -138,11 +150,40 @@ class CartItem extends Equatable {
     required this.unitPrice,
     required this.totalPrice,
     this.sizeName,
-    this.sizeImageUrl, // ✅ NOVO
+    this.sizeImageUrl,
+    this.isAvailable = true,
+    this.unavailableReason,
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
-    return CartItem(
+    print('\n🟢 [CartItem.fromJson] INÍCIO - Recebendo do Backend');
+    print('   - id: ${json['id']}');
+    print('   - product.id: ${json['product']?['id']}');
+    print('   - product.name: ${json['product']?['name']}');
+    print('   - quantity: ${json['quantity']}');
+    print('   - sizeName: ${json['size_name']}');
+    print('   - variants count: ${(json['variants'] as List?)?.length ?? 0}');
+
+    if (json['variants'] != null) {
+      final variantsList = json['variants'] as List;
+      for (var i = 0; i < variantsList.length; i++) {
+        final v = variantsList[i];
+        print(
+          '   - Variant $i: ${v['name']} (groupType: ${v['group_type']}, optionGroupId: ${v['option_group_id']})',
+        );
+        if (v['options'] != null) {
+          for (var opt in v['options']) {
+            if (opt['quantity'] > 0) {
+              print(
+                '      → Option: ${opt['name']} (qty: ${opt['quantity']}, optionItemId: ${opt['option_item_id']}, variantOptionId: ${opt['variant_option_id']})',
+              );
+            }
+          }
+        }
+      }
+    }
+
+    final cartItem = CartItem(
       id: json['id'],
       product: Product.fromJson(json['product']),
       quantity: json['quantity'],
@@ -155,7 +196,12 @@ class CartItem extends Equatable {
       totalPrice: _parseMoney(json['total_price']),
       sizeName: json['size_name'],
       sizeImageUrl: json['size_image_url'],
+      isAvailable: json['is_available'] ?? true,
+      unavailableReason: json['unavailable_reason'],
     );
+
+    print('🟢 [CartItem.fromJson] FIM\n');
+    return cartItem;
   }
 
   static int _parseMoney(dynamic value) {
@@ -195,6 +241,16 @@ class CartItem extends Equatable {
     };
   }
 
+  // ✅ BLINDAGEM: Verifica se alguma opção está indisponível
+  bool get hasUnavailableOptions {
+    for (final variant in variants) {
+      for (final option in variant.options) {
+        if (!option.isAvailable) return true;
+      }
+    }
+    return false;
+  }
+
   CartItem copyWith({
     int? id,
     Product? product,
@@ -205,6 +261,8 @@ class CartItem extends Equatable {
     int? totalPrice,
     String? sizeName,
     String? sizeImageUrl,
+    bool? isAvailable,
+    String? unavailableReason,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -216,6 +274,8 @@ class CartItem extends Equatable {
       totalPrice: totalPrice ?? this.totalPrice,
       sizeName: sizeName ?? this.sizeName,
       sizeImageUrl: sizeImageUrl ?? this.sizeImageUrl,
+      isAvailable: isAvailable ?? this.isAvailable,
+      unavailableReason: unavailableReason ?? this.unavailableReason,
     );
   }
 
@@ -228,7 +288,9 @@ class CartItem extends Equatable {
       unitPrice = 0,
       totalPrice = 0,
       sizeName = null,
-      sizeImageUrl = null;
+      sizeImageUrl = null,
+      isAvailable = true,
+      unavailableReason = null;
 
   String get formattedUnitPrice => unitPrice.toCurrency;
   String get formattedTotalPrice => totalPrice.toCurrency;
@@ -264,6 +326,8 @@ class CartItem extends Equatable {
     totalPrice,
     sizeName,
     sizeImageUrl,
+    isAvailable,
+    unavailableReason,
   ];
 
   @override

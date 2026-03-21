@@ -422,7 +422,15 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     CartItem cartItem,
     PizzaPricingStrategy strategy,
   ) {
-    print('🔧 [_configureForEdit] Iniciando configuração para edição');
+    print('\n[_configureForEdit] INICIO - Reidratando item do carrinho');
+    print('   - CartItem.id: ${cartItem.id}');
+    print('   - Product.id: ${product.id}');
+    print('   - Product.name: ${product.name}');
+    print('   - Category.id: ${category.id}');
+    print('   - Category.name: ${category.name}');
+    print('   - CartItem.sizeName: ${cartItem.sizeName}');
+    print('   - CartItem.variants.length: ${cartItem.variants.length}');
+
     var configuredProduct = CartProduct.fromProduct(
       product,
       category,
@@ -455,19 +463,23 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     // 2. Extrai IDs salvos no carrinho
     final savedOptionIds = <int, int>{}; // {option_item_id: quantity}
 
-    print('   - Variants no carrinho: ${cartItem.variants.length}');
+    print('   📋 Variants no carrinho: ${cartItem.variants.length}');
     for (var v in cartItem.variants) {
       print(
-        '     variant: groupType=${v.groupType}, optionGroupId=${v.optionGroupId}, name=${v.name}',
+        '     📦 Variant: groupType=${v.groupType}, optionGroupId=${v.optionGroupId}, name=${v.name}',
       );
       for (var o in v.options) {
         final id = o.effectiveId;
         if (id > 0) {
           savedOptionIds[id] = o.quantity;
-          print('       option id=$id, name="${o.name}", qty=${o.quantity}');
+          print(
+            '       ✓ Option id=$id, name="${o.name}", qty=${o.quantity}, variantOptionId=${o.variantOptionId}, optionItemId=${o.optionItemId}',
+          );
         }
       }
     }
+
+    print('   🔑 savedOptionIds MAP: $savedOptionIds');
 
     // ✅ Reidrata sabores buscando nos grupos FLAVOR/TOPPING da categoria adaptada
     // (após adaptPizzaProduct, os sabores estão nos grupos 'flavor' ou 'topping')
@@ -677,7 +689,24 @@ class ProductPageCubit extends Cubit<ProductPageState> {
           }).toList();
     }
 
-    print('🔧 [_configureForEdit] Concluído. Sabores: ${savedFlavors.length}');
+    print('[_configureForEdit] FIM - Resultado da reidratacao:');
+    print('   - Sabores reidratados: ${savedFlavors.length}');
+    print('   - Variantes reidratadas: ${newSelectedVariants.length}');
+
+    for (var i = 0; i < newSelectedVariants.length; i++) {
+      final v = newSelectedVariants[i];
+      final selectedOptions =
+          v.cartOptions.where((o) => o.quantity > 0).toList();
+      if (selectedOptions.isNotEmpty) {
+        print(
+          '   - Variant $i: ${v.name} (${selectedOptions.length} opções selecionadas)',
+        );
+        for (var opt in selectedOptions) {
+          print('      ✓ ${opt.name} (qty: ${opt.quantity})');
+        }
+      }
+    }
+    print('[_configureForEdit] FIM\n');
 
     return configuredProduct.copyWith(
       quantity: cartItem.quantity,

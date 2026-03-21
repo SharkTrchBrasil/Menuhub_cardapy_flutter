@@ -605,6 +605,13 @@ class UnifiedCartBottomBar extends StatelessWidget {
     double minOrder,
     double finalTotal,
   ) {
+    // BLINDAGEM: Validação de itens indisponíveis
+    final cart = context.read<CartCubit>().state.cart;
+    if (cart.hasUnavailableItems) {
+      _showUnavailableItemsModal(context, cart);
+      return;
+    }
+
     // Validação de loja fechada
     if (store != null) {
       final status = StoreStatusService.validateStoreStatus(store);
@@ -689,6 +696,203 @@ class UnifiedCartBottomBar extends StatelessWidget {
               ],
             ),
           ),
+    );
+  }
+
+  void _showUnavailableItemsModal(BuildContext context, dynamic cart) {
+    final unavailableItems =
+        cart.items
+            .where((item) => !item.isAvailable || item.hasUnavailableOptions)
+            .toList();
+
+    // Separa itens por tipo: horário (recuperável) vs permanente
+    final scheduleItems =
+        unavailableItems.where((item) {
+          final reason = (item.unavailableReason ?? '').toLowerCase();
+          return reason.startsWith('disponível');
+        }).toList();
+    final permanentItems =
+        unavailableItems.where((item) {
+          final reason = (item.unavailableReason ?? '').toLowerCase();
+          return !reason.startsWith('disponível');
+        }).toList();
+
+    final hasOnlySchedule = permanentItems.isEmpty && scheduleItems.isNotEmpty;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder:
+          (modalContext) => Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Icon(
+                      hasOnlySchedule
+                          ? Icons.schedule_rounded
+                          : Icons.error_outline_rounded,
+                      color:
+                          hasOnlySchedule
+                              ? Colors.orange.shade700
+                              : Colors.red.shade700,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        hasOnlySchedule
+                            ? 'Itens fora do horário'
+                            : 'Itens indisponíveis',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color:
+                              hasOnlySchedule
+                                  ? Colors.orange.shade800
+                                  : Colors.red.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hasOnlySchedule
+                      ? 'Alguns itens só estão disponíveis em horários específicos.'
+                      : 'Remova os itens indisponíveis para finalizar seu pedido.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 16),
+
+                // Itens fora do horário (laranja)
+                if (scheduleItems.isNotEmpty) ...[
+                  ...scheduleItems.map(
+                    (item) => _buildModalItem(
+                      name: item.sizeName ?? item.product.name,
+                      reason: item.unavailableReason ?? 'Fora do horário',
+                      icon: Icons.schedule_rounded,
+                      color: Colors.orange.shade700,
+                      bgColor: const Color(0xFFFFF3E0),
+                    ),
+                  ),
+                ],
+
+                // Itens permanentemente indisponíveis (vermelho)
+                if (permanentItems.isNotEmpty) ...[
+                  ...permanentItems.map((item) {
+                    // Coleta razões de opções indisponíveis
+                    final optReasons = <String>[];
+                    for (final v in item.variants) {
+                      for (final o in v.options) {
+                        if (!o.isAvailable && o.unavailableReason != null) {
+                          optReasons.add(o.unavailableReason!);
+                        }
+                      }
+                    }
+                    final reason =
+                        item.unavailableReason ??
+                        (optReasons.isNotEmpty
+                            ? optReasons.first
+                            : 'Item indisponível');
+                    return _buildModalItem(
+                      name: item.sizeName ?? item.product.name,
+                      reason: reason,
+                      icon: Icons.cancel_rounded,
+                      color: Colors.red.shade700,
+                      bgColor: Colors.red.shade50,
+                      extraReasons:
+                          optReasons.length > 1 ? optReasons.sublist(1) : null,
+                    );
+                  }),
+                ],
+
+                const SizedBox(height: 16),
+
+                // Botão principal
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(modalContext);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          hasOnlySchedule
+                              ? Colors.orange.shade600
+                              : Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      hasOnlySchedule ? 'Entendi' : 'Vou revisar minha sacola',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+    );
+  }
+
+  Widget _buildModalItem({
+    required String name,
+    required String reason,
+    required IconData icon,
+    required Color color,
+    required Color bgColor,
+    List<String>? extraReasons,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(reason, style: TextStyle(fontSize: 12, color: color)),
+                if (extraReasons != null)
+                  ...extraReasons.map(
+                    (r) =>
+                        Text(r, style: TextStyle(fontSize: 12, color: color)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

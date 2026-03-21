@@ -37,96 +37,213 @@ class CartItemListItem extends StatelessWidget {
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildImageSection(context, theme),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
+    final bool itemUnavailable =
+        !item.isAvailable || item.hasUnavailableOptions;
+
+    return Opacity(
+      opacity: itemUnavailable ? 0.55 : 1.0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (itemUnavailable) ...[_buildUnavailableBanner(context)],
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
+              _buildImageSection(context, theme),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          item.sizeName ?? item.product.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: theme.cartTextColor.withOpacity(0.8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.sizeName ?? item.product.name,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      itemUnavailable
+                                          ? Colors.red.shade400
+                                          : theme.cartTextColor.withOpacity(
+                                            0.8,
+                                          ),
+                                  decoration:
+                                      !item.isAvailable
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // ✅ Oculta descrições genéricas de pizza (ex: "Pizza tamanho X - Categoria: Pizza")
+                              if (item.product.description != null &&
+                                  item.product.description!.trim().isNotEmpty &&
+                                  !item.product.description!
+                                      .toLowerCase()
+                                      .contains('categoria:') &&
+                                  !item.product.description!
+                                      .toLowerCase()
+                                      .contains('tamanho')) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.product.description!,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400,
+                                    color: theme.cartTextColor.withOpacity(0.7),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              _buildPriceSection(context, item, theme),
+                            ],
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        // ✅ Oculta descrições genéricas de pizza (ex: "Pizza tamanho X - Categoria: Pizza")
-                        if (item.product.description != null &&
-                            item.product.description!.trim().isNotEmpty &&
-                            !item.product.description!.toLowerCase().contains(
-                              'categoria:',
-                            ) &&
-                            !item.product.description!.toLowerCase().contains(
-                              'tamanho',
-                            )) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            item.product.description!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                              color: theme.cartTextColor.withOpacity(0.7),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 12),
+                        CartQuantityControl(
+                          quantity: item.quantity,
+                          textStyle: theme.bodyTextStyle.copyWith(
+                            fontWeight: FontWeight.bold,
                           ),
-                        ],
-                        const SizedBox(height: 8),
-                        _buildPriceSection(context, item, theme),
+                          onRemove: () {
+                            final payload = createUpdatePayload(
+                              item.quantity - 1,
+                            );
+                            if (payload != null)
+                              context.read<CartCubit>().updateItem(payload);
+                          },
+                          onAdd: () {
+                            final payload = createUpdatePayload(
+                              item.quantity + 1,
+                            );
+                            if (payload != null)
+                              context.read<CartCubit>().updateItem(payload);
+                          },
+                        ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  CartQuantityControl(
-                    quantity: item.quantity,
-                    textStyle: theme.bodyTextStyle.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                    onRemove: () {
-                      final payload = createUpdatePayload(item.quantity - 1);
-                      if (payload != null)
-                        context.read<CartCubit>().updateItem(payload);
-                    },
-                    onAdd: () {
-                      final payload = createUpdatePayload(item.quantity + 1);
-                      if (payload != null)
-                        context.read<CartCubit>().updateItem(payload);
-                    },
-                  ),
-                ],
-              ),
-              if (item.variants.isNotEmpty) ...[
-                _buildVariantsSection(context, theme),
-              ],
-              if (item.note != null && item.note!.trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  "Obs: ${item.note!.trim()}",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontStyle: FontStyle.italic,
-                  ),
+                    if (item.variants.isNotEmpty) ...[
+                      _buildVariantsSection(context, theme),
+                    ],
+                    if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        "Obs: ${item.note!.trim()}",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Widget _buildUnavailableBanner(BuildContext context) {
+    final reason = _resolveUnavailableReason();
+    final isScheduleBased = reason.toLowerCase().startsWith('disponível');
+
+    final Color bgColor =
+        isScheduleBased ? const Color(0xFFFFF3E0) : Colors.red.shade50;
+    final Color borderColor =
+        isScheduleBased ? Colors.orange.shade200 : Colors.red.shade200;
+    final Color textColor =
+        isScheduleBased ? Colors.orange.shade900 : Colors.red.shade700;
+    final IconData icon =
+        isScheduleBased ? Icons.schedule_rounded : Icons.error_outline_rounded;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: textColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              reason,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (!isScheduleBased) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                final firstCategoryLink =
+                    item.product.categoryLinks.firstOrNull;
+                if (firstCategoryLink == null || item.id <= 0) return;
+                final payload = UpdateCartItemPayload(
+                  cartItemId: item.id,
+                  productId: item.product.id!,
+                  categoryId: firstCategoryLink.categoryId,
+                  quantity: 0,
+                  note: item.note,
+                  variants: item.variants,
+                  sizeName: item.sizeName,
+                );
+                context.read<CartCubit>().updateItem(payload);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade600,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'Remover',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _resolveUnavailableReason() {
+    if (!item.isAvailable && item.unavailableReason != null) {
+      return item.unavailableReason!;
+    }
+    for (final variant in item.variants) {
+      for (final option in variant.options) {
+        if (!option.isAvailable && option.unavailableReason != null) {
+          return option.unavailableReason!;
+        }
+      }
+    }
+    return 'Item indisponível - remova para continuar';
   }
 
   Widget _buildImageSection(BuildContext context, DsTheme theme) {
@@ -285,14 +402,20 @@ class CartItemListItem extends StatelessWidget {
         }
 
         // Detecta Massa (somente via groupType enum)
+        // Pode haver múltiplas massas (combos), pega a última selecionada
         if (isMassaGroup) {
-          massaText = option.name;
+          massaText = massaText == null ? option.name : massaText;
           continue;
         }
 
         // Detecta Borda (somente via groupType enum)
+        // Pode haver múltiplas bordas (combos), pega a última não-tradicional ou a primeira
         if (isBordaGroup) {
-          bordaText = option.name;
+          // Prefere borda não-tradicional (ex: "cheddar" sobre "Tradicional")
+          if (bordaText == null ||
+              !option.name.toLowerCase().contains('tradicional')) {
+            bordaText = option.name;
+          }
           continue;
         }
 
