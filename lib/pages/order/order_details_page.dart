@@ -383,7 +383,10 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       final groupNameLower = sub.groupName?.toLowerCase() ?? '';
       final nameLower = sub.name.toLowerCase();
 
-      final isFlavorGroup = groupType == OptionGroupType.topping;
+      final isFlavorGroup = groupType == OptionGroupType.topping ||
+          groupType == OptionGroupType.flavor ||
+          groupNameLower.contains('sabor') ||
+          RegExp(r'^1/\d+\s+').hasMatch(sub.name);
       final isMassaGroup = groupType == OptionGroupType.crust;
       final isBordaGroup = groupType == OptionGroupType.edge;
 

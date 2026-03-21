@@ -250,8 +250,12 @@ class CartItemListItem extends StatelessWidget {
 
       final variantNameLower = variant.name.toLowerCase();
       final groupType = OptionGroupType.fromString(variant.groupType);
+      final groupNameLower = variant.name.toLowerCase();
 
-      final isFlavorGroup = groupType == OptionGroupType.topping;
+      final isFlavorGroup = groupType == OptionGroupType.topping ||
+          groupType == OptionGroupType.flavor ||
+          groupNameLower.contains('sabor') ||
+          variant.options.any((o) => RegExp(r'^1/\d+\s+').hasMatch(o.name));
 
       // ✅ Usa EXCLUSIVAMENTE o enum do tipo de grupo — sem fallback de string
       final isMassaGroup = groupType == OptionGroupType.crust;

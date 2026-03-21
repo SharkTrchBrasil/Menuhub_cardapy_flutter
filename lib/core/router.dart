@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
+import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page.dart';
 import '../helpers/enums/product_status.dart';
@@ -643,6 +644,60 @@ GoRouter createGoRouter() {
               GoRoute(
                 path: 'profile/edit',
                 builder: (context, state) => const EditProfilePage(),
+              ),
+              GoRoute(
+                path: 'orders/waiting',
+                builder: (context, state) {
+                  final publicId = state.uri.queryParameters['order'] ?? '';
+                  
+                  // Tenta buscar da lista já carregada se o cliente estiver logado
+                  final ordersCubit = context.read<OrdersCubit>();
+                  final order = ordersCubit.state.orders.where((o) => o.publicId == publicId).firstOrNull;
+                  
+                  if (order != null) {
+                    return OrderDetailsPage(order: order);
+                  }
+                  
+                  // Fallback se não estiver carregado ou não existir na sessão atual
+                  return Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Rastrear Pedido'),
+                    ),
+                    body: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 64,
+                            color: Colors.orange,
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Pedido $publicId',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 32.0),
+                            child: Text(
+                              'Para acompanhar seu pedido, faça login ou acesse a aba Meus Pedidos se já estiver conectado.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () => context.go('/orders/history'),
+                            child: const Text('Meus Pedidos'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
               GoRoute(
                 path: 'orders/history',
