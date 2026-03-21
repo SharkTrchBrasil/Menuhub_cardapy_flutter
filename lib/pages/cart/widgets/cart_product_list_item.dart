@@ -246,10 +246,6 @@ class CartItemListItem extends StatelessWidget {
     final flavorOptions = <CartItemVariantOption>[];
     final otherOptions = <CartItemVariantOption>[];
 
-    // Preços acumulados de massa e borda para exibir combinado
-    int massaPrice = 0;
-    int bordaPrice = 0;
-
     for (final variant in item.variants) {
       if (variant.name.toLowerCase().contains('tamanho')) continue;
 
@@ -257,7 +253,8 @@ class CartItemListItem extends StatelessWidget {
       final groupType = OptionGroupType.fromString(variant.groupType);
       final groupNameLower = variant.name.toLowerCase();
 
-      final isFlavorGroup = groupType == OptionGroupType.topping ||
+      final isFlavorGroup =
+          groupType == OptionGroupType.topping ||
           groupType == OptionGroupType.flavor ||
           groupNameLower.contains('sabor') ||
           variant.options.any((o) => RegExp(r'^1/\d+\s+').hasMatch(o.name));
@@ -282,8 +279,6 @@ class CartItemListItem extends StatelessWidget {
             if (parts.length >= 2) {
               massaText = parts[0].trim();
               bordaText = parts[1].trim();
-              massaPrice = option.price; // No combo, o preço já está somado
-              bordaPrice = 0; // Evita somar duas vezes
             }
             continue;
           }
@@ -292,14 +287,12 @@ class CartItemListItem extends StatelessWidget {
         // Detecta Massa (somente via groupType enum)
         if (isMassaGroup) {
           massaText = option.name;
-          massaPrice = option.price;
           continue;
         }
 
         // Detecta Borda (somente via groupType enum)
         if (isBordaGroup) {
           bordaText = option.name;
-          bordaPrice = option.price;
           continue;
         }
 
@@ -329,7 +322,6 @@ class CartItemListItem extends StatelessWidget {
     if (massaText != null || bordaText != null) {
       String cleanMassa = massaText ?? '';
       String cleanBorda = bordaText ?? '';
-      int combinedPrice = massaPrice + bordaPrice;
 
       // Limpeza de prefixos redundantes
       while (RegExp(
@@ -365,7 +357,7 @@ class CartItemListItem extends StatelessWidget {
           '1',
           combinedText,
           theme,
-          price: combinedPrice,
+          price: 0, // ✅ Oculta preço individual de Massa + Borda
         ),
       );
     }

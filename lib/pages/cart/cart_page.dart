@@ -78,7 +78,7 @@ class CartPage extends StatelessWidget {
             style: ButtonStyle(
               overlayColor: MaterialStateProperty.all(Colors.transparent),
             ),
-            onPressed: () => _showClearCartDialog(context),
+            onPressed: () => context.read<CartCubit>().clearCart(),
             child: const Text(
               'Limpar',
               style: TextStyle(
@@ -260,28 +260,3 @@ class CartPage extends StatelessWidget {
   }
 }
 
-void _showClearCartDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    builder:
-        (context) => AlertDialog(
-          title: const Text('Limpar carrinho'),
-          content: const Text(
-            'Tem certeza que deseja remover todos os itens do carrinho?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.read<CartCubit>().clearCart();
-              },
-              child: const Text('Limpar', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
-  );
-}

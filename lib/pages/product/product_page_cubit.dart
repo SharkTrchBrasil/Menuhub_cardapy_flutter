@@ -80,7 +80,7 @@ class ProductPageCubit extends Cubit<ProductPageState> {
             "Se o loadProduct for chamado, as seleções serão PERDIDAS!",
           );
         }
-        
+
         print(
           "🔄 [ProductPageCubit] Detectada atualização na categoria ${updatedCategory.name}. Recarregando produto...",
         );
@@ -627,28 +627,35 @@ class ProductPageCubit extends Cubit<ProductPageState> {
                   variant.cartOptions.map((option) {
                     int quantity = 0;
 
-                    if (groupType == OptionGroupType.crust ||
+                    // ✅ PRIORIDADE 1: Combos Massa + Borda (crustId + edgeId)
+                    if (option.crustId != null && option.edgeId != null) {
+                      // Verifica se AMBOS os IDs do combo estão salvos
+                      if (savedOptionIds.containsKey(option.crustId!) &&
+                          savedOptionIds.containsKey(option.edgeId!)) {
+                        quantity = 1;
+                        print(
+                          '      ✅ Combo Massa+Borda: "${option.name}" (crustId=${option.crustId}, edgeId=${option.edgeId})',
+                        );
+                      }
+                    }
+                    // ✅ PRIORIDADE 2: Massa ou Borda individual (por groupType)
+                    else if (groupType == OptionGroupType.crust ||
                         groupType == OptionGroupType.edge) {
                       quantity = savedOptionIds[option.id] ?? 0;
                       if (quantity > 0) {
                         print(
-                          '      ✅ ${groupType == OptionGroupType.crust ? 'Massa' : 'Borda'} por tipo: "${option.name}" (id=${option.id})',
+                          '      ✅ ${groupType == OptionGroupType.crust ? 'Massa' : 'Borda'} individual: "${option.name}" (id=${option.id})',
                         );
                       }
-                    } else if (option.crustId != null ||
-                        option.edgeId != null) {
-                      final cid = option.crustId;
-                      final eid =
-                          option.edgeId ?? option.parentCustomizationOptionId;
-                      if (cid != null &&
-                          eid != null &&
-                          savedOptionIds.containsKey(cid) &&
-                          savedOptionIds.containsKey(eid)) {
-                        quantity = 1;
-                        print('      ✅ Combo por ID: "${option.name}"');
-                      }
-                    } else {
+                    }
+                    // ✅ PRIORIDADE 3: Outros adicionais
+                    else {
                       quantity = savedOptionIds[option.id] ?? 0;
+                      if (quantity > 0) {
+                        print(
+                          '      ✅ Adicional: "${option.name}" (id=${option.id}, qty=$quantity)',
+                        );
+                      }
                     }
 
                     return option.copyWith(quantity: quantity);
