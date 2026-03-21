@@ -317,7 +317,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       final groupNameLower = sub.groupName?.toLowerCase() ?? '';
       final nameLower = sub.name.toLowerCase();
 
-      final isFlavorGroup = groupType == OptionGroupType.topping ||
+      final isFlavorGroup =
+          groupType == OptionGroupType.topping ||
           groupType == OptionGroupType.flavor ||
           groupNameLower.contains('sabor') ||
           RegExp(r'^1/\d+\s+').hasMatch(sub.name);
@@ -363,7 +364,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
     final lineWidgets = <Widget>[];
 
-    // 1. Massa + Borda
+    // 1. Massa + Borda (valores ocultos)
     if (massaText != null || bordaText != null) {
       String cleanMassa = massaText ?? '';
       String cleanBorda = bordaText ?? '';
@@ -395,9 +396,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       } else {
         combinedText = 'Borda $cleanBorda';
       }
-      lineWidgets.add(
-        _buildVariantRow('1', combinedText, price: 0),
-      );
+      lineWidgets.add(_buildVariantRow('1', combinedText, price: 0));
     }
 
     // 2. Sabores
@@ -406,20 +405,14 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     for (final flavor in flavorOptions) {
       String name = flavor.name;
       name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
-      
-      lineWidgets.add(
-        _buildVariantRow('1', '$fractionText$name', price: 0),
-      );
+
+      lineWidgets.add(_buildVariantRow('1', '$fractionText$name', price: 0));
     }
 
-    // 3. Outros
+    // 3. Outros adicionais (valores ocultos - apenas nomes)
     for (final other in otherOptions) {
       lineWidgets.add(
-        _buildVariantRow(
-          other.quantity.toString(),
-          other.name,
-          price: other.totalPrice ~/ other.quantity,
-        ),
+        _buildVariantRow(other.quantity.toString(), other.name, price: 0),
       );
     }
 
@@ -804,16 +797,14 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         shape: BoxShape.circle,
       ),
       child: ClipOval(
-        child:
-            logoUrl != null && logoUrl.isNotEmpty
-                ? CachedNetworkImage(
-                  imageUrl: _formatImageUrl(logoUrl),
-                  fit: BoxFit.cover,
-                  errorWidget:
-                      (_, __, ___) =>
-                          const Icon(Icons.store, color: Colors.grey),
-                )
-                : const Icon(Icons.store, color: Colors.grey),
+        child: logoUrl != null && logoUrl.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: _formatImageUrl(logoUrl),
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) =>
+                    const Icon(Icons.store, color: Colors.grey),
+              )
+            : const Icon(Icons.store, color: Colors.grey),
       ),
     );
   }
@@ -828,16 +819,14 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child:
-            url != null && url.isNotEmpty
-                ? CachedNetworkImage(
-                  imageUrl: _formatImageUrl(url),
-                  fit: BoxFit.cover,
-                  errorWidget:
-                      (_, __, ___) =>
-                          const Icon(Icons.restaurant, color: Colors.grey),
-                )
-                : const Icon(Icons.restaurant, color: Colors.grey),
+        child: url != null && url.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: _formatImageUrl(url),
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) =>
+                    const Icon(Icons.restaurant, color: Colors.grey),
+              )
+            : const Icon(Icons.restaurant, color: Colors.grey),
       ),
     );
   }
