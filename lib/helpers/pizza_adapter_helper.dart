@@ -344,7 +344,7 @@ class PizzaAdapterHelper {
 
         combos.add(
           OptionItem(
-            id: dough.id, // ID virtual principal
+            id: (dough.id ?? 0) * 100000 + (edge.id ?? 0), // ✅ UNIQUE ID COMBINADO
             name: comboName,
             price: comboPrice,
             isActive: true,
@@ -513,7 +513,7 @@ class PizzaAdapterHelper {
 
             combos.add(
               OptionItem(
-                id: dough.id,
+                id: (dough.id ?? 0) * 100000 + (edge.id ?? 0),
                 name: comboName,
                 price: comboPrice,
                 isActive: true,
