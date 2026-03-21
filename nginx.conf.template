@@ -25,8 +25,6 @@ http {
     root /usr/share/nginx/html;
     index index.html;
 
-    set $backend_url "${BACKEND_URL}";
-
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf|wasm)$ {
       expires 1y;
       add_header Cache-Control "public, immutable";
@@ -34,12 +32,7 @@ http {
 
     location / {
       if ($is_crawler = 1) {
-        rewrite ^ /app/stores break;
-        proxy_pass $backend_url;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        return 302 ${BACKEND_URL}/app/stores;
       }
 
       try_files $uri $uri/ /index.html;
