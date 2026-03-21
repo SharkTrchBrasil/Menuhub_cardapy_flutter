@@ -523,7 +523,7 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     // ─────────────────────────────────────────────────────────────────────────
     //
     // ⚠️ PROBLEMA PIZZA:
-    //   • SABORES: Grupos 1000, 1001, 1002 têm os MESMOS itens.
+    //   • SABORES: Grupos -1000, -1001, -1002 têm os MESMOS itens.
     //     Match "flat" por ID marcaria o mesmo sabor em TODOS os grupos.
     //     → Solução: match por SLOT (cartVariant[i] → flavorGroup[i])
     // ─────────────────────────────────────────────────────────────────────────
@@ -532,7 +532,7 @@ class ProductPageCubit extends Cubit<ProductPageState> {
     if (category.isCustomizable) {
       // ✅ PIZZAS EM EDIÇÃO
       // Os sabores salvos no carrinho podem voltar agrupados em um único optionGroupId
-      // real do backend, enquanto a UI adaptada cria grupos virtuais 1000, 1001...
+      // real do backend, enquanto a UI adaptada cria grupos virtuais -1000, -1001...
       // Portanto, reidratamos por ordem de ocorrência dos sabores salvos e distribuímos
       // um sabor por grupo virtual.
       final Map<int, Set<int>> groupIdToOptionIds = {};
@@ -544,7 +544,8 @@ class ProductPageCubit extends Cubit<ProductPageState> {
         final isFlavorVariant =
             cartGroupType == OptionGroupType.flavor ||
             cartGroupType == OptionGroupType.topping ||
-            (cartGroupType == OptionGroupType.other && gid != 999);
+            (cartGroupType == OptionGroupType.other &&
+                gid != PizzaAdapterHelper.kPreferencesGroupId);
 
         if (isFlavorVariant) {
           for (final option in v.options) {
@@ -555,7 +556,7 @@ class ProductPageCubit extends Cubit<ProductPageState> {
           }
         }
 
-        if (gid == null || gid == 999) {
+        if (gid == null || gid == PizzaAdapterHelper.kPreferencesGroupId) {
           continue;
         }
 

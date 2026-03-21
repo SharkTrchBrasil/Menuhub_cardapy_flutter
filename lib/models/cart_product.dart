@@ -204,7 +204,7 @@ class CartProduct extends Equatable {
       if (selectedSize == null) return 0;
 
       // ✅ Busca TODOS os grupos FLAVOR (já adaptados pelo PizzaAdapterHelper)
-      // O PizzaAdapterHelper converte TOPPING groups em FLAVOR groups com IDs virtuais (1000+i)
+      // O PizzaAdapterHelper converte TOPPING groups em FLAVOR groups com IDs virtuais negativos (-1000-i)
       final flavorGroups =
           category.optionGroups
               .where((g) => g.groupType == OptionGroupType.flavor)

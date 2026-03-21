@@ -108,12 +108,15 @@ class CartPersistenceService {
               .map(
                 (v) => {
                   'variantId': v.variantId,
+                  'option_group_id': v.optionGroupId,
+                  'group_type': v.groupType,
                   'name': v.name,
                   'options':
                       v.options
                           .map(
                             (o) => {
-                              'variantOptionId': o.variantOptionId,
+                              'variant_option_id': o.variantOptionId,
+                              'option_item_id': o.optionItemId,
                               'quantity': o.quantity,
                               'name': o.name,
                               'price': o.price,
@@ -142,19 +145,23 @@ class CartPersistenceService {
         (json['variants'] as List<dynamic>?)
             ?.map(
               (v) => CartItemVariant(
-                variantId: v['variantId'] as int?,
+                variantId: v['variantId'] as int? ?? v['variant_id'] as int?,
                 optionGroupId: v['option_group_id'] as int?,
                 groupType: v['group_type'] as String?,
-                name: v['name'] as String,
+                name: v['name'] as String? ?? '',
                 options:
                     (v['options'] as List<dynamic>)
                         .map(
                           (o) => CartItemVariantOption(
-                            variantOptionId: o['variant_option_id'] as int?,
-                            optionItemId: o['option_item_id'] as int?,
+                            variantOptionId:
+                                o['variant_option_id'] as int? ??
+                                o['variantOptionId'] as int?,
+                            optionItemId:
+                                o['option_item_id'] as int? ??
+                                o['optionItemId'] as int?,
                             quantity: o['quantity'] as int,
-                            name: o['name'] as String,
-                            price: o['price'] as int,
+                            name: o['name'] as String? ?? '',
+                            price: o['price'] as int? ?? 0,
                           ),
                         )
                         .toList(),

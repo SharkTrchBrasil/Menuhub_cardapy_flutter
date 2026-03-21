@@ -19,6 +19,13 @@ class PizzaAdaptationResult {
 
 /// Helper para adaptar produtos de pizza (CUSTOMIZABLE) para usar o dialog de produtos GENERAL
 class PizzaAdapterHelper {
+  // ═══════════════════════════════════════════════════════════════════════
+  // IDs VIRTUAIS — Faixa negativa para NUNCA colidir com IDs reais do DB
+  // PostgreSQL auto-increment é sempre positivo.
+  // ═══════════════════════════════════════════════════════════════════════
+  static const int kPreferencesGroupId = -999;
+  static const int kFlavorGroupBaseId =
+      -1000; // slot i → kFlavorGroupBaseId - i
   /// Detecta se é um produto de pizza baseado na categoria
   static bool isPizza(Category? category) {
     return category != null && category.type == CategoryType.CUSTOMIZABLE;
@@ -159,7 +166,9 @@ class PizzaAdapterHelper {
 
       // Cria o grupo virtual de sabores
       final flavorGroup = OptionGroup(
-        id: 1000 + i, // ID virtual único
+        id:
+            kFlavorGroupBaseId -
+            i, // ID virtual negativo (-1000, -1001, -1002...)
         name: groupName,
         groupType: OptionGroupType.flavor, // Tipo especial para sabores
         minSelection: 1, // Obrigatório
@@ -296,7 +305,9 @@ class PizzaAdapterHelper {
 
       flavorGroups.add(
         OptionGroup(
-          id: 1000 + i,
+          id:
+              kFlavorGroupBaseId -
+              i, // ID virtual negativo (-1000, -1001, -1002...)
           name: groupName,
           groupType: OptionGroupType.flavor,
           minSelection: 1,
@@ -344,7 +355,9 @@ class PizzaAdapterHelper {
 
         combos.add(
           OptionItem(
-            id: (dough.id ?? 0) * 100000 + (edge.id ?? 0), // ✅ UNIQUE ID COMBINADO
+            id:
+                (dough.id ?? 0) * 100000 +
+                (edge.id ?? 0), // ✅ UNIQUE ID COMBINADO
             name: comboName,
             price: comboPrice,
             isActive: true,
@@ -363,7 +376,7 @@ class PizzaAdapterHelper {
     if (combos.isEmpty) return null;
 
     return OptionGroup(
-      id: 999, // ID virtual único
+      id: kPreferencesGroupId, // ID virtual negativo (-999)
       name: 'Escolha a sua Preferência',
       groupType:
           OptionGroupType
@@ -531,7 +544,7 @@ class PizzaAdapterHelper {
 
         if (combos.isNotEmpty) {
           preferencesGroup = OptionGroup(
-            id: 999, // ID virtual único
+            id: kPreferencesGroupId, // ID virtual negativo (-999)
             name: 'Escolha a sua preferência',
             groupType: OptionGroupType.generic,
             minSelection: 1,
