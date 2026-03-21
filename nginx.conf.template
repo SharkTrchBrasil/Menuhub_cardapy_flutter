@@ -8,7 +8,6 @@ http {
   gzip_min_length 1000;
   gzip_comp_level 6;
 
-  # Map para detectar crawlers de redes sociais
   map $http_user_agent $is_crawler {
     default 0;
     "~*WhatsApp" 1;
@@ -26,24 +25,23 @@ http {
     root /usr/share/nginx/html;
     index index.html;
 
+    set $backend_url "${BACKEND_URL}";
+
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf|wasm)$ {
       expires 1y;
       add_header Cache-Control "public, immutable";
     }
 
-    # PREVIEW SOCIAL: Crawlers vão para o backend (meta tags server-side)
     location / {
       if ($is_crawler = 1) {
-        # Proxy para backend que serve HTML com meta tags pré-renderizadas
-        proxy_pass ${BACKEND_URL}/app/stores;
+        rewrite ^ /app/stores break;
+        proxy_pass $backend_url;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        break;
       }
 
-      # Usuários normais → Flutter Web estático
       try_files $uri $uri/ /index.html;
     }
   }
