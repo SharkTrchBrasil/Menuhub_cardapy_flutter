@@ -43,80 +43,85 @@ class CartItemListItem extends StatelessWidget {
         _buildImageSection(context, theme),
         const SizedBox(width: 12),
         Expanded(
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.sizeName ?? item.product.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: theme.cartTextColor.withOpacity(0.8),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.sizeName ?? item.product.name,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: theme.cartTextColor.withOpacity(0.8),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // ✅ Oculta descrições genéricas de pizza (ex: "Pizza tamanho X - Categoria: Pizza")
+                        if (item.product.description != null &&
+                            item.product.description!.trim().isNotEmpty &&
+                            !item.product.description!.toLowerCase().contains(
+                              'categoria:',
+                            ) &&
+                            !item.product.description!.toLowerCase().contains(
+                              'tamanho',
+                            )) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            item.product.description!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              color: theme.cartTextColor.withOpacity(0.7),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        _buildPriceSection(context, item, theme),
+                      ],
                     ),
-                    // ✅ Oculta descrições genéricas de pizza (ex: "Pizza tamanho X - Categoria: Pizza")
-                    if (item.product.description != null &&
-                        item.product.description!.trim().isNotEmpty &&
-                        !item.product.description!.toLowerCase().contains(
-                          'categoria:',
-                        ) &&
-                        !item.product.description!.toLowerCase().contains(
-                          'tamanho',
-                        )) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        item.product.description!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                          color: theme.cartTextColor.withOpacity(0.7),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    _buildPriceSection(context, item, theme),
-                    if (item.variants.isNotEmpty) ...[
-                      _buildVariantsSection(context, theme),
-                    ],
-                    if (item.note != null && item.note!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        "Obs: ${item.note!.trim()}",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 12),
+                  CartQuantityControl(
+                    quantity: item.quantity,
+                    textStyle: theme.bodyTextStyle.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    onRemove: () {
+                      final payload = createUpdatePayload(item.quantity - 1);
+                      if (payload != null)
+                        context.read<CartCubit>().updateItem(payload);
+                    },
+                    onAdd: () {
+                      final payload = createUpdatePayload(item.quantity + 1);
+                      if (payload != null)
+                        context.read<CartCubit>().updateItem(payload);
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              CartQuantityControl(
-                quantity: item.quantity,
-                textStyle: theme.bodyTextStyle.copyWith(
-                  fontWeight: FontWeight.bold,
+              if (item.variants.isNotEmpty) ...[
+                _buildVariantsSection(context, theme),
+              ],
+              if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  "Obs: ${item.note!.trim()}",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
-                onRemove: () {
-                  final payload = createUpdatePayload(item.quantity - 1);
-                  if (payload != null)
-                    context.read<CartCubit>().updateItem(payload);
-                },
-                onAdd: () {
-                  final payload = createUpdatePayload(item.quantity + 1);
-                  if (payload != null)
-                    context.read<CartCubit>().updateItem(payload);
-                },
-              ),
+              ],
             ],
           ),
         ),
