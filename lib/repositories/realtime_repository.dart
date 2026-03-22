@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:html' as html; // ✅ WEB-ONLY: Visibility API
 import 'dart:math' show Random;
 
 import 'package:collection/collection.dart';
@@ -24,23 +25,27 @@ import 'package:totem/models/variant.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
+import 'package:totem/core/utils/encrypt_utils.dart';
 
-import '../models/banners.dart';
-import '../models/cart.dart';
-import '../models/create_order_payload.dart';
-import '../models/order.dart';
-import '../models/update_cart_payload.dart';
-import '../models/notification.dart';
+import '../core/di.dart';
+import '../cubit/orders_cubit.dart';
+import '../pages/address/cubits/address_cubit.dart';
 import '../services/urgent_notification_service.dart';
+import '../services/menu_visit_service.dart';
+import '../services/realtime/web_reconnect_strategy.dart';
+import '../services/realtime/heartbeat_manager.dart';
+import '../services/secure_storage_service.dart';
 import 'auth_repository.dart';
 // ✅ Importa models e adapter do novo formato de menu
 import '../models/menu/menu_response.dart';
 import '../helpers/menu_adapter.dart';
-import '../core/di.dart';
-import '../cubit/orders_cubit.dart';
-import '../pages/address/cubits/address_cubit.dart';
-import '../services/realtime/heartbeat_manager.dart';
-import '../services/menu_visit_service.dart';
+import '../models/banner_model.dart';
+import '../models/category.dart';
+import '../models/coupon.dart';
+import '../models/customer.dart';
+import '../models/notification_item.dart';
+import '../models/order.dart';
+import '../models/store.dart';
 
 /// ✅ ENTERPRISE: Status de conexão WebSocket para a UI
 enum WebSocketConnectionStatus {
@@ -200,18 +205,31 @@ class RealtimeRepository {
         );
       }
 
-      // ✅ NOVO: Inicia monitoramento de heartbeat
+      // ✅ NOVO: Inicia monitoramento de heartbeat com WebReconnectStrategy
       _heartbeatManager?.stop();
       _heartbeatManager = HeartbeatManager(
         socket: _socket,
+        strategy: createWebStrategy(), // ✅ NOVO: Web-specific strategy
         onConnectionDead: () {
           AppLogger.w(
             '💀 [Realtime] Heartbeat detectou conexão morta! Forçando renovação de token...',
           );
           _renewConnectionTokenAndReconnect();
         },
+        onConnectionAlive: () {
+          AppLogger.d('💚 [Realtime] Heartbeat restaurou conexão');
+        },
+        onBackgroundTooLong: () {
+          AppLogger.d(
+            '⚠️ [Realtime] Tab ficou hidden tempo demais — forçando reconnect',
+          );
+          _renewConnectionTokenAndReconnect();
+        },
       );
       _heartbeatManager?.start();
+
+      // ✅ NOVO: Configura listener para Visibility API (tab hidden/visible)
+      _setupVisibilityListener();
 
       // ✅ NOVO: Inicializa MenuVisitService após conexão
       _initializeMenuVisitService();
@@ -2873,6 +2891,36 @@ class RealtimeRepository {
         'promotions_applied': [],
         'message': null,
       };
+    }
+  }
+
+  // ✅ NOVO: Configura listener para mudanças de visibilidade da tab
+  void _setupVisibilityListener() {
+    try {
+      html.document.onVisibilityChange.listen((event) {
+        final isHidden = html.document.hidden ?? false;
+
+        if (isHidden) {
+          AppLogger.d('🌙 [Visibility] Tab HIDDEN');
+          _heartbeatManager?.notifyTabHidden();
+        } else {
+          AppLogger.d('☀️ [Visibility] Tab VISIBLE');
+          _heartbeatManager?.notifyTabVisible();
+
+          // Se tab ficou hidden tempo demais, força reconnect
+          if (_heartbeatManager?.wasBackgroundTooLong ?? false) {
+            AppLogger.d(
+              '⚠️ [Visibility] Tab ficou hidden tempo demais — forçando reconnect',
+            );
+            Future.delayed(const Duration(seconds: 2), () {
+              _renewConnectionTokenAndReconnect();
+            });
+          }
+        }
+      });
+      AppLogger.d('✅ [Realtime] Visibility API listener configurado');
+    } catch (e) {
+      AppLogger.e('❌ [Realtime] Erro ao configurar Visibility API: $e');
     }
   }
 
