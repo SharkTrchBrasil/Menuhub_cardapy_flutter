@@ -6,7 +6,10 @@
   <script>
     (async function() {
       try {
-        const slug = window.location.hostname.split('.')[0];
+        const hostname = window.location.hostname;
+        // Skip meta tags on localhost, IPs (127.0.0.1, etc), and non-subdomain hosts
+        if (!hostname || hostname === 'localhost' || /^\d+(\.\d+)*$/.test(hostname)) return;
+        const slug = hostname.split('.')[0];
         if (!slug || slug === 'www' || slug === 'localhost') return;
 
         const apiUrl = window.location.hostname.includes('localhost') 

@@ -26,7 +26,6 @@ import 'package:totem/models/variant_option.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
-import 'package:totem/core/utils/encrypt_utils.dart';
 
 import '../core/di.dart';
 import '../cubit/orders_cubit.dart';
@@ -35,16 +34,20 @@ import '../services/urgent_notification_service.dart';
 import '../services/menu_visit_service.dart';
 import '../services/realtime/web_reconnect_strategy.dart';
 import '../services/realtime/heartbeat_manager.dart';
-import '../services/secure_storage_service.dart';
+import '../core/realtime/event_deduplicator.dart';
+import '../core/realtime/delta_sync_manager.dart';
 import 'auth_repository.dart';
 // ✅ Importa models e adapter do novo formato de menu
 import '../models/menu/menu_response.dart';
 import '../helpers/menu_adapter.dart';
-import '../models/banner_model.dart';
+import '../models/banners.dart';
 import '../models/category.dart';
 import '../models/coupon.dart';
 import '../models/customer.dart';
-import '../models/notification_item.dart';
+import '../models/cart.dart';
+import '../models/update_cart_payload.dart';
+import '../models/create_order_payload.dart';
+import '../models/notification.dart';
 import '../models/order.dart';
 import '../models/store.dart';
 
@@ -57,7 +60,14 @@ enum WebSocketConnectionStatus {
 }
 
 class RealtimeRepository {
-  RealtimeRepository();
+  RealtimeRepository() {
+    _eventDeduplicator = EventDeduplicator();
+    _deltaSyncManager = DeltaSyncManager(
+      deduplicator: _eventDeduplicator,
+      emitWithAck: _emitWithAckForDelta,
+      onDeltaApply: _applyDeltaEvents,
+    );
+  }
 
   late IO.Socket _socket;
   int _reconnectAttempts = 0;
@@ -83,6 +93,11 @@ class RealtimeRepository {
   _lastLinkedCustomerId; // ✅ NOVO: Armazena o último ID vinculado para re-link na reconexão
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
+  // ✅ DELTA SYNC: Deduplicação e recuperação de eventos
+  late final EventDeduplicator _eventDeduplicator;
+  late final DeltaSyncManager _deltaSyncManager;
+  String? _currentStoreUuid; // Armazena store_uuid para delta sync
 
   // Constante para chave de armazenamento
   static const String _keyStoreUrl = 'store_url';
@@ -177,6 +192,18 @@ class RealtimeRepository {
       AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
       connectionStatusController.add(WebSocketConnectionStatus.connected);
       _reconnectAttempts = 0;
+
+      // ✅ DELTA SYNC: Tenta delta sync antes do full reload (se é reconexão)
+      if (_isReconnecting && _currentStoreUuid != null) {
+        try {
+          await _resumeOrFullSync();
+        } catch (e) {
+          AppLogger.w(
+            '[Reconnect] Delta sync attempt failed: $e',
+            tag: 'RECONNECT',
+          );
+        }
+      }
 
       // ✅ ENTERPRISE: Re-vincula cliente após reconexão (se havia um vinculado antes)
       if (_lastLinkedCustomerId != null) {
@@ -334,6 +361,23 @@ class RealtimeRepository {
 
         AppLogger.d('🔑 Chaves do payload: ${payload.keys.toList()}');
 
+        // ✅ DELTA SYNC: Captura store_uuid e server_seq para tracking
+        final storeUuid = payload['store_uuid'] as String?;
+        final serverSeq = (payload['server_seq'] as num?)?.toInt() ?? 0;
+        if (storeUuid != null) {
+          _currentStoreUuid = storeUuid;
+          if (serverSeq > 0) {
+            _deltaSyncManager.trackInitialState(
+              storeUuid: storeUuid,
+              serverSeq: serverSeq,
+            );
+            AppLogger.i(
+              '[DeltaSync] Initial state tracked: store=$storeUuid, seq=$serverSeq',
+              tag: 'DELTA_SYNC',
+            );
+          }
+        }
+
         // ✅ NOVO: Detecta formato do menu (novo ou antigo)
         final bool isNewMenuFormat =
             payload.containsKey('data') &&
@@ -404,7 +448,10 @@ class RealtimeRepository {
     });
 
     // ✅ LISTENER: Atualizações de loja (quando admin atualiza configurações)
-    _socket.on('store_details_updated', (data) => _handleStoreUpdate(data));
+    _socket.on('store_details_updated', (data) {
+      _trackServerSeqFromEvent(data);
+      _handleStoreUpdate(data);
+    });
 
     // ✅ ENTERPRISE: Listeners granulares para atualizações específicas
     // Agora processa os eventos granulares para atualizar apenas a parte específica do Store
@@ -814,48 +861,57 @@ class RealtimeRepository {
     // --- PRODUTOS ---
     _socket.on('product_created', (data) {
       AppLogger.d('📦 [GRANULAR] Produto criado recebido');
+      _trackServerSeqFromEvent(data);
       _handleGranularProductEvent(data, 'created');
     });
 
     _socket.on('product_updated', (data) {
       AppLogger.d('📦 [GRANULAR] Produto atualizado recebido');
+      _trackServerSeqFromEvent(data);
       _handleGranularProductEvent(data, 'updated');
     });
 
     _socket.on('product_deleted', (data) {
       AppLogger.d('📦 [GRANULAR] Produto deletado recebido');
+      _trackServerSeqFromEvent(data);
       _handleGranularProductEvent(data, 'deleted');
     });
 
     // --- CATEGORIAS ---
     _socket.on('category_created', (data) {
       AppLogger.d('📁 [GRANULAR] Categoria criada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularCategoryEvent(data, 'created');
     });
 
     _socket.on('category_updated', (data) {
       AppLogger.d('📁 [GRANULAR] Categoria atualizada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularCategoryEvent(data, 'updated');
     });
 
     _socket.on('category_deleted', (data) {
       AppLogger.d('📁 [GRANULAR] Categoria deletada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularCategoryEvent(data, 'deleted');
     });
 
     // --- VARIANTES (Complementos) ---
     _socket.on('variant_created', (data) {
       AppLogger.d('🧩 [GRANULAR] Variante criada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularVariantEvent(data, 'created');
     });
 
     _socket.on('variant_updated', (data) {
       AppLogger.d('🧩 [GRANULAR] Variante atualizada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularVariantEvent(data, 'updated');
     });
 
     _socket.on('variant_deleted', (data) {
       AppLogger.d('🧩 [GRANULAR] Variante deletada recebida');
+      _trackServerSeqFromEvent(data);
       _handleGranularVariantEvent(data, 'deleted');
     });
 
@@ -1987,6 +2043,175 @@ class RealtimeRepository {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // ✅ DELTA SYNC: Métodos de suporte
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Extrai server_seq de um evento e atualiza o cursor do DeltaSyncManager.
+  /// Chamado por cada listener de evento granular para manter o tracking.
+  void _trackServerSeqFromEvent(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> payload =
+          data is Map<String, dynamic>
+              ? data
+              : _convertToStringDynamicMap(data);
+
+      final serverSeq = (payload['server_seq'] as num?)?.toInt() ?? 0;
+      if (serverSeq > 0 && _currentStoreUuid != null) {
+        _deltaSyncManager.trackEvent(
+          storeUuid: _currentStoreUuid!,
+          serverSeq: serverSeq,
+        );
+      }
+    } catch (_) {
+      // Silently ignore — tracking is best-effort
+    }
+  }
+
+  /// Wrapper de emitWithAck para o DeltaSyncManager usar.
+  /// Converte o callback-based emitWithAck do socket_io_client para Future-based.
+  Future<dynamic> _emitWithAckForDelta(
+    String event,
+    Map<String, dynamic> data, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final completer = Completer<dynamic>();
+
+    _socket.emitWithAck(
+      event,
+      data,
+      ack: (response) {
+        if (!completer.isCompleted) {
+          completer.complete(response);
+        }
+      },
+    );
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        return null; // DeltaSyncManager trata null como falha
+      },
+    );
+  }
+
+  /// ✅ DELTA SYNC: Aplica delta events recebidos do backend.
+  /// Despacha cada evento para o handler correto baseado no event_type.
+  void _applyDeltaEvents(
+    String storeUuid,
+    List<Map<String, dynamic>> deltaEvents,
+  ) {
+    AppLogger.i(
+      '[DeltaSync] Applying ${deltaEvents.length} delta events for store $storeUuid',
+      tag: 'DELTA_SYNC',
+    );
+
+    for (final event in deltaEvents) {
+      try {
+        final eventType = event['event_type'] as String? ?? '';
+        final payload = event['payload'] as Map<String, dynamic>? ?? event;
+
+        switch (eventType) {
+          case 'store_details_updated':
+            _handleStoreUpdate(payload);
+            break;
+          case 'product_created':
+            _handleGranularProductEvent(payload, 'created');
+            break;
+          case 'product_updated':
+            _handleGranularProductEvent(payload, 'updated');
+            break;
+          case 'product_deleted':
+            _handleGranularProductEvent(payload, 'deleted');
+            break;
+          case 'category_created':
+            _handleGranularCategoryEvent(payload, 'created');
+            break;
+          case 'category_updated':
+            _handleGranularCategoryEvent(payload, 'updated');
+            break;
+          case 'category_deleted':
+            _handleGranularCategoryEvent(payload, 'deleted');
+            break;
+          case 'variant_created':
+            _handleGranularVariantEvent(payload, 'created');
+            break;
+          case 'variant_updated':
+            _handleGranularVariantEvent(payload, 'updated');
+            break;
+          case 'variant_deleted':
+            _handleGranularVariantEvent(payload, 'deleted');
+            break;
+          default:
+            AppLogger.d('[DeltaSync] Unhandled delta event_type: $eventType');
+        }
+      } catch (e) {
+        AppLogger.e(
+          '[DeltaSync] Error applying delta event: $e',
+          tag: 'DELTA_SYNC',
+        );
+      }
+    }
+  }
+
+  /// ✅ ENTERPRISE: 3-layer reconnect (Delta Sync → Resume Light → Full Sync)
+  ///
+  /// Fluxo de 3 camadas:
+  /// 1. DELTA SYNC: Tenta recuperar apenas eventos perdidos (mais leve)
+  /// 2. RESUME LIGHT: Se delta indisponível, reconecta com token preservando dados
+  /// 3. FULL SYNC: Se tudo falhar, faz reconexão completa
+  Future<void> _resumeOrFullSync() async {
+    final storeUuid = _currentStoreUuid;
+
+    // ✅ LAYER 1: Delta sync (fastest path - only missed events)
+    if (storeUuid != null && _deltaSyncManager.hasState(storeUuid)) {
+      try {
+        AppLogger.i(
+          '[Reconnect] Layer 1: Attempting delta sync for store $storeUuid '
+          '(seq=${_deltaSyncManager.getState(storeUuid)?.lastServerSeq})',
+          tag: 'RECONNECT',
+        );
+
+        final result = await _deltaSyncManager.requestDelta(
+          storeUuid: storeUuid,
+          timeout: const Duration(seconds: 8),
+        );
+
+        if (result.success && !result.fullSyncRequired) {
+          AppLogger.s(
+            '[Reconnect] Delta sync succeeded: $result',
+            tag: 'RECONNECT',
+          );
+          return; // ✅ Dados recuperados via delta — sem necessidade de full reload
+        }
+
+        AppLogger.i(
+          '[Reconnect] Delta sync requires full sync (result: $result). '
+          'Falling back to Layer 2...',
+          tag: 'RECONNECT',
+        );
+      } catch (e) {
+        AppLogger.w(
+          '[Reconnect] Delta sync failed: $e. Falling back to Layer 2...',
+          tag: 'RECONNECT',
+        );
+      }
+    }
+
+    // ✅ LAYER 2: Resume Light (medium path — preserve existing data, just reconnect)
+    // No Totem, a reconexão via _reconnectWithNewToken já preserva os BehaviorSubjects.
+    // O backend envia initial_state_loaded automaticamente ao conectar.
+    // Se chegarmos aqui, a reconexão normal já está em andamento.
+    AppLogger.i(
+      '[Reconnect] Layer 2: Resume with preserved data (initial_state_loaded will refresh)',
+      tag: 'RECONNECT',
+    );
+  }
+
+  /// Getter público para o DeltaSyncManager (usado por testes e DI)
+  DeltaSyncManager get deltaSyncManager => _deltaSyncManager;
+
   void dispose() {
     // Para os timers de ping e pong timeout
     _heartbeatManager?.stop();
@@ -1994,6 +2219,8 @@ class RealtimeRepository {
     _categoryDebounceTimer?.cancel();
     _categoryDebounceTimer = null;
     _pendingCategories = null;
+    // ✅ DELTA SYNC: Limpa estado de sync
+    _deltaSyncManager.clear();
     connectionStatusController.add(WebSocketConnectionStatus.disconnected);
     connectionStatusController.close();
     storeController.close();
@@ -3101,12 +3328,40 @@ class RealtimeRepository {
           AppLogger.d('☀️ [Visibility] Tab VISIBLE');
           _heartbeatManager?.notifyTabVisible();
 
-          // Se tab ficou hidden tempo demais, força reconnect
+          // Se tab ficou hidden tempo demais, tenta delta sync antes de full reconnect
           if (_heartbeatManager?.wasBackgroundTooLong ?? false) {
-            AppLogger.d(
-              '⚠️ [Visibility] Tab ficou hidden tempo demais — forçando reconnect',
-            );
-            Future.delayed(const Duration(seconds: 2), () {
+            Future.delayed(const Duration(seconds: 2), () async {
+              if (_socket.connected &&
+                  _currentStoreUuid != null &&
+                  _deltaSyncManager.hasState(_currentStoreUuid!)) {
+                // ✅ DELTA SYNC: Socket ainda vivo → tenta recuperar apenas eventos perdidos
+                AppLogger.i(
+                  '[Visibility] Tab retornou — tentando delta sync antes de full reconnect',
+                  tag: 'RECONNECT',
+                );
+                try {
+                  final result = await _deltaSyncManager.requestDelta(
+                    storeUuid: _currentStoreUuid!,
+                    timeout: const Duration(seconds: 6),
+                  );
+                  if (result.success && !result.fullSyncRequired) {
+                    AppLogger.s(
+                      '[Visibility] Delta sync succeeded after tab return: $result',
+                      tag: 'RECONNECT',
+                    );
+                    return; // ✅ Dados recuperados sem reconectar
+                  }
+                } catch (e) {
+                  AppLogger.w(
+                    '[Visibility] Delta sync failed: $e',
+                    tag: 'RECONNECT',
+                  );
+                }
+              }
+              // Fallback: full reconnect
+              AppLogger.d(
+                '⚠️ [Visibility] Tab ficou hidden tempo demais — forçando reconnect',
+              );
               _renewConnectionTokenAndReconnect();
             });
           }

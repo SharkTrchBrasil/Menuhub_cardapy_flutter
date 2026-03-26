@@ -25,16 +25,24 @@ http {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Extrai subdomain do host (ex: lanchonetejeitomineiro de lanchonetejeitomineiro.menuhub.com.br)
+    set $store_slug "";
+    if ($host ~* "^([^.]+)\.") {
+      set $store_slug $1;
+    }
+
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf|wasm)$ {
       expires 1y;
       add_header Cache-Control "public, immutable";
     }
 
     location / {
+      # Crawlers → Backend SSR com OG meta tags (por slug, sem depender do Host header)
       if ($is_crawler = 1) {
-        return 302 ${BACKEND_URL}/app/stores;
+        return 302 ${BACKEND_URL}/app/stores/og/$store_slug;
       }
 
+      # Usuários normais → Flutter Web estático
       try_files $uri $uri/ /index.html;
     }
   }

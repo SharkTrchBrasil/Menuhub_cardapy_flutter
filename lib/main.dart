@@ -76,7 +76,7 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         // Chamamos load com isOptional: true para garantir que o sistema seja inicializado mesmo sem o arquivo
         await dotenv.load(fileName: 'assets/env', isOptional: true);
         dotenv.env.addAll({
-          'API_URL': 'https://back-end-pro-production.up.railway.app',
+          'API_URL': 'https://api.menuhub.com.br',
           'FIREBASE_PROJECT_ID': 'pdvix-c69fe',
           'FIREBASE_API_KEY': 'AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8',
           'FIREBASE_APP_ID': '1:209909701330:web:03ea9f309ce422c35e6b0b',

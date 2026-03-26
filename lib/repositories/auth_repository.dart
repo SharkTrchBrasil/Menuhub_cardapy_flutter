@@ -55,31 +55,62 @@ class AuthRepository {
   }
 
   /// ✅ MÉTODO PRINCIPAL: Autentica na loja via subdomínio
+  /// CORREÇÃO: Retry automático para lidar com cold start do backend (Redis/DB race condition)
   Future<Either<String, TotemAuth>> getToken(String storeSlug) async {
-    try {
-      final totemToken = await getTotemToken();
+    const maxRetries = 3;
+    const baseDelay = Duration(seconds: 2);
 
-      AppLogger.i('🔐 Autenticando com store_url: $storeSlug', tag: 'AUTH');
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        final totemToken = await getTotemToken();
 
-      final response = await _dio.post(
-        '/auth/subdomain',
-        data: {'store_url': storeSlug, 'totem_token': totemToken},
-      );
+        AppLogger.i(
+          '🔐 Autenticando com store_url: $storeSlug (tentativa ${attempt + 1}/$maxRetries)',
+          tag: 'AUTH',
+        );
 
-      final TotemAuth totemAuth = TotemAuth.fromJson(response.data);
+        final response = await _dio.post(
+          '/auth/subdomain',
+          data: {'store_url': storeSlug, 'totem_token': totemToken},
+        );
 
-      // ✅ Salva todos os tokens e metadados
-      await _saveAuthData(totemAuth);
+        final TotemAuth totemAuth = TotemAuth.fromJson(response.data);
 
-      AppLogger.i('✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName}', tag: 'AUTH');
-      return Right(totemAuth);
-    } on DioException catch (e) {
-      AppLogger.e('❌ Erro ao buscar token: ${e.response?.data ?? e.message}', tag: 'AUTH');
-      return Left(e.response?.data?['detail'] ?? 'Erro ao autenticar');
-    } catch (e) {
-      AppLogger.e('❌ Erro inesperado: $e', tag: 'AUTH');
-      return Left('Erro inesperado ao autenticar');
+        // ✅ Salva todos os tokens e metadados
+        await _saveAuthData(totemAuth);
+
+        AppLogger.i(
+          '✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName}',
+          tag: 'AUTH',
+        );
+        return Right(totemAuth);
+      } on DioException catch (e) {
+        final statusCode = e.response?.statusCode;
+
+        // ✅ RETRY: 404 e 503 são retryable (cold start do backend — Redis/DB race condition)
+        if ((statusCode == 404 || statusCode == 503) && attempt < maxRetries - 1) {
+          final delay = baseDelay * (attempt + 1);
+          AppLogger.w(
+            '⚠️ Auth falhou ($statusCode), retry em ${delay.inSeconds}s... '
+            '(tentativa ${attempt + 1}/$maxRetries)',
+            tag: 'AUTH',
+          );
+          await Future.delayed(delay);
+          continue;
+        }
+
+        AppLogger.e(
+          '❌ Erro ao buscar token: ${e.response?.data ?? e.message}',
+          tag: 'AUTH',
+        );
+        return Left(e.response?.data?['detail'] ?? 'Erro ao autenticar');
+      } catch (e) {
+        AppLogger.e('❌ Erro inesperado: $e', tag: 'AUTH');
+        return Left('Erro inesperado ao autenticar');
+      }
     }
+
+    return const Left('Erro ao autenticar após múltiplas tentativas');
   }
 
   /// Handles Google Sign-In process
