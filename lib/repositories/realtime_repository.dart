@@ -26,6 +26,7 @@ import 'package:totem/models/variant_option.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
+import '../core/session/in_memory_session_store.dart';
 
 import '../core/di.dart';
 import '../cubit/orders_cubit.dart';
@@ -92,15 +93,10 @@ class RealtimeRepository {
   int?
   _lastLinkedCustomerId; // ✅ NOVO: Armazena o último ID vinculado para re-link na reconexão
 
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-
   // ✅ DELTA SYNC: Deduplicação e recuperação de eventos
   late final EventDeduplicator _eventDeduplicator;
   late final DeltaSyncManager _deltaSyncManager;
   String? _currentStoreUuid; // Armazena store_uuid para delta sync
-
-  // Constante para chave de armazenamento
-  static const String _keyStoreUrl = 'store_url';
 
   /// ✅ ENTERPRISE: Stream de status de conexão WebSocket
   /// Usado pelo ConnectionStatusBanner para mostrar aviso visual
@@ -167,9 +163,9 @@ class RealtimeRepository {
   }
 
   Future<void> initialize(String connectionToken) async {
-    // ✅ Salva o token atual e o store_url para renovação futura
+    // ✅ STATELESS: Salva o token atual e obtém store_url da memória (não do localStorage)
     _currentConnectionToken = connectionToken;
-    _storeUrl = await _secureStorage.read(key: _keyStoreUrl);
+    _storeUrl = InMemorySessionStore.instance.storeUrl;
 
     final apiUrl = dotenv.env['API_URL'];
 
@@ -2273,10 +2269,10 @@ class RealtimeRepository {
     );
 
     try {
-      // Obtém o store_url salvo ou do ambiente
+      // ✅ STATELESS: Obtém store_url da memória (não do localStorage)
       String? storeUrl = _storeUrl;
       if (storeUrl == null || storeUrl.isEmpty) {
-        storeUrl = await _secureStorage.read(key: _keyStoreUrl);
+        storeUrl = InMemorySessionStore.instance.storeUrl;
       }
 
       if (storeUrl == null || storeUrl.isEmpty) {
@@ -2299,7 +2295,10 @@ class RealtimeRepository {
         ),
       );
 
-      final authRepo = AuthRepository(dioForRenewal, _secureStorage);
+      final authRepo = AuthRepository(
+        dioForRenewal,
+        getIt<FlutterSecureStorage>(),
+      );
 
       AppLogger.d('🔐 Solicitando novo token de conexão para: $storeUrl');
       final authResult = await authRepo.getToken(storeUrl);

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:flutter/foundation.dart' hide Category;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/models/category.dart'; // Importando o Category que faltava
 import 'package:totem/models/menu/menu_response.dart'; // ✅ NOVO: Formato de menu
 import '../core/di.dart';
@@ -11,16 +10,16 @@ import '../models/store_city.dart';
 import '../models/store_neig.dart';
 
 class StoreRepository {
-  StoreRepository(this._dio, this._secureStorage);
+  StoreRepository(this._dio);
 
   final Dio _dio;
-  final FlutterSecureStorage _secureStorage;
 
   // ✅ CORRIGIDO: Backend usa Host header para identificar a loja
   // Endpoint: GET /products/{product_id}
   Future<Product> fetchProductDetails({
     required int productId,
-    required String storeSlug, // Mantido para compatibilidade, mas não usado na URL
+    required String
+    storeSlug, // Mantido para compatibilidade, mas não usado na URL
   }) async {
     try {
       final response = await _dio.get(
@@ -43,19 +42,14 @@ class StoreRepository {
   }) async {
     // Categorias devem ser obtidas do StoreCubit (já carregadas com o menu)
     throw Exception(
-      'Categoria não encontrada. Use StoreCubit.state.categories para obter categorias já carregadas.'
+      'Categoria não encontrada. Use StoreCubit.state.categories para obter categorias já carregadas.',
     );
   }
 
   Future<Either<void, BannerModel>> getBanners() async {
     try {
-      final token = await _secureStorage.read(key: 'totem_token');
-      final response = await _dio.get(
-        '/banners',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      // ✅ STATELESS: Dio interceptor já adiciona Authorization header automaticamente
+      final response = await _dio.get('/banners');
       return Right(BannerModel.fromJson(response.data));
     } catch (e) {
       debugPrint('$e');
@@ -81,7 +75,8 @@ class StoreRepository {
     try {
       final response = await _dio.get('/stores/cities/$cityId/neighborhoods');
       final data = response.data as List;
-      final neighborhoods = data.map((json) => StoreNeighborhood.fromJson(json)).toList();
+      final neighborhoods =
+          data.map((json) => StoreNeighborhood.fromJson(json)).toList();
       return Right(neighborhoods);
     } catch (e) {
       print('Erro ao buscar bairros da cidade: $e');
@@ -97,7 +92,7 @@ class StoreRepository {
         '/menu', // ✅ Ajustar endpoint conforme backend
         options: Options(headers: {'Accept': 'application/json'}),
       );
-      
+
       final menuResponse = MenuResponse.fromJson(response.data);
       return Right(menuResponse);
     } catch (e) {

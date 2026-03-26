@@ -5,10 +5,10 @@ import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:uuid/uuid.dart';
 
 import '../controllers/customer_controller.dart';
 import '../core/di.dart';
+import '../core/session/in_memory_session_store.dart';
 import '../core/utils/app_logger.dart';
 import '../models/customer.dart';
 import '../models/totem_auth.dart';
@@ -23,16 +23,10 @@ class AuthRepository {
 
   AuthRepository(this._dio, this._secureStorage);
 
-  // Chaves de armazenamento - TOKENS DE MENU/TOTEM
-  static const String _keyAccessToken = 'access_token';
-  static const String _keyRefreshToken = 'refresh_token';
-  static const String _keyTokenExpiration = 'token_expiration';
-  static const String _keyTotemToken = 'totem_token';
-  static const String _keyStoreId = 'store_id';
-  static const String _keyStoreUrl = 'store_url';
-  static const String _keyStoreName = 'store_name';
+  // ✅ STATELESS: Sessão de loja em memória (não persiste em storage)
+  final InMemorySessionStore _session = InMemorySessionStore.instance;
 
-  // ✅ NOVO: Chaves de armazenamento - TOKENS DE CUSTOMER (separados)
+  // Chaves de armazenamento - TOKENS DE CUSTOMER (persistem em storage para login Google)
   static const String _keyCustomerAccessToken = 'customer_access_token';
   static const String _keyCustomerRefreshToken = 'customer_refresh_token';
   static const String _keyCustomerTokenExpiration = 'customer_token_expiration';
@@ -54,33 +48,43 @@ class AuthRepository {
     return _refreshDio!;
   }
 
-  /// ✅ MÉTODO PRINCIPAL: Autentica na loja via subdomínio
-  /// CORREÇÃO: Retry automático para lidar com cold start do backend (Redis/DB race condition)
+  /// ✅ STATELESS: Autentica na loja via subdomínio (URL é o único requisito)
+  /// NÃO depende de localStorage, sessionStorage ou cookies.
+  /// Tokens são armazenados APENAS em memória (InMemorySessionStore).
+  /// Retry automático para lidar com cold start do backend (Redis/DB race condition)
   Future<Either<String, TotemAuth>> getToken(String storeSlug) async {
     const maxRetries = 3;
     const baseDelay = Duration(seconds: 2);
 
     for (int attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        final totemToken = await getTotemToken();
-
         AppLogger.i(
           '🔐 Autenticando com store_url: $storeSlug (tentativa ${attempt + 1}/$maxRetries)',
           tag: 'AUTH',
         );
 
+        // ✅ STATELESS: Envia APENAS store_url. Backend gera totem_token server-side.
+        // Não lê nem depende de nenhum token salvo no navegador.
         final response = await _dio.post(
           '/auth/subdomain',
-          data: {'store_url': storeSlug, 'totem_token': totemToken},
+          data: {'store_url': storeSlug},
         );
 
         final TotemAuth totemAuth = TotemAuth.fromJson(response.data);
 
-        // ✅ Salva todos os tokens e metadados
-        await _saveAuthData(totemAuth);
+        // ✅ STATELESS: Salva tokens APENAS em memória (variáveis Dart)
+        _session.setStoreSession(
+          accessToken: totemAuth.accessToken,
+          refreshToken: totemAuth.refreshToken,
+          expiresIn: totemAuth.expiresIn,
+          storeUrl: totemAuth.storeUrl,
+          storeName: totemAuth.storeName,
+          storeId: totemAuth.storeId,
+          connectionToken: totemAuth.connectionToken,
+        );
 
         AppLogger.i(
-          '✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName}',
+          '✅ Autenticação bem-sucedida para loja: ${totemAuth.storeName} (sessão em memória)',
           tag: 'AUTH',
         );
         return Right(totemAuth);
@@ -88,7 +92,8 @@ class AuthRepository {
         final statusCode = e.response?.statusCode;
 
         // ✅ RETRY: 404 e 503 são retryable (cold start do backend — Redis/DB race condition)
-        if ((statusCode == 404 || statusCode == 503) && attempt < maxRetries - 1) {
+        if ((statusCode == 404 || statusCode == 503) &&
+            attempt < maxRetries - 1) {
           final delay = baseDelay * (attempt + 1);
           AppLogger.w(
             '⚠️ Auth falhou ($statusCode), retry em ${delay.inSeconds}s... '
@@ -125,38 +130,16 @@ class AuthRepository {
     }
   }
 
-  /// ✅ Salva dados de autenticação no secure storage
-  Future<void> _saveAuthData(TotemAuth auth) async {
-    await Future.wait(<Future<void>>[
-      _secureStorage.write(key: _keyAccessToken, value: auth.accessToken),
-      _secureStorage.write(key: _keyRefreshToken, value: auth.refreshToken),
-      _secureStorage.write(
-        key: _keyTokenExpiration,
-        value: auth.expirationTime.toIso8601String(),
-      ),
-      _secureStorage.write(key: _keyStoreId, value: auth.storeId.toString()),
-      _secureStorage.write(key: _keyStoreUrl, value: auth.storeUrl),
-      _secureStorage.write(key: _keyStoreName, value: auth.storeName),
-    ]);
-  }
-
-  /// ✅ Obtém token de acesso válido (renova se necessário) - TOKEN DE MENU/TOTEM
+  /// ✅ STATELESS: Obtém token de acesso válido da MEMÓRIA (renova se necessário)
   Future<String?> getValidAccessToken() async {
-    final accessToken = await _secureStorage.read(key: _keyAccessToken);
-    final expirationStr = await _secureStorage.read(key: _keyTokenExpiration);
-
-    if (accessToken == null || expirationStr == null) {
-      return null;
+    // Lê diretamente da memória — NUNCA do localStorage
+    if (_session.hasValidStoreToken) {
+      return _session.accessToken;
     }
 
-    final expiration = DateTime.tryParse(expirationStr);
-    if (expiration == null) {
+    // Token expirado ou ausente — tenta refresh
+    if (_session.refreshToken == null) {
       return null;
-    }
-
-    // Se ainda válido, retorna
-    if (expiration.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
-      return accessToken;
     }
 
     // Token expirando — serializa o refresh com mutex
@@ -177,25 +160,43 @@ class AuthRepository {
     }
   }
 
-  /// ✅ NOVO: Obtém token de acesso válido do CUSTOMER (renova se necessário)
+  /// ✅ Obtém token de acesso válido do CUSTOMER (renova se necessário)
+  /// Tenta memória primeiro, depois fallback para storage (para persistir login Google)
   Future<String?> getValidCustomerAccessToken() async {
+    // 1. Tenta da memória primeiro (sessão atual)
+    if (_session.hasValidCustomerToken) {
+      return _session.customerAccessToken;
+    }
+
+    // 2. Fallback: tenta do storage (login Google persistido)
     final accessToken = await _secureStorage.read(key: _keyCustomerAccessToken);
     final expirationStr = await _secureStorage.read(
       key: _keyCustomerTokenExpiration,
     );
 
-    if (accessToken == null || expirationStr == null) {
-      return null;
+    if (accessToken != null && expirationStr != null) {
+      final expiration = DateTime.tryParse(expirationStr);
+      if (expiration != null &&
+          expiration.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+        // Carrega do storage para memória para próximas chamadas
+        final refreshToken = await _secureStorage.read(
+          key: _keyCustomerRefreshToken,
+        );
+        _session.setCustomerSession(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          expiresIn: expiration.difference(DateTime.now()).inSeconds,
+        );
+        return accessToken;
+      }
     }
 
-    final expiration = DateTime.tryParse(expirationStr);
-    if (expiration == null) {
+    // 3. Token expirado — tenta refresh
+    final refreshToken =
+        _session.customerRefreshToken ??
+        await _secureStorage.read(key: _keyCustomerRefreshToken);
+    if (refreshToken == null) {
       return null;
-    }
-
-    // Se ainda válido, retorna
-    if (expiration.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
-      return accessToken;
     }
 
     // Token expirando — serializa o refresh com mutex
@@ -216,12 +217,15 @@ class AuthRepository {
     }
   }
 
-  /// ✅ Renova o token de acesso usando refresh token
+  /// ✅ STATELESS: Renova o token de acesso usando refresh token da memória
   Future<String?> _refreshAccessToken() async {
     try {
-      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+      final refreshToken = _session.refreshToken;
       if (refreshToken == null) {
-        AppLogger.w('❌ Refresh token não encontrado', tag: 'AUTH');
+        AppLogger.w(
+          '❌ Refresh token não encontrado na sessão em memória',
+          tag: 'AUTH',
+        );
         return null;
       }
 
@@ -231,16 +235,22 @@ class AuthRepository {
         data: {'refresh_token': refreshToken},
       );
 
-      final newAccessToken = response.data['access_token'] as String;
-      final newExpiration = DateTime.now().add(const Duration(minutes: 30));
+      final responseData = response.data as Map<String, dynamic>;
+      final newAccessToken = responseData['access_token'] as String;
+      final newRefreshToken = responseData['refresh_token'] as String?;
+      final expiresIn = (responseData['expires_in'] as num?)?.toInt() ?? 1800;
 
-      await _secureStorage.write(key: _keyAccessToken, value: newAccessToken);
-      await _secureStorage.write(
-        key: _keyTokenExpiration,
-        value: newExpiration.toIso8601String(),
+      // ✅ STATELESS: Atualiza tokens APENAS em memória
+      _session.updateStoreTokens(
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: expiresIn,
       );
 
-      AppLogger.i('✅ Token renovado com sucesso', tag: 'AUTH');
+      AppLogger.i(
+        '✅ Token de menu renovado com sucesso (em memória)',
+        tag: 'AUTH',
+      );
       return newAccessToken;
     } catch (e) {
       AppLogger.e('❌ Erro ao renovar token: $e', tag: 'AUTH');
@@ -262,31 +272,39 @@ class AuthRepository {
     return await _refreshCustomerAccessToken();
   }
 
-  /// ✅ NOVO: Renova o token de acesso do CUSTOMER usando refresh token
+  /// ✅ Renova o token de acesso do CUSTOMER usando refresh token
+  /// Atualiza tanto memória quanto storage (para persistir login Google)
   Future<String?> _refreshCustomerAccessToken() async {
     try {
-      final refreshToken = await _secureStorage.read(
-        key: _keyCustomerRefreshToken,
-      );
+      // Tenta refresh token da memória primeiro, depois do storage
+      final refreshToken =
+          _session.customerRefreshToken ??
+          await _secureStorage.read(key: _keyCustomerRefreshToken);
       if (refreshToken == null) {
         AppLogger.w('❌ Refresh token de customer não encontrado', tag: 'AUTH');
         return null;
       }
 
       final refreshDio = _getRefreshDio();
-      // ✅ CORREÇÃO: Usa endpoint específico para refresh de customer
       final response = await refreshDio.post(
         '/customer/refresh',
         data: {'refresh_token': refreshToken},
       );
 
-      // ✅ CORREÇÃO: Converte response.data para Map antes de acessar
       final responseData = response.data as Map<String, dynamic>;
       final newAccessToken = responseData['access_token'] as String;
       final newRefreshToken = responseData['refresh_token'] as String?;
       final expiresIn = (responseData['expires_in'] as num?)?.toInt() ?? 1800;
       final newExpiration = DateTime.now().add(Duration(seconds: expiresIn));
 
+      // ✅ Atualiza memória
+      _session.updateCustomerTokens(
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: expiresIn,
+      );
+
+      // ✅ Persiste em storage (para sobreviver a refresh da página)
       await _secureStorage.write(
         key: _keyCustomerAccessToken,
         value: newAccessToken,
@@ -295,8 +313,6 @@ class AuthRepository {
         key: _keyCustomerTokenExpiration,
         value: newExpiration.toIso8601String(),
       );
-
-      // Se o backend retornou um novo refresh token, salva também
       if (newRefreshToken != null) {
         await _secureStorage.write(
           key: _keyCustomerRefreshToken,
@@ -304,7 +320,10 @@ class AuthRepository {
         );
       }
 
-      AppLogger.i('✅ Token de customer renovado com sucesso', tag: 'AUTH');
+      AppLogger.i(
+        '✅ Token de customer renovado com sucesso (memória + storage)',
+        tag: 'AUTH',
+      );
       return newAccessToken;
     } catch (e) {
       AppLogger.e('❌ Erro ao renovar token de customer: $e', tag: 'AUTH');
@@ -312,44 +331,23 @@ class AuthRepository {
     }
   }
 
-  /// ✅ Verifica se há autenticação válida
+  /// ✅ STATELESS: Verifica se há autenticação válida (da memória)
   Future<bool> isAuthenticated() async {
-    final accessToken = await getValidAccessToken();
-    return accessToken != null;
+    return _session.hasValidStoreToken;
   }
 
-  /// ✅ Obtém ou gera totem token único
-  Future<String> getTotemToken() async {
-    String? token = await _secureStorage.read(key: _keyTotemToken);
-
-    if (token != null && token.isNotEmpty) {
-      AppLogger.d('✅ Token existente encontrado', tag: 'AUTH');
-      return token;
-    }
-
-    // Gera novo token único
-    token = const Uuid().v4();
-    await _secureStorage.write(key: _keyTotemToken, value: token);
-    AppLogger.i('🆕 Novo totem token gerado: $token', tag: 'AUTH');
-
-    return token;
-  }
-
-  /// ✅ Faz logout e limpa tokens de MENU
+  /// ✅ STATELESS: Faz logout e limpa tokens de MENU (da memória)
   Future<void> logout() async {
-    await Future.wait(<Future<void>>[
-      _secureStorage.delete(key: _keyAccessToken),
-      _secureStorage.delete(key: _keyRefreshToken),
-      _secureStorage.delete(key: _keyTokenExpiration),
-      _secureStorage.delete(key: _keyStoreId),
-      _secureStorage.delete(key: _keyStoreUrl),
-      _secureStorage.delete(key: _keyStoreName),
-    ]);
-    AppLogger.i('🚪 Logout de menu realizado com sucesso', tag: 'AUTH');
+    _session.clearStoreSession();
+    AppLogger.i(
+      '🚪 Logout de menu realizado (sessão em memória limpa)',
+      tag: 'AUTH',
+    );
   }
 
-  /// ✅ NOVO: Faz logout de CUSTOMER e limpa tokens de customer
+  /// ✅ Faz logout de CUSTOMER e limpa tokens (memória + storage)
   Future<void> logoutCustomer() async {
+    _session.clearCustomerSession();
     await Future.wait(<Future<void>>[
       _secureStorage.delete(key: _keyCustomerAccessToken),
       _secureStorage.delete(key: _keyCustomerRefreshToken),
@@ -358,16 +356,12 @@ class AuthRepository {
     AppLogger.i('🚪 Logout de customer realizado com sucesso', tag: 'AUTH');
   }
 
-  /// ✅ Obtém informações da loja atual
-  Future<Map<String, String>> getStoreInfo() async {
-    final storeId = await _secureStorage.read(key: _keyStoreId);
-    final storeUrl = await _secureStorage.read(key: _keyStoreUrl);
-    final storeName = await _secureStorage.read(key: _keyStoreName);
-
+  /// ✅ STATELESS: Obtém informações da loja atual (da memória)
+  Map<String, String> getStoreInfo() {
     return {
-      'store_id': storeId ?? '',
-      'store_url': storeUrl ?? '',
-      'store_name': storeName ?? '',
+      'store_id': _session.storeId?.toString() ?? '',
+      'store_url': _session.storeUrl ?? '',
+      'store_name': _session.storeName ?? '',
     };
   }
 
@@ -379,7 +373,10 @@ class AuthRepository {
     String? photo,
   ) async {
     try {
-      AppLogger.d('🔍 [AUTH] Enviando requisição /customer/google...', tag: 'AUTH');
+      AppLogger.d(
+        '🔍 [AUTH] Enviando requisição /customer/google...',
+        tag: 'AUTH',
+      );
 
       final response = await _dio.post(
         '/customer/google',
@@ -410,43 +407,41 @@ class AuthRepository {
       );
 
       if (customerAccessToken != null) {
-        print('✅ [AUTH] Salvando token de CLIENTE em chaves separadas...');
+        // ✅ Salva tokens de customer em memória + storage (para persistir login Google)
+        _session.setCustomerSession(
+          accessToken: customerAccessToken,
+          refreshToken: customerRefreshToken,
+          expiresIn: expiresIn,
+        );
+
+        // ✅ Também persiste em storage para sobreviver a refresh da página
         final customerExpiration = DateTime.now().add(
           Duration(seconds: expiresIn),
         );
-
-        // ✅ CORREÇÃO: Salva em chaves SEPARADAS (não sobrescreve tokens de menu)
         await _secureStorage.write(
           key: _keyCustomerAccessToken,
           value: customerAccessToken,
         );
-        print('   ✅ Customer access token salvo');
-
-        // Salva refresh token se presente
         if (customerRefreshToken != null) {
           await _secureStorage.write(
             key: _keyCustomerRefreshToken,
             value: customerRefreshToken,
           );
-          print('   ✅ Customer refresh token salvo');
         }
-
-        // Salva expiração
         await _secureStorage.write(
           key: _keyCustomerTokenExpiration,
           value: customerExpiration.toIso8601String(),
         );
-        print(
-          '   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}',
-        );
 
         AppLogger.i(
-          '✅ [AUTH] Token de CLIENTE salvo com sucesso (expira em ${expiresIn}s)',
+          '✅ [AUTH] Token de CLIENTE salvo (memória + storage, expira em ${expiresIn}s)',
           tag: 'AUTH',
         );
-        AppLogger.d('✅ [AUTH] Tokens de menu NÃO foram sobrescritos', tag: 'AUTH');
       } else {
-        AppLogger.w('⚠️ [AUTH] Backend não retornou access_token de cliente', tag: 'AUTH');
+        AppLogger.w(
+          '⚠️ [AUTH] Backend não retornou access_token de cliente',
+          tag: 'AUTH',
+        );
       }
 
       return Right(customer);

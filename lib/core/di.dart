@@ -79,7 +79,10 @@ Future<void> configureDependencies() async {
         } else {
           // ✅ Para outras requisições, usa token de MENU/TOTEM
           token = await authRepo.getValidAccessToken();
-          AppLogger.i('🔍 [INTERCEPTOR] Usando token de MENU para: ${options.path}', tag: 'AUTH');
+          AppLogger.i(
+            '🔍 [INTERCEPTOR] Usando token de MENU para: ${options.path}',
+            tag: 'AUTH',
+          );
         }
 
         if (token != null) {
@@ -98,11 +101,17 @@ Future<void> configureDependencies() async {
           // ✅ PROTEÇÃO CONTRA LOOP INFINITO: verifica se já tentou renovar
           final isRetry = e.requestOptions.extra['_isRetryFor401'] == true;
           if (isRetry) {
-            AppLogger.w('❌ Já tentou renovar token, evitando loop infinito', tag: 'AUTH');
+            AppLogger.w(
+              '❌ Já tentou renovar token, evitando loop infinito',
+              tag: 'AUTH',
+            );
             return handler.next(e);
           }
 
-          AppLogger.w('⚠️ Token expirado (401), tentando renovar...', tag: 'AUTH');
+          AppLogger.w(
+            '⚠️ Token expirado (401), tentando renovar...',
+            tag: 'AUTH',
+          );
 
           final authRepo = AuthRepository(dio, secureStorage);
 
@@ -135,7 +144,10 @@ Future<void> configureDependencies() async {
             try {
               return handler.resolve(await dio.fetch(e.requestOptions));
             } catch (retryError) {
-              AppLogger.e('❌ Falha ao retentar requisição: $retryError', tag: 'AUTH');
+              AppLogger.e(
+                '❌ Falha ao retentar requisição: $retryError',
+                tag: 'AUTH',
+              );
               return handler.next(e);
             }
           } else {
@@ -183,9 +195,7 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<AuthRepository>(
     () => AuthRepository(getIt(), getIt()),
   );
-  getIt.registerLazySingleton<StoreRepository>(
-    () => StoreRepository(getIt(), getIt()),
-  );
+  getIt.registerLazySingleton<StoreRepository>(() => StoreRepository(getIt()));
   getIt.registerLazySingleton<RealtimeRepository>(() => RealtimeRepository());
   getIt.registerLazySingleton<CustomerRepository>(
     () => CustomerRepository(getIt()),
@@ -195,7 +205,7 @@ Future<void> configureDependencies() async {
     () => DeliveryFeeRepository(getIt()),
   );
   getIt.registerLazySingleton<NotificationRepository>(
-    () => NotificationRepository(getIt(), getIt()),
+    () => NotificationRepository(getIt()),
   );
 
   // Cubits
