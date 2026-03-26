@@ -32,9 +32,9 @@ class CustomerController extends ValueNotifier<Customer?> {
 
   Customer? get customer => value;
 
-  void clearCustomer() {
+  Future<void> clearCustomer() async {
     value = null;
-    _clearCustomerSecureStorage();
+    await _clearCustomerSecureStorage();
   }
 
   Future<void> loadCustomerFromSecureStorage() async {

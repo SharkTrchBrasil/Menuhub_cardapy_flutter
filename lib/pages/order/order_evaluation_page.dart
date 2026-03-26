@@ -5,6 +5,8 @@ import 'package:totem/models/order.dart';
 
 import 'package:totem/core/di.dart';
 import 'package:totem/repositories/order_repository.dart';
+import 'package:totem/cubit/orders_cubit.dart';
+import 'package:totem/core/utils/app_logger.dart';
 
 class OrderEvaluationPage extends StatefulWidget {
   final Order order;
@@ -22,8 +24,17 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
   final Set<String> _selectedTags = {};
   final Set<String> _deliverySelectedTags = {};
   final TextEditingController _commentController = TextEditingController();
+  final TextEditingController _deliveryCommentController =
+      TextEditingController();
   bool _onlyForStore = false;
   bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _deliveryCommentController.dispose();
+    super.dispose();
+  }
 
   final List<String> _improvementTags = [
     'Sabor',
@@ -120,9 +131,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                   height: 4,
                   decoration: BoxDecoration(
                     color:
-                        _currentStep == 1
-                            ? Colors.black
-                            : Colors.grey.shade300,
+                        _currentStep == 1 ? Colors.black : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -132,9 +141,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                   height: 4,
                   decoration: BoxDecoration(
                     color:
-                        _currentStep == 2
-                            ? Colors.black
-                            : Colors.grey.shade300,
+                        _currentStep == 2 ? Colors.black : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -154,55 +161,82 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              InkWell(
-                onTap: () {
-                  setState(() {
-                    _onlyForStore = !_onlyForStore;
-                  });
-                },
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: _onlyForStore,
-                        onChanged:
-                            (val) => setState(() => _onlyForStore = val ?? false),
-                        activeColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      const Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            text: 'Enviar avaliação ',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF717171),
-                            ),
-                            children: [
-                              TextSpan(
-                                text: 'somente para a loja',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+              if (_currentStep == 1)
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _onlyForStore = !_onlyForStore;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: _onlyForStore,
+                          onChanged:
+                              (val) =>
+                                  setState(() => _onlyForStore = val ?? false),
+                          activeColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right,
-                        color: Colors.black,
-                        size: 20,
-                      ),
-                    ],
+                        const Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              text: 'Enviar avaliação ',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF717171),
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'somente para a loja',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          color: Colors.black,
+                          size: 20,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              if (_currentStep == 2)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _currentStep = 1),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.arrow_back_ios,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Voltar para avaliação do pedido',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -229,8 +263,10 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                           )
                           : Text(
                             _currentStep == 1
-                                ? 'Enviar avaliação'
-                                : 'Finalizar',
+                                ? (_onlyForStore
+                                    ? 'Enviar avaliação'
+                                    : 'Avaliar entrega')
+                                : 'Enviar avaliação',
                             style: TextStyle(
                               color:
                                   _canContinue()
@@ -286,18 +322,25 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
     }
   }
 
+  String get _buttonLabel {
+    if (_currentStep == 1) {
+      return _onlyForStore ? 'Enviar avaliação' : 'Avaliar entrega';
+    }
+    return 'Enviar avaliação';
+  }
+
   Future<void> _submitFeedback() async {
     setState(() => _isSubmitting = true);
 
     try {
       final orderRepo = getIt<OrderRepository>();
-      String finalComment = _commentController.text.trim();
+      final storeComment = _commentController.text.trim();
 
       // 1. Enviar avaliação DA LOJA
       final orderResult = await orderRepo.submitOrderReview(
         orderPublicId: widget.order.publicId,
         stars: _orderRating,
-        comment: finalComment.isEmpty ? null : finalComment,
+        comment: storeComment.isEmpty ? null : storeComment,
         positiveTags: _selectedTags.toList(),
       );
 
@@ -307,20 +350,24 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
 
       // 2. Enviar avaliação DA ENTREGA (se houver e não for apenas loja)
       if (!_onlyForStore && _deliveryRating > 0) {
+        final deliveryComment = _deliveryCommentController.text.trim();
         final deliveryResult = await orderRepo.submitDeliveryReview(
           orderPublicId: widget.order.publicId,
           likedDelivery: _deliveryRating >= 4,
           negativeTags:
               _deliveryRating < 4 ? _deliverySelectedTags.toList() : null,
-          comment: finalComment.isEmpty ? null : finalComment,
+          comment: deliveryComment.isEmpty ? null : deliveryComment,
         );
 
         if (deliveryResult.isLeft) {
-          debugPrint(
-            'Erro ao enviar avaliação da entrega: ${deliveryResult.left}',
+          AppLogger.w(
+            '⚠️ [RATING] Erro ao enviar avaliação da entrega: ${deliveryResult.left}',
           );
         }
       }
+
+      // 3. ✅ GRANULAR: Marca o pedido como avaliado localmente no OrdersCubit
+      _markOrderAsReviewed();
 
       if (!mounted) return;
       context.pop();
@@ -337,6 +384,43 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
       ).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e')));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  /// ✅ Atualiza o pedido localmente no OrdersCubit marcando como avaliado
+  void _markOrderAsReviewed() {
+    try {
+      final ordersCubit = getIt<OrdersCubit>();
+      final updatedOrder = widget.order.copyWith(
+        details: widget.order.details.copyWith(reviewed: true),
+        storeRating: StoreRating(
+          stars: _orderRating,
+          comment:
+              _commentController.text.trim().isEmpty
+                  ? null
+                  : _commentController.text.trim(),
+          positiveTags: _selectedTags.toList(),
+        ),
+        deliveryRating:
+            (!_onlyForStore && _deliveryRating > 0)
+                ? DeliveryRating(
+                  likedDelivery: _deliveryRating >= 4,
+                  negativeTags: _deliverySelectedTags.toList(),
+                  comment:
+                      _deliveryCommentController.text.trim().isEmpty
+                          ? null
+                          : _deliveryCommentController.text.trim(),
+                )
+                : null,
+      );
+      ordersCubit.onRealtimeOrderUpdate(updatedOrder);
+      AppLogger.i(
+        '✅ [RATING] Pedido ${widget.order.shortId} marcado como avaliado localmente',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '⚠️ [RATING] Erro ao marcar pedido como avaliado localmente: $e',
+      );
     }
   }
 
@@ -533,10 +617,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                               : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color:
-                            isSelected
-                                ? Colors.black
-                                : Colors.grey.shade200,
+                        color: isSelected ? Colors.black : Colors.grey.shade200,
                       ),
                     ),
                     child: Text(
@@ -544,9 +625,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                       style: TextStyle(
                         fontSize: 14,
                         color:
-                            isSelected
-                                ? Colors.black
-                                : const Color(0xFF3F3E3E),
+                            isSelected ? Colors.black : const Color(0xFF3F3E3E),
                         fontWeight:
                             isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -727,6 +806,27 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                       );
                     })
                     .toList(),
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: _deliveryCommentController,
+            maxLines: 3,
+            maxLength: 500,
+            decoration: InputDecoration(
+              hintText: 'Comentário (opcional)',
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              filled: true,
+              fillColor: const Color(0xFFF7F7F7),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(16),
+              counterStyle: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 11,
+              ),
+            ),
           ),
         ] else ...[
           const SizedBox(height: 16),

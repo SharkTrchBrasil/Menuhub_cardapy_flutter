@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 import 'package:totem/pages/checkout/checkout_cubit.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/models/order.dart';
@@ -94,28 +95,40 @@ class _OrderSubmissionPageState extends State<OrderSubmissionPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // ✅ Ícone de cozinha + loading (substituindo Lottie para evitar StackOverflow no Web)
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 150,
-                height: 150,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Colors.orange.shade400,
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.restaurant_menu,
-                size: 80,
-                color: Colors.orange.shade700,
-              ),
-            ],
+          // ✅ Lottie: Animação profissional de envio de pedido
+          SizedBox(
+            width: 220,
+            height: 220,
+            child: Lottie.asset(
+              'assets/animations/order_sending.json',
+              fit: BoxFit.contain,
+              repeat: true,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback caso a animação falhe
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      height: 150,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.orange.shade400,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.restaurant_menu,
+                      size: 80,
+                      color: Colors.orange.shade700,
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 48),
+          const SizedBox(height: 40),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: Text(

@@ -30,6 +30,7 @@ import '../core/session/in_memory_session_store.dart';
 
 import '../core/di.dart';
 import '../cubit/orders_cubit.dart';
+import '../cubit/auth_cubit.dart';
 import '../pages/address/cubits/address_cubit.dart';
 import '../services/urgent_notification_service.dart';
 import '../services/menu_visit_service.dart';
@@ -833,12 +834,27 @@ class RealtimeRepository {
       }
     });
 
-    // ✅ CORREÇÃO: Nome alinhado com o backend que emite 'order_updated'
+    // ✅ GRANULAR: Recebe update apenas do pedido específico do customer logado
     _socket.on('order_updated', (data) {
       AppLogger.d('🛒 Atualização de pedido recebida');
       try {
         final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
         final Order order = Order.fromJson(payload);
+
+        // ✅ SEGURANÇA: Filtra pedidos que não pertencem ao customer logado
+        final currentCustomer = getIt<AuthCubit>().state.customer;
+        if (currentCustomer != null && order.customer?.id != null) {
+          final currentId = currentCustomer.id.toString();
+          final orderId = order.customer!.id.toString();
+          if (currentId != orderId) {
+            AppLogger.w(
+              '⚠️ [ORDERS] Pedido ${order.shortId} ignorado (customer ${order.customer!.id} != logado $currentId)',
+              tag: 'ORDERS',
+            );
+            return;
+          }
+        }
+
         orderController.add(order);
 
         // ✅ ATUALIZA CUBIT: Garante que o estado global de pedidos do cliente seja atualizado
@@ -2794,6 +2810,17 @@ class RealtimeRepository {
   }
 
   void clearCustomer() {
+    // ✅ FIX: Notifica backend para desvincular customer da session
+    // Isso garante que o backend pare de enviar eventos para este customer room
+    if (_lastLinkedCustomerId != null && _socket.connected) {
+      _socket.emit('unlink_customer_from_session', {
+        'customer_id': _lastLinkedCustomerId,
+      });
+      AppLogger.i(
+        '🔓 Customer $_lastLinkedCustomerId desvinculado da sessão',
+        tag: 'REALTIME',
+      );
+    }
     _lastLinkedCustomerId = null;
   }
 

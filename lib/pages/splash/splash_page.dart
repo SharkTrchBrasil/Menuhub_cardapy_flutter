@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page_state.dart';
 import 'package:totem/themes/ds_theme.dart';
@@ -155,11 +156,31 @@ class _SplashPageState extends State<SplashPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ✅ Logo 400x400
-              Image.asset(
-                'assets/logo.png', // Verificado em c:/Users/Sharkcode/Documents/Menuhub/totem/assets/logo.png
-                width: 400,
-                height: 400,
+              // ✅ Logo da loja
+              Image.asset('assets/logo.png', width: 280, height: 280),
+              const SizedBox(height: 32),
+              // ✅ Lottie: Animação de loading interativa
+              SizedBox(
+                width: 180,
+                height: 180,
+                child: Lottie.asset(
+                  'assets/animations/splash_loading.json',
+                  fit: BoxFit.contain,
+                  repeat: true,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const FoodLoadingAnimation(size: 60);
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Preparando seu cardápio...',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 0.3,
+                ),
               ),
             ],
           ),

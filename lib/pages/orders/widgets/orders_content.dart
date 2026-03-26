@@ -730,52 +730,65 @@ class _HistoryOrderCard extends StatelessWidget {
               // Avaliação (apenas se concluído)
               if (isDelivered) ...[
                 const SizedBox(height: 12),
-                InkWell(
-                  onTap: () {
-                    if (!order.details.reviewed) {
-                      context.push('/order/${order.id}/evaluate', extra: order);
-                    } else {
-                      context.push('/order/${order.id}', extra: order);
-                    }
-                  },
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: List.generate(
-                          5,
-                          (index) => Icon(
-                            Icons.star,
-                            size: 18,
-                            color:
-                                order.details.reviewed
-                                    ? Colors.black
-                                    : Colors.grey.shade300,
-                          ),
-                        ),
-                      ),
-                      Row(
+                Builder(
+                  builder: (context) {
+                    final bool isRated =
+                        order.details.reviewed || order.storeRating != null;
+                    final int ratedStars = order.storeRating?.stars ?? 0;
+
+                    return InkWell(
+                      onTap: () {
+                        if (!isRated) {
+                          context.push(
+                            '/order/${order.id}/evaluate',
+                            extra: order,
+                          );
+                        } else {
+                          context.push('/order/${order.id}', extra: order);
+                        }
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            order.details.reviewed
-                                ? 'Avaliação enviada'
-                                : 'Avalie seu pedido',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.black,
-                              fontWeight: FontWeight.w500,
+                          Row(
+                            children: List.generate(
+                              5,
+                              (index) => Icon(
+                                Icons.star,
+                                size: 18,
+                                color:
+                                    isRated
+                                        ? (index < ratedStars
+                                            ? const Color(0xFFFDCB3F)
+                                            : Colors.grey.shade300)
+                                        : Colors.grey.shade300,
+                              ),
                             ),
                           ),
-                          if (!order.details.reviewed)
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 16,
-                              color: Colors.black,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                isRated
+                                    ? 'Avaliação enviada'
+                                    : 'Avalie seu pedido',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (!isRated)
+                                const Icon(
+                                  Icons.chevron_right,
+                                  size: 16,
+                                  color: Colors.black,
+                                ),
+                            ],
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ],
 

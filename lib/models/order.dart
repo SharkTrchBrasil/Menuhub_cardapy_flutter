@@ -714,6 +714,32 @@ class OrderDetails {
     );
   }
 
+  OrderDetails copyWith({
+    String? mode,
+    bool? scheduled,
+    bool? tippable,
+    bool? indoorTipEnabled,
+    bool? trackable,
+    bool? boxable,
+    bool? placedAtBox,
+    bool? reviewed,
+    bool? darkKitchen,
+    Cancellation? cancellation,
+  }) {
+    return OrderDetails(
+      mode: mode ?? this.mode,
+      scheduled: scheduled ?? this.scheduled,
+      tippable: tippable ?? this.tippable,
+      indoorTipEnabled: indoorTipEnabled ?? this.indoorTipEnabled,
+      trackable: trackable ?? this.trackable,
+      boxable: boxable ?? this.boxable,
+      placedAtBox: placedAtBox ?? this.placedAtBox,
+      reviewed: reviewed ?? this.reviewed,
+      darkKitchen: darkKitchen ?? this.darkKitchen,
+      cancellation: cancellation ?? this.cancellation,
+    );
+  }
+
   bool get isDelivery => mode == 'DELIVERY';
   bool get isTakeout => mode == 'TAKEOUT';
   bool get isDineIn => mode == 'DINE_IN';
@@ -985,6 +1011,52 @@ class Order {
     this.storeRating,
     this.deliveryRating,
   });
+
+  Order copyWith({
+    String? id,
+    String? shortId,
+    String? orderNumber,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? closedAt,
+    String? lastStatus,
+    OrderDetails? details,
+    Delivery? delivery,
+    Merchant? merchant,
+    Payments? payments,
+    Bag? bag,
+    Origin? origin,
+    DeliveryMethod? deliveryMethod,
+    List<Fee>? fees,
+    List<VerificationCode>? verificationCodes,
+    String? salesChannel,
+    Customer? customer,
+    StoreRating? storeRating,
+    DeliveryRating? deliveryRating,
+  }) {
+    return Order(
+      id: id ?? this.id,
+      shortId: shortId ?? this.shortId,
+      orderNumber: orderNumber ?? this.orderNumber,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      closedAt: closedAt ?? this.closedAt,
+      lastStatus: lastStatus ?? this.lastStatus,
+      details: details ?? this.details,
+      delivery: delivery ?? this.delivery,
+      merchant: merchant ?? this.merchant,
+      payments: payments ?? this.payments,
+      bag: bag ?? this.bag,
+      origin: origin ?? this.origin,
+      deliveryMethod: deliveryMethod ?? this.deliveryMethod,
+      fees: fees ?? this.fees,
+      verificationCodes: verificationCodes ?? this.verificationCodes,
+      salesChannel: salesChannel ?? this.salesChannel,
+      customer: customer ?? this.customer,
+      storeRating: storeRating ?? this.storeRating,
+      deliveryRating: deliveryRating ?? this.deliveryRating,
+    );
+  }
 
   factory Order.fromJson(Map<String, dynamic> json) {
     // -------------------------------------------------------------------------
