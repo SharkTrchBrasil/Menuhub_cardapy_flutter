@@ -22,6 +22,7 @@ import 'package:totem/models/store_operation_config.dart';
 import 'package:totem/models/coupon.dart';
 import 'package:totem/models/delivery_fee_rule.dart';
 import 'package:totem/models/variant.dart';
+import 'package:totem/models/variant_option.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
@@ -1478,7 +1479,6 @@ class RealtimeRepository {
             );
             if (existingIndex != -1) {
               final removedCategory = currentCategories.removeAt(existingIndex);
-              // ✅ FIX CASCATA: Debounced emit para colapsar eventos duplicados
               _debouncedCategoryEmit(currentCategories);
               AppLogger.d(
                 '✅ [GRANULAR] Categoria ${removedCategory.name} removida (pausa/delete)',
@@ -1487,6 +1487,29 @@ class RealtimeRepository {
               AppLogger.d(
                 '⚠️ [GRANULAR] Categoria $categoryId não encontrada na lista local',
               );
+            }
+
+            // ✅ AUDITORIA P1-5: Remove produtos órfãos que pertenciam exclusivamente a esta categoria
+            final deletedProductIds =
+                (payload['deleted_product_ids'] as List?)
+                    ?.map((e) => e as int)
+                    .toSet();
+            if (deletedProductIds != null &&
+                deletedProductIds.isNotEmpty &&
+                productsController.hasValue) {
+              final currentProducts = List<Product>.from(
+                productsController.value,
+              );
+              final beforeCount = currentProducts.length;
+              currentProducts.removeWhere(
+                (p) => deletedProductIds.contains(p.id),
+              );
+              if (currentProducts.length != beforeCount) {
+                productsController.add(currentProducts);
+                AppLogger.d(
+                  '✅ [GRANULAR] ${beforeCount - currentProducts.length} produtos órfãos removidos (cascata category_deleted)',
+                );
+              }
             }
           } else {
             AppLogger.d('⚠️ [GRANULAR] Payload sem "category_id"');
@@ -1744,9 +1767,9 @@ class RealtimeRepository {
   }
 
   /// Handler para eventos granulares de opções de variante
+  /// ✅ AUDITORIA P1-2: Implementação real — atualiza produtos que usam a variante modificada
   void _handleGranularVariantOptionEvent(dynamic data, String action) {
     try {
-      // ✅ CORREÇÃO CRÍTICA: Converte o objeto JS proxy para um Map Dart puro
       final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       final storeId = payload['store_id'] as int?;
 
@@ -1759,30 +1782,202 @@ class RealtimeRepository {
         return;
       }
 
-      // ✅ CORREÇÃO: Backend envia 'variant_option', não 'item'
+      if (!productsController.hasValue) {
+        AppLogger.d('⚠️ [GRANULAR] Lista de produtos não inicializada ainda');
+        return;
+      }
+
       AppLogger.d(
         '🔘 [GRANULAR] Evento de opção de variante processado: $action',
       );
 
-      // Opções de variante afetam produtos através de suas variantes
-      final variantOptionData =
+      final variantOptionRaw =
           payload['variant_option'] as Map<String, dynamic>?;
-      final variantId = payload['variant_id'] as int?;
+      final variantId =
+          (variantOptionRaw?['variant_id'] as int?) ??
+          (payload['variant_id'] as int?);
 
-      if (variantOptionData != null) {
-        AppLogger.d(
-          '🔘 [GRANULAR] Opção de variante recebida: ${variantOptionData['id']} (variante: ${variantOptionData['variant_id'] ?? variantId})',
-        );
-        // TODO: Implementar atualização granular de produtos que usam esta opção
-      } else if (variantId != null && action == 'deleted') {
-        final optionId = payload['item_id'] as int?;
-        AppLogger.d(
-          '🔘 [GRANULAR] Opção de variante $optionId deletada (variante: $variantId)',
-        );
-      } else {
-        AppLogger.d(
-          '⚠️ [GRANULAR] Payload sem campo "variant_option" ou "variant_id"',
-        );
+      switch (action) {
+        case 'created':
+          if (variantOptionRaw == null || variantId == null) {
+            AppLogger.d(
+              '⚠️ [GRANULAR] variant_option_created sem dados suficientes',
+            );
+            break;
+          }
+          try {
+            final decoded = jsonDecode(jsonEncode(variantOptionRaw));
+            if (decoded is! Map) break;
+            final optionData = Map<String, dynamic>.from(decoded);
+            final newOption = VariantOption.fromJson(optionData);
+
+            final currentProducts = List<Product>.from(
+              productsController.value,
+            );
+            bool changed = false;
+
+            for (int i = 0; i < currentProducts.length; i++) {
+              final product = currentProducts[i];
+              final updatedLinks =
+                  product.variantLinks.map((link) {
+                    if (link.variant.id == variantId) {
+                      final options = List<VariantOption>.from(
+                        link.variant.options,
+                      );
+                      if (!options.any((o) => o.id == newOption.id)) {
+                        options.add(newOption);
+                        return link.copyWith(
+                          variant: link.variant.copyWith(options: options),
+                        );
+                      }
+                    }
+                    return link;
+                  }).toList();
+
+              if (updatedLinks != product.variantLinks) {
+                final hasChanges = updatedLinks.any(
+                  (link) => link.variant.id == variantId,
+                );
+                if (hasChanges) {
+                  currentProducts[i] = product.copyWith(
+                    variantLinks: updatedLinks,
+                  );
+                  changed = true;
+                }
+              }
+            }
+
+            if (changed) {
+              productsController.add(currentProducts);
+              AppLogger.d(
+                '✅ [GRANULAR] variant_option_created: opção ${newOption.resolvedName} adicionada à variante $variantId',
+              );
+            }
+          } catch (e, st) {
+            AppLogger.e(
+              '❌ [GRANULAR] Erro ao processar variant_option_created: $e',
+            );
+            AppLogger.e('📍 StackTrace: $st');
+          }
+          break;
+
+        case 'updated':
+          if (variantOptionRaw == null || variantId == null) {
+            AppLogger.d(
+              '⚠️ [GRANULAR] variant_option_updated sem dados suficientes',
+            );
+            break;
+          }
+          try {
+            final decoded = jsonDecode(jsonEncode(variantOptionRaw));
+            if (decoded is! Map) break;
+            final optionData = Map<String, dynamic>.from(decoded);
+            final updatedOption = VariantOption.fromJson(optionData);
+
+            final currentProducts = List<Product>.from(
+              productsController.value,
+            );
+            bool changed = false;
+
+            for (int i = 0; i < currentProducts.length; i++) {
+              final product = currentProducts[i];
+              final updatedLinks =
+                  product.variantLinks.map((link) {
+                    if (link.variant.id == variantId) {
+                      final options = List<VariantOption>.from(
+                        link.variant.options,
+                      );
+                      final optIdx = options.indexWhere(
+                        (o) => o.id == updatedOption.id,
+                      );
+                      if (optIdx != -1) {
+                        options[optIdx] = updatedOption;
+                        return link.copyWith(
+                          variant: link.variant.copyWith(options: options),
+                        );
+                      }
+                    }
+                    return link;
+                  }).toList();
+
+              final hasChanges = updatedLinks.any(
+                (link) =>
+                    link.variant.id == variantId &&
+                    link.variant.options.any((o) => o.id == updatedOption.id),
+              );
+
+              if (hasChanges) {
+                currentProducts[i] = product.copyWith(
+                  variantLinks: updatedLinks,
+                );
+                changed = true;
+              }
+            }
+
+            if (changed) {
+              productsController.add(currentProducts);
+              AppLogger.d(
+                '✅ [GRANULAR] variant_option_updated: opção ${updatedOption.resolvedName} atualizada na variante $variantId',
+              );
+            }
+          } catch (e, st) {
+            AppLogger.e(
+              '❌ [GRANULAR] Erro ao processar variant_option_updated: $e',
+            );
+            AppLogger.e('📍 StackTrace: $st');
+          }
+          break;
+
+        case 'deleted':
+          final optionId =
+              (variantOptionRaw?['id'] as int?) ??
+              (payload['option_id'] as int?) ??
+              (payload['item_id'] as int?);
+          if (optionId == null || variantId == null) {
+            AppLogger.d(
+              '⚠️ [GRANULAR] variant_option_deleted sem option_id ou variant_id',
+            );
+            break;
+          }
+
+          final currentProducts = List<Product>.from(productsController.value);
+          bool changed = false;
+
+          for (int i = 0; i < currentProducts.length; i++) {
+            final product = currentProducts[i];
+            final updatedLinks =
+                product.variantLinks.map((link) {
+                  if (link.variant.id == variantId) {
+                    final options = List<VariantOption>.from(
+                      link.variant.options,
+                    );
+                    final originalLength = options.length;
+                    options.removeWhere((o) => o.id == optionId);
+                    if (options.length != originalLength) {
+                      return link.copyWith(
+                        variant: link.variant.copyWith(options: options),
+                      );
+                    }
+                  }
+                  return link;
+                }).toList();
+
+            final hadVariant = product.variantLinks.any(
+              (link) => link.variant.id == variantId,
+            );
+            if (hadVariant) {
+              currentProducts[i] = product.copyWith(variantLinks: updatedLinks);
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            productsController.add(currentProducts);
+            AppLogger.d(
+              '✅ [GRANULAR] variant_option_deleted: opção $optionId removida da variante $variantId',
+            );
+          }
+          break;
       }
     } catch (e, stackTrace) {
       AppLogger.e(
@@ -1987,21 +2182,9 @@ class RealtimeRepository {
       final storeData = payload['store'] as Map<String, dynamic>;
       final Store store = Store.fromJson(storeData);
 
-      // ✅ SMART MERGE: Só emite se dados mudaram
-      if (_isReconnecting && storeController.hasValue) {
-        final existing = storeController.value;
-        if (existing.id == store.id && existing.name == store.name) {
-          AppLogger.d(
-            '🔄 [SMART_RECONNECT] Store não mudou, ignorando re-emit',
-          );
-        } else {
-          storeController.add(store);
-          AppLogger.d('✅ Loja atualizada (dados mudaram): ${store.name}');
-        }
-      } else {
-        storeController.add(store);
-        AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
-      }
+      // ✅ AUDIT FIX: Sempre emite — o StoreCubit faz dedup expandido
+      storeController.add(store);
+      AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
     }
 
     // ✅ REFACTOR: Categorias agora vão para categoriesController (separado do store)
@@ -2017,25 +2200,12 @@ class RealtimeRepository {
               )
               .toList();
 
-      // ✅ SMART MERGE: Só emite se quantidade ou IDs mudaram
-      if (_isReconnecting && categoriesController.hasValue) {
-        final existing = categoriesController.value;
-        if (existing.length == categories.length) {
-          AppLogger.d(
-            '🔄 [SMART_RECONNECT] Categorias mantidas (${existing.length})',
-          );
-        } else {
-          categoriesController.add(categories);
-          AppLogger.d(
-            '✅ Categorias atualizadas: ${existing.length} → ${categories.length}',
-          );
-        }
-      } else {
-        categoriesController.add(categories);
-        AppLogger.d(
-          '✅ ${categories.length} categorias publicadas no categoriesController',
-        );
-      }
+      // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
+      // (ignorava mudanças de nome/preço/disponibilidade dentro das categorias)
+      categoriesController.add(categories);
+      AppLogger.d(
+        '✅ ${categories.length} categorias publicadas no categoriesController',
+      );
     } else if (keyExists(payload, 'store')) {
       // Fallback: categorias vêm dentro do objeto store
       final storeData = payload['store'] as Map<String, dynamic>;
@@ -2064,23 +2234,10 @@ class RealtimeRepository {
             return Product.fromJson(json as Map<String, dynamic>);
           }).toList();
 
-      // ✅ SMART MERGE: Só emite se quantidade mudou
-      if (_isReconnecting && productsController.hasValue) {
-        final existing = productsController.value;
-        if (existing.length == products.length) {
-          AppLogger.d(
-            '🔄 [SMART_RECONNECT] Produtos mantidos (${existing.length})',
-          );
-        } else {
-          productsController.add(products);
-          AppLogger.d(
-            '✅ Produtos atualizados: ${existing.length} → ${products.length}',
-          );
-        }
-      } else {
-        productsController.add(products);
-        AppLogger.d('✅ Produtos processados: ${products.length}');
-      }
+      // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
+      // (ignorava mudanças de preço/nome/disponibilidade dentro dos produtos)
+      productsController.add(products);
+      AppLogger.d('✅ Produtos processados: ${products.length}');
     }
 
     // Processa banners
@@ -2138,21 +2295,9 @@ class RealtimeRepository {
           payload['store'] as Map<String, dynamic>,
         );
 
-        // ✅ SMART MERGE: Só emite se dados mudaram
-        if (_isReconnecting && storeController.hasValue) {
-          final existing = storeController.value;
-          if (existing.id == store.id && existing.name == store.name) {
-            AppLogger.d(
-              '🔄 [SMART_RECONNECT] Store não mudou, ignorando re-emit',
-            );
-          } else {
-            storeController.add(store);
-            AppLogger.d('✅ Loja atualizada (dados mudaram): ${store.name}');
-          }
-        } else {
-          storeController.add(store);
-          AppLogger.d('✅ Loja publicada: ${store.name}');
-        }
+        // ✅ AUDIT FIX: Sempre emite — o StoreCubit faz dedup expandido
+        storeController.add(store);
+        AppLogger.d('✅ Loja publicada: ${store.name}');
       }
 
       // ✅ REFACTOR: Publica categorias no stream separado
@@ -2165,25 +2310,11 @@ class RealtimeRepository {
             categoriesList.addAll(menuCategories.cast<models.Category>());
           }
           if (categoriesList.isNotEmpty) {
-            // ✅ SMART MERGE: Só emite se quantidade mudou
-            if (_isReconnecting && categoriesController.hasValue) {
-              final existing = categoriesController.value;
-              if (existing.length == categoriesList.length) {
-                AppLogger.d(
-                  '🔄 [SMART_RECONNECT] Categorias mantidas (${existing.length})',
-                );
-              } else {
-                categoriesController.add(categoriesList);
-                AppLogger.d(
-                  '✅ Categorias atualizadas: ${existing.length} → ${categoriesList.length}',
-                );
-              }
-            } else {
-              categoriesController.add(categoriesList);
-              AppLogger.d(
-                '✅ ${categoriesList.length} categorias publicadas no categoriesController',
-              );
-            }
+            // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
+            categoriesController.add(categoriesList);
+            AppLogger.d(
+              '✅ ${categoriesList.length} categorias publicadas no categoriesController',
+            );
           } else {
             AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
           }
@@ -2194,24 +2325,10 @@ class RealtimeRepository {
 
       // Publica produtos
       if (menuProducts != null && (menuProducts as List).isNotEmpty) {
-        // ✅ SMART MERGE: Só emite se quantidade mudou
+        // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
         final productsList = menuProducts as List<Product>;
-        if (_isReconnecting && productsController.hasValue) {
-          final existing = productsController.value;
-          if (existing.length == productsList.length) {
-            AppLogger.d(
-              '🔄 [SMART_RECONNECT] Produtos mantidos (${existing.length})',
-            );
-          } else {
-            productsController.add(productsList);
-            AppLogger.d(
-              '✅ Produtos atualizados: ${existing.length} → ${productsList.length}',
-            );
-          }
-        } else {
-          productsController.add(productsList);
-          AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
-        }
+        productsController.add(productsList);
+        AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
       }
 
       // Processa banners
@@ -2238,16 +2355,93 @@ class RealtimeRepository {
     }
   }
 
-  // ✅ Processa atualização da loja (apenas configs, sem categorias)
+  // ✅ AUDIT FIX: Processa atualização da loja com MERGE inteligente
+  // Preserva listas operacionais existentes quando o incoming tem listas vazias
+  // (evita sobrescrever hours/payments/deliveryRules com [] do fromJson default)
   void _handleStoreUpdate(dynamic data) {
     try {
       final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
       if (payload['store'] != null) {
         final storeData = payload['store'] as Map<String, dynamic>;
-        // Store agora não carrega categorias — elas ficam no categoriesController
-        final Store updatedStore = Store.fromJson(storeData);
-        storeController.add(updatedStore);
-        AppLogger.d('✅ Loja atualizada: ${updatedStore.name}');
+        final Store incomingStore = Store.fromJson(storeData);
+
+        if (storeController.hasValue) {
+          final existing = storeController.value;
+          // Merge: campos de perfil sempre do incoming, listas operacionais
+          // só sobrescreve se incoming tem dados (evita [] default do fromJson)
+          final mergedStore = existing.copyWith(
+            id: incomingStore.id ?? existing.id,
+            name:
+                incomingStore.name.isNotEmpty
+                    ? incomingStore.name
+                    : existing.name,
+            urlSlug:
+                incomingStore.urlSlug.isNotEmpty
+                    ? incomingStore.urlSlug
+                    : existing.urlSlug,
+            phone:
+                incomingStore.phone.isNotEmpty
+                    ? incomingStore.phone
+                    : existing.phone,
+            zip_code: incomingStore.zip_code ?? existing.zip_code,
+            street: incomingStore.street ?? existing.street,
+            number: incomingStore.number ?? existing.number,
+            neighborhood: incomingStore.neighborhood ?? existing.neighborhood,
+            complement: incomingStore.complement ?? existing.complement,
+            reference: incomingStore.reference ?? existing.reference,
+            city: incomingStore.city ?? existing.city,
+            state: incomingStore.state ?? existing.state,
+            description: incomingStore.description ?? existing.description,
+            instagram: incomingStore.instagram ?? existing.instagram,
+            facebook: incomingStore.facebook ?? existing.facebook,
+            tiktok: incomingStore.tiktok ?? existing.tiktok,
+            image: incomingStore.image ?? existing.image,
+            banner: incomingStore.banner ?? existing.banner,
+            // Listas operacionais: só sobrescreve se incoming tem dados reais
+            paymentMethodGroups:
+                incomingStore.paymentMethodGroups.isNotEmpty
+                    ? incomingStore.paymentMethodGroups
+                    : existing.paymentMethodGroups,
+            hours:
+                incomingStore.hours.isNotEmpty
+                    ? incomingStore.hours
+                    : existing.hours,
+            store_operation_config:
+                incomingStore.store_operation_config ??
+                existing.store_operation_config,
+            ratingsSummary:
+                incomingStore.ratingsSummary ?? existing.ratingsSummary,
+            cities:
+                incomingStore.cities.isNotEmpty
+                    ? incomingStore.cities
+                    : existing.cities,
+            scheduledPauses:
+                incomingStore.scheduledPauses.isNotEmpty
+                    ? incomingStore.scheduledPauses
+                    : existing.scheduledPauses,
+            coupons:
+                incomingStore.coupons.isNotEmpty
+                    ? incomingStore.coupons
+                    : existing.coupons,
+            deliveryFeeRules:
+                incomingStore.deliveryFeeRules.isNotEmpty
+                    ? incomingStore.deliveryFeeRules
+                    : existing.deliveryFeeRules,
+            latitude: incomingStore.latitude ?? existing.latitude,
+            longitude: incomingStore.longitude ?? existing.longitude,
+            deliveryRadiusKm:
+                incomingStore.deliveryRadiusKm ?? existing.deliveryRadiusKm,
+            locale: incomingStore.locale ?? existing.locale,
+            currencyCode: incomingStore.currencyCode ?? existing.currencyCode,
+            timezone: incomingStore.timezone ?? existing.timezone,
+            fiscalActive: incomingStore.fiscalActive,
+          );
+          storeController.add(mergedStore);
+          AppLogger.d('✅ Loja atualizada (merge): ${mergedStore.name}');
+        } else {
+          storeController.add(incomingStore);
+          AppLogger.d('✅ Loja atualizada (first load): ${incomingStore.name}');
+        }
       }
     } catch (e, stackTrace) {
       AppLogger.d('❌ Erro ao processar store_details_updated: $e');

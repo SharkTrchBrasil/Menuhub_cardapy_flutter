@@ -93,7 +93,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
         leading: IconButton(
           icon: const Icon(
             Icons.keyboard_arrow_down,
-            color: Color(0xFFEA1D2C),
+            color: Colors.black,
             size: 32,
           ),
           onPressed: () => context.pop(),
@@ -121,7 +121,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                   decoration: BoxDecoration(
                     color:
                         _currentStep == 1
-                            ? const Color(0xFFEA1D2C)
+                            ? Colors.black
                             : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
@@ -133,7 +133,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                   decoration: BoxDecoration(
                     color:
                         _currentStep == 2
-                            ? const Color(0xFFEA1D2C)
+                            ? Colors.black
                             : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
@@ -154,43 +154,54 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Checkbox(
-                    value: _onlyForStore,
-                    onChanged:
-                        (val) => setState(() => _onlyForStore = val ?? false),
-                    activeColor: const Color(0xFFEA1D2C),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        text: 'Enviar avaliação ',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF717171),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _onlyForStore = !_onlyForStore;
+                  });
+                },
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: _onlyForStore,
+                        onChanged:
+                            (val) => setState(() => _onlyForStore = val ?? false),
+                        activeColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'somente para a loja',
-                            style: TextStyle(
-                              color: Color(0xFFEA1D2C),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
                       ),
-                    ),
+                      const Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            text: 'Enviar avaliação ',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF717171),
+                            ),
+                            children: [
+                              TextSpan(
+                                text: 'somente para a loja',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Colors.black,
+                        size: 20,
+                      ),
+                    ],
                   ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFEA1D2C),
-                    size: 20,
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -198,7 +209,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                 child: ElevatedButton(
                   onPressed: _canContinue() ? _handleContinue : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEA1D2C),
+                    backgroundColor: Colors.black,
                     disabledBackgroundColor: Colors.grey.shade200,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     elevation: 0,
@@ -358,7 +369,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Color(0xFFEA1D2C)),
+            const Icon(Icons.chevron_right, color: Colors.black),
           ],
         ),
         const SizedBox(height: 24),
@@ -518,13 +529,13 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                     decoration: BoxDecoration(
                       color:
                           isSelected
-                              ? const Color(0xFFEA1D2C).withOpacity(0.05)
+                              ? Colors.black.withOpacity(0.05)
                               : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color:
                             isSelected
-                                ? const Color(0xFFEA1D2C)
+                                ? Colors.black
                                 : Colors.grey.shade200,
                       ),
                     ),
@@ -534,7 +545,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                         fontSize: 14,
                         color:
                             isSelected
-                                ? const Color(0xFFEA1D2C)
+                                ? Colors.black
                                 : const Color(0xFF3F3E3E),
                         fontWeight:
                             isSelected ? FontWeight.bold : FontWeight.normal,
@@ -571,7 +582,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFEA1D2C), width: 1),
+              borderSide: const BorderSide(color: Colors.black, width: 1),
             ),
           ),
         ),
@@ -688,13 +699,13 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                           decoration: BoxDecoration(
                             color:
                                 isSelected
-                                    ? const Color(0xFFEA1D2C).withOpacity(0.05)
+                                    ? Colors.black.withOpacity(0.05)
                                     : Colors.white,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color:
                                   isSelected
-                                      ? const Color(0xFFEA1D2C)
+                                      ? Colors.black
                                       : Colors.grey.shade200,
                             ),
                           ),
@@ -704,7 +715,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                               fontSize: 14,
                               color:
                                   isSelected
-                                      ? const Color(0xFFEA1D2C)
+                                      ? Colors.black
                                       : const Color(0xFF3F3E3E),
                               fontWeight:
                                   isSelected

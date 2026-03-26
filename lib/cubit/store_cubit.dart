@@ -20,15 +20,34 @@ import '../pages/address/cubits/delivery_fee_cubit.dart';
 class StoreCubit extends Cubit<StoreState> {
   StoreCubit(this._realtimeRepository) : super(StoreState()) {
     _storeSub = _realtimeRepository.storeController.listen((storeData) {
-      // ✅ SMART RECONNECT: Diff check — só emite se dados mudaram
+      // ✅ AUDIT FIX: Diff check expandido para incluir campos de perfil,
+      // listas operacionais e imagens. Evita rebuilds desnecessários SEM
+      // mascarar atualizações legítimas de perfil/horários/pagamentos.
       final currentStore = state.store;
       if (currentStore != null &&
           currentStore.id == storeData.id &&
           currentStore.name == storeData.name &&
+          currentStore.phone == storeData.phone &&
+          currentStore.description == storeData.description &&
+          currentStore.image?.url == storeData.image?.url &&
+          currentStore.banner?.url == storeData.banner?.url &&
+          currentStore.zip_code == storeData.zip_code &&
+          currentStore.street == storeData.street &&
+          currentStore.city == storeData.city &&
+          currentStore.state == storeData.state &&
+          currentStore.instagram == storeData.instagram &&
           currentStore.store_operation_config?.isStoreOpen ==
               storeData.store_operation_config?.isStoreOpen &&
           currentStore.store_operation_config?.pausedUntil ==
-              storeData.store_operation_config?.pausedUntil) {
+              storeData.store_operation_config?.pausedUntil &&
+          currentStore.hours.length == storeData.hours.length &&
+          currentStore.paymentMethodGroups.length ==
+              storeData.paymentMethodGroups.length &&
+          currentStore.deliveryFeeRules.length ==
+              storeData.deliveryFeeRules.length &&
+          currentStore.coupons.length == storeData.coupons.length &&
+          currentStore.scheduledPauses.length ==
+              storeData.scheduledPauses.length) {
         AppLogger.d(
           '🔄 StoreCubit: Store idêntico recebido, ignorando re-emit',
         );
