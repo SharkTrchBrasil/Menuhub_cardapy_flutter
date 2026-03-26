@@ -8,7 +8,7 @@ ENV_FILE="/usr/share/nginx/html/assets/env"
 
 if [ -f "$ENV_FILE" ]; then
   # Extrai API_URL do arquivo (formato: API_URL=https://...)
-  BACKEND_URL=$(grep "^API_URL=" "$ENV_FILE" | cut -d '=' -f2)
+  BACKEND_URL=$(grep "^API_URL=" "$ENV_FILE" | cut -d '=' -f2 | tr -d '\r\n')
   echo "🔧 Configurando Nginx para preview social..."
   echo "   Backend URL lida de assets/env: $BACKEND_URL"
 else
@@ -20,7 +20,7 @@ fi
 envsubst '${BACKEND_URL}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "✅ Nginx configurado com sucesso!"
-echo "📋 Crawlers detectados serão redirecionados para: $BACKEND_URL/app/stores"
+echo "📋 Crawlers detectados serão redirecionados para: $BACKEND_URL/app/stores/og/{slug}"
 echo ""
 
 # ✅ Inicia o Nginx
