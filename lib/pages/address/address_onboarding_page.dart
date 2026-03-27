@@ -11,6 +11,7 @@ import 'package:totem/core/di.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/widgets/address_dialog/address_map_and_form_step.dart';
 import 'package:dio/dio.dart';
+import 'package:totem/main.dart' show homeReadySignal;
 
 /// Página de onboarding de endereço obrigatória
 /// Exibida quando o usuário está logado mas não tem nenhum endereço cadastrado
@@ -59,6 +60,13 @@ class _AddressOnboardingPageState extends State<AddressOnboardingPage> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+
+    // ✅ Sinaliza que a home (ou onboarding inicial) está pronta para remover o shimmer overlay
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!homeReadySignal.value) {
+        homeReadySignal.value = true;
+      }
+    });
   }
 
   @override

@@ -9,8 +9,8 @@ import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/orders_cubit.dart';
-import 'package:totem/pages/splash/splash_page_cubit.dart';
-import 'package:totem/pages/splash/splash_page.dart';
+// import 'package:totem/pages/splash/splash_page_cubit.dart';
+// import 'package:totem/pages/splash/splash_page.dart';
 import '../helpers/enums/product_status.dart';
 import '../helpers/enums/product_type.dart';
 import '../models/cart_item.dart';
@@ -75,29 +75,9 @@ GoRouter createGoRouter() {
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: '/splash',
+    initialLocation: '/',
     observers: [BotToastNavigatorObserver()],
     routes: [
-      GoRoute(
-        path: '/splash',
-        pageBuilder:
-            (_, state) => CustomTransitionPage(
-              key: state.pageKey,
-              child: BlocProvider(
-                create: (_) => SplashPageCubit(),
-                child: const SplashPage(),
-              ),
-              transitionsBuilder: (
-                context,
-                animation,
-                secondaryAnimation,
-                child,
-              ) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-              transitionDuration: const Duration(milliseconds: 200),
-            ),
-      ),
       GoRoute(path: '/not-found', builder: (_, state) => const NotFoundPage()),
 
       // ✅ ROTA DE ONBOARDING/LOGIN RESTAURADA
@@ -868,87 +848,39 @@ GoRouter createGoRouter() {
       ),
     ],
     redirect: (context, state) async {
-      // 🕵️‍♂️ DEBUG PRINT: Este é o nosso "dedo-duro" de navegação.
-      print(
-        "🔀 [GoRouter] Redirect sendo verificado. Localização atual: ${state.matchedLocation}. Tentando ir para: ${state.uri}",
-      );
-
+      // 🚀 ENTERPRISE REDIRECT: Alta Performance (Zero Splash)
       final initialized =
           getIt.isRegistered<bool>(instanceName: 'isInitialized') &&
           getIt.get<bool>(instanceName: 'isInitialized');
-      final isSplash = state.matchedLocation == '/splash';
 
-      if (!initialized) {
-        print(
-          "🔀 [GoRouter] App não inicializado. Redirecionando para /splash.",
-        );
-        return isSplash
-            ? null
-            : '/splash?redirectTo=${Uri.encodeComponent(state.uri.toString())}';
-      }
+      // Se ainda inicializando (ex: primeira carga), deixa o main.dart cuidar do Shimmer
+      if (!initialized) return null;
 
-      if (isSplash) {
-        // ✅ CORRIGIDO: Verifica se usuário está logado sem endereço
-        // Agora aguarda o carregamento dos endereços antes de decidir
-        try {
-          final authCubit = getIt<AuthCubit>();
-          final addressCubit = getIt<AddressCubit>();
-          final customer = authCubit.state.customer;
+      // ✅ Logica de Landing: Home ou Onboarding de Endereço
+      final isInitialLanding =
+          state.matchedLocation == '/' || state.matchedLocation == '/splash';
 
-          if (customer != null && customer.id != null) {
+      if (isInitialLanding) {
+        final authCubit = getIt<AuthCubit>();
+        final addressCubit = getIt<AddressCubit>();
+        final customer = authCubit.state.customer;
+
+        // Se logado, valida endereços
+        if (authCubit.state.status == AuthStatus.success && customer != null) {
+          // Se lista vazia e já terminou o load inicial
+          final hasAddresses = addressCubit.state.addresses.isNotEmpty;
+          if (!hasAddresses &&
+              (addressCubit.state.status == AddressStatus.success ||
+                  addressCubit.state.status == AddressStatus.error)) {
             print(
-              "📍 [GoRouter] Usuário logado (${customer.name}). Verificando endereços...",
+              "📍 [GoRouter] Usuário SEM endereço. Redirecionando para Onboarding",
             );
-
-            // ✅ CORREÇÃO: Sempre carrega endereços e AGUARDA se ainda não carregou
-            if (addressCubit.state.status == AddressStatus.initial ||
-                (addressCubit.state.addresses.isEmpty &&
-                    addressCubit.state.status != AddressStatus.success)) {
-              print("📍 [GoRouter] Carregando endereços do servidor...");
-              await addressCubit.loadAddresses(customer.id!);
-              print(
-                "📍 [GoRouter] Endereços carregados: ${addressCubit.state.addresses.length}",
-              );
-            }
-
-            // ✅ CORREÇÃO: Só verifica após o carregamento ter sido concluído (success ou error)
-            final hasAddresses = addressCubit.state.addresses.isNotEmpty;
-
-            if (!hasAddresses &&
-                addressCubit.state.status == AddressStatus.success) {
-              // ✅ CORREÇÃO: Só redireciona se os endereços foram carregados com sucesso E a lista está vazia
-              print(
-                "📍 [GoRouter] Usuário SEM endereço (confirmado). Redirecionando para /address-onboarding",
-              );
-              return '/address-onboarding';
-            }
-
-            print(
-              "✅ [GoRouter] Usuário tem ${addressCubit.state.addresses.length} endereço(s). Indo para home.",
-            );
-          } else {
-            // ✅ CORREÇÃO: Usuário não logado não precisa de endereço obrigatório
-            print(
-              "👤 [GoRouter] Usuário não está logado. Indo para home (sem exigir endereço).",
-            );
+            return '/address-onboarding';
           }
-        } catch (e) {
-          print(
-            "❌ [GoRouter] Erro ao verificar endereços: $e. Indo para home.",
-          );
         }
-
-        final redirectTo = state.uri.queryParameters['redirectTo'] ?? '/';
-        print(
-          "_ [GoRouter] Saindo do Splash. Redirecionando para: $redirectTo",
-        );
-        return redirectTo;
       }
 
-      print(
-        "🔀 [GoRouter] Nenhuma regra de redirect foi aplicada. Continuando navegação normal.",
-      );
-      return null; // Nenhuma outra regra de redirecionamento
+      return null;
     },
 
     errorPageBuilder:

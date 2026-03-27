@@ -10,12 +10,20 @@ import '../../cubit/auth_cubit.dart';
 import '../../cubit/store_cubit.dart';
 import '../../cubit/store_state.dart';
 import '../../pages/address/cubits/address_cubit.dart';
+import '../../main.dart' show homeReadySignal;
 
 class OnboardingPage extends StatelessWidget {
   const OnboardingPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Sinaliza que a home (ou onboarding inicial) está pronta para remover o shimmer overlay
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!homeReadySignal.value) {
+        homeReadySignal.value = true;
+      }
+    });
+
     final bool isDesktop = ResponsiveBuilder.isDesktop(context);
 
     return BlocListener<AuthCubit, AuthState>(
