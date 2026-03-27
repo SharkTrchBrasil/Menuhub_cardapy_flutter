@@ -73,9 +73,6 @@ class RealtimeRepository {
 
   late IO.Socket _socket;
   int _reconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 10;
-  static const int _baseReconnectDelay = 1000; // 1s
-  static const int _maxReconnectDelay = 30000; // 30s
 
   // ✅ ENTERPRISE: Backoff para renovação de token
   int _tokenRenewalAttempts = 0;
@@ -148,15 +145,17 @@ class RealtimeRepository {
   final BehaviorSubject<Order> orderController = BehaviorSubject<Order>();
 
   Map<String, dynamic> _buildSocketOptions(String connectionToken) {
+    // ✅ FIX: Desabilita reconexão automática do Socket.IO client.
+    // MOTIVO: O backoff exponencial interno (1s, 2s, 4s, 8s, 16s, 30s = ~61s total)
+    // ultrapassava o TTL do connection_token (60s), causando expiração.
+    // Agora APENAS o código Dart controla reconexão via _renewConnectionTokenAndReconnect()
+    // que obtém token fresco ANTES de reconectar (reduz de ~65s para ~2-3s).
     final options =
         IO.OptionBuilder()
             .setTransports(<String>['websocket'])
             .disableAutoConnect()
             .enableForceNew()
-            .setReconnectionAttempts(_maxReconnectAttempts)
-            .setReconnectionDelay(_baseReconnectDelay)
-            .setReconnectionDelayMax(_maxReconnectDelay)
-            .setRandomizationFactor(0.1)
+            .disableReconnection()
             .build();
 
     options['auth'] = <String, dynamic>{'connection_token': connectionToken};
@@ -177,12 +176,30 @@ class RealtimeRepository {
 
     _socket = IO.io(apiUrl, _buildSocketOptions(connectionToken));
 
-    // ✅ LISTENERS ESSENCIAIS (permanecem iguais)
-    _socket.on('disconnect', (_) {
-      AppLogger.w('⚠️ Socket desconectado');
+    // ✅ FIX: Reconexão proativa no disconnect.
+    // ANTES: disconnect apenas logava e esperava socket.io client tentar reconectar
+    // com backoff de ~60s (token expirava). AGORA: busca token fresco e reconecta imediatamente.
+    _socket.on('disconnect', (reason) {
+      AppLogger.w('⚠️ Socket desconectado (reason: $reason)');
       isSocketReadyController.add(false);
       connectionStatusController.add(WebSocketConnectionStatus.disconnected);
       _heartbeatManager?.stop();
+
+      // ✅ PROATIVO: Renova token imediatamente em vez de esperar backoff do socket.io
+      // Exceção: não reconecta se foi disconnect intencional (client namespace disconnect)
+      final reasonStr = reason?.toString() ?? '';
+      final isIntentional = reasonStr.contains('client namespace disconnect') ||
+          reasonStr.contains('io client disconnect');
+      if (!isIntentional) {
+        AppLogger.i(
+          '🔄 [DISCONNECT] Reconexão proativa: buscando novo connection_token...',
+          tag: 'REALTIME',
+        );
+        // Pequeno delay para evitar loop se servidor estiver fora do ar
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _renewConnectionTokenAndReconnect();
+        });
+      }
     });
 
     _socket.on('connect', (_) async {
@@ -283,43 +300,11 @@ class RealtimeRepository {
       }
     });
 
-    // ✅ MELHOR TRATAMENTO DE RECONEXÃO
-    _socket.on('reconnect_attempt', (_) {
-      _reconnectAttempts++;
-      connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
-      final exponentialDelay =
-          _baseReconnectDelay * (1 << (_reconnectAttempts - 1).clamp(0, 5));
-      final delay = exponentialDelay.clamp(0, _maxReconnectDelay);
-      AppLogger.d(
-        '🔄 Socket.IO: Tentativa de reconexão #$_reconnectAttempts (próxima em ${delay}ms)...',
-      );
-    });
-
-    _socket.on('reconnect', (_) {
-      _reconnectAttempts = 0; // ✅ Reset ao reconectar com sucesso
-      AppLogger.d('???? Socket.IO: Reconectado com sucesso!');
-      // Aqui você pode recarregar estado da aplicação se necessário
-    });
-
-    _socket.on('reconnect_error', (error) {
-      AppLogger.d('❌ Socket.IO: Erro ao reconectar: $error');
-      // ✅ NOVO: Detecta erro de token inválido durante reconexão
-      final errorString = error.toString().toLowerCase();
-      if (errorString.contains('invalid') ||
-          errorString.contains('expired') ||
-          errorString.contains('used connection token')) {
-        AppLogger.d('🔄 Token inválido durante reconexão. Renovando token...');
-        _renewConnectionTokenAndReconnect();
-      }
-    });
-
-    _socket.on('reconnect_failed', (_) {
-      AppLogger.d('❌ Socket.IO: Falha ao reconectar após máximo de tentativas');
-      connectionStatusController.add(WebSocketConnectionStatus.disconnected);
-      // ✅ NOVO: Tenta renovar token e reconectar quando todas as tentativas falharem
-      AppLogger.d('🔄 Tentando renovar token de conexão e reconectar...');
-      _renewConnectionTokenAndReconnect();
-    });
+    // ✅ FIX: Eventos de reconexão do socket.io client REMOVIDOS.
+    // Com disableReconnection(), os eventos reconnect_attempt, reconnect,
+    // reconnect_error e reconnect_failed NUNCA serão emitidos.
+    // Toda reconexão é gerenciada pelo código Dart via _renewConnectionTokenAndReconnect()
+    // que obtém um token fresco antes de reconectar (evita o gap de ~60s).
 
     // ✅ NOVO: Listener para notificações urgentes
     _socket.on('urgent_notifications', (data) {
