@@ -38,20 +38,18 @@ import '../services/realtime/web_reconnect_strategy.dart';
 import '../services/realtime/heartbeat_manager.dart';
 import '../core/realtime/event_deduplicator.dart';
 import '../core/realtime/delta_sync_manager.dart';
+import '../core/services/menu_warmup_barrier.dart';
+import '../core/services/menu_cache_service.dart';
 import 'auth_repository.dart';
 // ✅ Importa models e adapter do novo formato de menu
 import '../models/menu/menu_response.dart';
 import '../helpers/menu_adapter.dart';
 import '../models/banners.dart';
-import '../models/category.dart';
-import '../models/coupon.dart';
-import '../models/customer.dart';
 import '../models/cart.dart';
 import '../models/update_cart_payload.dart';
 import '../models/create_order_payload.dart';
 import '../models/notification.dart';
 import '../models/order.dart';
-import '../models/store.dart';
 
 /// ✅ ENTERPRISE: Status de conexão WebSocket para a UI
 enum WebSocketConnectionStatus {
@@ -175,6 +173,7 @@ class RealtimeRepository {
     connectionStatusController.add(WebSocketConnectionStatus.connecting);
 
     _socket = IO.io(apiUrl, _buildSocketOptions(connectionToken));
+    print('🔌 [SOCKET] Socket created, apiUrl=$apiUrl');
 
     // ✅ FIX: Reconexão proativa no disconnect.
     // GUARDS: Não dispara se já estamos reconectando (evita loop) ou se
@@ -195,7 +194,8 @@ class RealtimeRepository {
       }
 
       final reasonStr = reason?.toString() ?? '';
-      final isIntentional = reasonStr.contains('client namespace disconnect') ||
+      final isIntentional =
+          reasonStr.contains('client namespace disconnect') ||
           reasonStr.contains('io client disconnect');
       if (!isIntentional) {
         AppLogger.i(
@@ -209,10 +209,11 @@ class RealtimeRepository {
     });
 
     _socket.on('connect', (_) async {
-      AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
+      print('✅ [SOCKET] Conectado com sucesso!');
       connectionStatusController.add(WebSocketConnectionStatus.connected);
       _reconnectAttempts = 0;
-      _tokenRenewalAttempts = 0; // ✅ FIX: Reset backoff para próxima reconexão ser rápida
+      _tokenRenewalAttempts =
+          0; // ✅ FIX: Reset backoff para próxima reconexão ser rápida
 
       // ✅ DELTA SYNC: Tenta delta sync antes do full reload (se é reconexão)
       if (_isReconnecting && _currentStoreUuid != null) {
@@ -290,15 +291,13 @@ class RealtimeRepository {
     });
 
     _socket.on('connect_error', (error) {
-      AppLogger.d('❌ Socket.IO: Erro de conexão: $error');
+      print('❌ [SOCKET] Erro de conexão: $error');
       isSocketReadyController.add(false);
       connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
 
       // ✅ GUARD: Não dispara renewal duplicada se já está reconectando
       if (_isReconnecting || _isRenewingToken) {
-        AppLogger.d(
-          '🛡️ [CONNECT_ERROR] Ignorando renewal (já em andamento)',
-        );
+        AppLogger.d('🛡️ [CONNECT_ERROR] Ignorando renewal (já em andamento)');
         return;
       }
 
@@ -350,636 +349,377 @@ class RealtimeRepository {
     });
 
     _socket.on('initial_state_loaded', (data) {
-      AppLogger.d('🎉 Estado inicial carregado recebido!');
-      AppLogger.d('📊 Tipo de dados recebidos: ${data.runtimeType}');
+      print(
+        '🎉 [SOCKET] initial_state_loaded recebido! type=${data.runtimeType}',
+      );
+      // ✅ PERF: Handler assíncrono não-bloqueante — processa em chunks
+      _handleInitialStateLoaded(data);
+    });
 
+    // ═══════════════════════════════════════════════════════════════
+    // ✅ PERF: Registra APENAS handlers de dados críticos antes do connect.
+    // Os 30+ handlers granulares são registrados em batches APÓS o connect
+    // via Timer(Duration.zero), cedendo ao event loop entre batches.
+    // Ganho: ~100ms menos de bloqueio síncrono antes da conexão.
+    // ═══════════════════════════════════════════════════════════════
+
+    // P1: Dados iniciais (críticos — precisam estar prontos antes do first event)
+    _socket.on('products_updated', (data) => _handleProductsUpdated(data));
+    _socket.on('banners_updated', (data) {
       try {
-        final Map<String, dynamic> payload = data as Map<String, dynamic>;
-
-        AppLogger.d('🔑 Chaves do payload: ${payload.keys.toList()}');
-
-        // ✅ DELTA SYNC: Captura store_uuid e server_seq para tracking
-        final storeUuid = payload['store_uuid'] as String?;
-        final serverSeq = (payload['server_seq'] as num?)?.toInt() ?? 0;
-        if (storeUuid != null) {
-          _currentStoreUuid = storeUuid;
-          if (serverSeq > 0) {
-            _deltaSyncManager.trackInitialState(
-              storeUuid: storeUuid,
-              serverSeq: serverSeq,
-            );
-            AppLogger.i(
-              '[DeltaSync] Initial state tracked: store=$storeUuid, seq=$serverSeq',
-              tag: 'DELTA_SYNC',
-            );
-          }
-        }
-
-        // ✅ NOVO: Detecta formato do menu (novo ou antigo)
-        final bool isNewMenuFormat =
-            payload.containsKey('data') &&
-            payload['data'] is Map &&
-            (payload['data'] as Map).containsKey('menu');
-
-        if (isNewMenuFormat) {
-          AppLogger.d('📋 Novo formato de menu detectado (com data.menu)');
-
-          // ✅ DEBUG: Imprime estrutura do menu recebido
-          final dataPayload = payload['data'] as Map<String, dynamic>;
-          final menuList = dataPayload['menu'] as List<dynamic>? ?? [];
-          AppLogger.d(
-            '═══════════════════════════════════════════════════════',
-          );
-          AppLogger.d(
-            '🔍 [DEBUG MENU] Total de categorias no menu: ${menuList.length}',
-          );
-          for (var i = 0; i < menuList.length; i++) {
-            final cat = menuList[i] as Map<String, dynamic>;
-            final catCode = cat['code'];
-            final catName = cat['name'];
-            final catTemplate = cat['template'];
-            final itens = cat['itens'] as List<dynamic>? ?? [];
-            AppLogger.d(
-              '   📁 [$i] Categoria: "$catName" (code: $catCode, template: $catTemplate)',
-            );
-            AppLogger.d('      └─ Itens: ${itens.length}');
-            for (var j = 0; j < itens.length && j < 3; j++) {
-              final item = itens[j] as Map<String, dynamic>;
-              AppLogger.d(
-                '         └─ Item[$j]: id=${item['id']}, code=${item['code']}, desc="${item['description']}"',
-              );
-            }
-            if (itens.length > 3) {
-              AppLogger.d('         └─ ... e mais ${itens.length - 3} itens');
-            }
-          }
-          AppLogger.d(
-            '═══════════════════════════════════════════════════════',
-          );
-
-          _processNewMenuFormat(payload);
-        } else {
-          AppLogger.d(
-            '📋 Formato antigo de menu detectado (com products/categories separados)',
-          );
-          _processOldMenuFormat(payload);
-        }
-
-        AppLogger.d('🎉 Estado inicial carregado com sucesso!');
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar initial_state_loaded: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
+        final List<BannerModel> banners =
+            (data as List).map((json) => BannerModel.fromJson(json)).toList();
+        bannersController.add(banners);
+      } catch (e) {
+        AppLogger.e('❌ Erro ao processar banners_updated: $e');
       }
     });
-
-    // ✅ P1: EVENTOS DE DADOS DO BACKEND com suporte a delta updates
-    // ✅ CORREÇÃO: Escuta 'products_updated' (plural) ou 'product_updated' (singular se for full payload)
-    _socket.on('products_updated', (data) => _handleProductsUpdated(data));
-
-    // ✅ CORREÇÃO: Nome do evento alinhado com backend (banners_updated)
-    _socket.on('banners_updated', (data) {
-      AppLogger.d('🎨 Banners atualizados recebidos');
-      final List<BannerModel> banners =
-          (data as List).map((json) => BannerModel.fromJson(json)).toList();
-      bannersController.add(banners);
-    });
-
-    // ✅ LISTENER: Atualizações de loja (quando admin atualiza configurações)
     _socket.on('store_details_updated', (data) {
       _trackServerSeqFromEvent(data);
       _handleStoreUpdate(data);
     });
 
-    // ✅ ENTERPRISE: Listeners granulares para atualizações específicas
-    // Agora processa os eventos granulares para atualizar apenas a parte específica do Store
-    _socket.on('payment_methods_updated', (data) {
-      AppLogger.d('💳 [TOTEM] payment_methods_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        // Pega o store atual
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse dos payment_method_groups
-        final paymentMethodGroups =
-            (payload['payment_method_groups'] as List<dynamic>?)
-                ?.map(
-                  (e) => PaymentMethodGroup.fromJson(e as Map<String, dynamic>),
-                )
-                .toList() ??
-            [];
-
-        // Atualiza apenas os métodos de pagamento
-        final updatedStore = currentStore.copyWith(
-          paymentMethodGroups: paymentMethodGroups,
-        );
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Métodos de pagamento atualizados (${paymentMethodGroups.length} grupos)',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar payment_methods_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    // ✅ NOVO: Listener específico para delivery_fee_rules_updated
-    _socket.on('delivery_fee_rules_updated', (data) {
-      AppLogger.d('🚚 [TOTEM] delivery_fee_rules_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse das regras de frete
-        final deliveryFeeRules =
-            (payload['delivery_fee_rules'] as List<dynamic>?)
-                ?.map(
-                  (e) => DeliveryFeeRule.fromJson(e as Map<String, dynamic>),
-                )
-                .toList() ??
-            [];
-
-        // Atualiza apenas as regras de frete
-        final updatedStore = currentStore.copyWith(
-          deliveryFeeRules: deliveryFeeRules,
-        );
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Regras de frete atualizadas (${deliveryFeeRules.length} regras)',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar delivery_fee_rules_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('store_hours_updated', (data) {
-      AppLogger.d('🕐 [TOTEM] store_hours_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse dos hours
-        final hours =
-            (payload['hours'] as List<dynamic>?)
-                ?.map((e) => StoreHour.fromJson(e))
-                .toList() ??
-            [];
-
-        // Atualiza apenas os horários
-        final updatedStore = currentStore.copyWith(hours: hours);
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Horários atualizados (${hours.length} horários)',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar store_hours_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('scheduled_pauses_updated', (data) {
-      AppLogger.d('⏸️ [TOTEM] scheduled_pauses_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse das pausas
-        final pauses =
-            (payload['pauses'] as List<dynamic>?)
-                ?.map((e) => ScheduledPause.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [];
-
-        // Atualiza apenas as pausas
-        final updatedStore = currentStore.copyWith(scheduledPauses: pauses);
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Pausas agendadas atualizadas (${pauses.length} pausas)',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar scheduled_pauses_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('operation_config_updated', (data) {
-      AppLogger.d('⚙️ [TOTEM] operation_config_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse da operation_config
-        final operationConfig =
-            payload['operation_config'] != null
-                ? StoreOperationConfig.fromJson(
-                  payload['operation_config'] as Map<String, dynamic>,
-                )
-                : null;
-
-        // Atualiza apenas a configuração operacional
-        final updatedStore = currentStore.copyWith(
-          store_operation_config: operationConfig,
-        );
-
-        storeController.add(updatedStore);
-        AppLogger.d('✅ [TOTEM] Configuração operacional atualizada');
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar operation_config_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    // ✅ PAUSA PROGRAMADA: Listener para mudanças de status da loja
-    _socket.on('store_status_changed', (data) {
-      AppLogger.d('⏸️ [TOTEM] store_status_changed recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        final isOpen = payload['is_open'] as bool? ?? true;
-        final reason = payload['reason'] as String?;
-        final pausedUntilStr = payload['paused_until'] as String?;
-
-        DateTime? pausedUntil;
-        if (pausedUntilStr != null) {
-          pausedUntil = DateTime.tryParse(pausedUntilStr);
-        }
-
-        AppLogger.d(
-          '   └─ is_open: $isOpen, reason: $reason, paused_until: $pausedUntilStr',
-        );
-
-        // Atualiza o operation_config com o novo status
-        final currentConfig = currentStore.store_operation_config;
-        if (currentConfig != null) {
-          final updatedConfig = currentConfig.copyWith(
-            isStoreOpen: isOpen,
-            pausedUntil:
-                isOpen ? null : pausedUntil, // Se abrir, limpa pausedUntil
-          );
-
-          final updatedStore = currentStore.copyWith(
-            store_operation_config: updatedConfig,
-          );
-
-          storeController.add(updatedStore);
-
-          if (isOpen) {
-            AppLogger.d('✅ [TOTEM] Loja REABERTA (reason: $reason)');
-          } else {
-            AppLogger.d(
-              '⏸️ [TOTEM] Loja PAUSADA até $pausedUntilStr (reason: $reason)',
-            );
-          }
-        }
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar store_status_changed: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('store_profile_updated', (data) {
-      AppLogger.d('👤 [TOTEM] store_profile_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        final profile = payload['profile'] as Map<String, dynamic>?;
-        if (profile == null) return;
-
-        // ✅ CORREÇÃO: Atualiza logo e banner quando image_path ou banner_path são fornecidos
-        // O backend já envia as URLs completas em image_path e banner_path
-        ImageModel? updatedImage;
-        ImageModel? updatedBanner;
-
-        if (profile['image_path'] != null &&
-            (profile['image_path'] as String).isNotEmpty) {
-          updatedImage = ImageModel(url: profile['image_path'] as String);
-          AppLogger.d('   └─ Logo atualizada: ${profile['image_path']}');
-        }
-
-        if (profile['banner_path'] != null &&
-            (profile['banner_path'] as String).isNotEmpty) {
-          updatedBanner = ImageModel(url: profile['banner_path'] as String);
-          AppLogger.d('   └─ Banner atualizado: ${profile['banner_path']}');
-        }
-
-        // Atualiza apenas os campos de perfil
-        final updatedStore = currentStore.copyWith(
-          name: profile['name'] ?? currentStore.name,
-          phone: profile['phone'] ?? currentStore.phone,
-          description: profile['description'] ?? currentStore.description,
-          urlSlug: profile['url_slug'] ?? currentStore.urlSlug,
-          zip_code: profile['zip_code'] ?? currentStore.zip_code,
-          street: profile['street'] ?? currentStore.street,
-          number: profile['number'] ?? currentStore.number,
-          neighborhood: profile['neighborhood'] ?? currentStore.neighborhood,
-          complement: profile['complement'] ?? currentStore.complement,
-          city: profile['city'] ?? currentStore.city,
-          state: profile['state'] ?? currentStore.state,
-          instagram: profile['instagram'] ?? currentStore.instagram,
-          facebook: profile['facebook'] ?? currentStore.facebook,
-          tiktok: profile['tiktok'] ?? currentStore.tiktok,
-          // ✅ CORREÇÃO: Atualiza logo e banner quando fornecidos
-          image: updatedImage ?? currentStore.image,
-          banner: updatedBanner ?? currentStore.banner,
-        );
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Perfil da loja atualizado (incluindo logo e banner)',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar store_profile_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('coupons_updated', (data) {
-      AppLogger.d('🎫 [TOTEM] coupons_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        // Parse dos cupons
-        final coupons =
-            (payload['coupons'] as List<dynamic>?)
-                ?.map((e) => Coupon.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [];
-
-        // Atualiza apenas os cupons
-        final updatedStore = currentStore.copyWith(coupons: coupons);
-        storeController.add(updatedStore);
-        AppLogger.d('✅ [TOTEM] Cupons atualizados (${coupons.length} cupons)');
-      } catch (e, stackTrace) {
-        AppLogger.d('❌ Erro ao processar coupons_updated: $e');
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    _socket.on('store_internationalization_updated', (data) {
-      AppLogger.d('🌐 [TOTEM] store_internationalization_updated recebido');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final storeId = payload['store_id'] as int?;
-        if (storeId == null) return;
-
-        final currentStore = storeController.value;
-        if (currentStore.id != storeId) {
-          AppLogger.d(
-            '⚠️ Store ID não corresponde (atual: ${currentStore.id}, evento: $storeId)',
-          );
-          return;
-        }
-
-        final internationalization =
-            payload['internationalization'] as Map<String, dynamic>?;
-        if (internationalization == null) return;
-
-        // Atualiza apenas os campos de internacionalização
-        final updatedStore = currentStore.copyWith(
-          locale: internationalization['locale'] ?? currentStore.locale,
-          currencyCode:
-              internationalization['currency_code'] ??
-              currentStore.currencyCode,
-          timezone: internationalization['timezone'] ?? currentStore.timezone,
-        );
-
-        storeController.add(updatedStore);
-        AppLogger.d(
-          '✅ [TOTEM] Internacionalização atualizada (locale: ${updatedStore.locale}, currency: ${updatedStore.currencyCode}, timezone: ${updatedStore.timezone})',
-        );
-      } catch (e, stackTrace) {
-        AppLogger.d(
-          '❌ Erro ao processar store_internationalization_updated: $e',
-        );
-        AppLogger.d('📍 StackTrace: $stackTrace');
-      }
-    });
-
-    // ✅ GRANULAR: Recebe update apenas do pedido específico do customer logado
-    _socket.on('order_updated', (data) {
-      AppLogger.d('🛒 Atualização de pedido recebida');
-      try {
-        final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
-        final Order order = Order.fromJson(payload);
-
-        // ✅ SEGURANÇA: Filtra pedidos que não pertencem ao customer logado
-        final currentCustomer = getIt<AuthCubit>().state.customer;
-        if (currentCustomer != null && order.customer?.id != null) {
-          final currentId = currentCustomer.id.toString();
-          final orderId = order.customer!.id.toString();
-          if (currentId != orderId) {
-            AppLogger.w(
-              '⚠️ [ORDERS] Pedido ${order.shortId} ignorado (customer ${order.customer!.id} != logado $currentId)',
-              tag: 'ORDERS',
-            );
-            return;
-          }
-        }
-
-        orderController.add(order);
-
-        // ✅ ATUALIZA CUBIT: Garante que o estado global de pedidos do cliente seja atualizado
-        getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
-      } catch (e) {
-        AppLogger.e('❌ Erro ao processar order_updated: $e');
-      }
-    });
-
-    // ============================================================
-    // ✅ ENTERPRISE: LISTENERS GRANULARES PARA ATUALIZAÇÕES EM TEMPO REAL
-    // Esses listeners recebem apenas o item específico que foi modificado,
-    // reduzindo drasticamente o payload e melhorando a performance.
-    // ============================================================
-
-    // --- PRODUTOS ---
-    _socket.on('product_created', (data) {
-      AppLogger.d('📦 [GRANULAR] Produto criado recebido');
-      _trackServerSeqFromEvent(data);
-      _handleGranularProductEvent(data, 'created');
-    });
-
-    _socket.on('product_updated', (data) {
-      AppLogger.d('📦 [GRANULAR] Produto atualizado recebido');
-      _trackServerSeqFromEvent(data);
-      _handleGranularProductEvent(data, 'updated');
-    });
-
-    _socket.on('product_deleted', (data) {
-      AppLogger.d('📦 [GRANULAR] Produto deletado recebido');
-      _trackServerSeqFromEvent(data);
-      _handleGranularProductEvent(data, 'deleted');
-    });
-
-    // --- CATEGORIAS ---
-    _socket.on('category_created', (data) {
-      AppLogger.d('📁 [GRANULAR] Categoria criada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularCategoryEvent(data, 'created');
-    });
-
-    _socket.on('category_updated', (data) {
-      AppLogger.d('📁 [GRANULAR] Categoria atualizada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularCategoryEvent(data, 'updated');
-    });
-
-    _socket.on('category_deleted', (data) {
-      AppLogger.d('📁 [GRANULAR] Categoria deletada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularCategoryEvent(data, 'deleted');
-    });
-
-    // --- VARIANTES (Complementos) ---
-    _socket.on('variant_created', (data) {
-      AppLogger.d('🧩 [GRANULAR] Variante criada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularVariantEvent(data, 'created');
-    });
-
-    _socket.on('variant_updated', (data) {
-      AppLogger.d('🧩 [GRANULAR] Variante atualizada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularVariantEvent(data, 'updated');
-    });
-
-    _socket.on('variant_deleted', (data) {
-      AppLogger.d('🧩 [GRANULAR] Variante deletada recebida');
-      _trackServerSeqFromEvent(data);
-      _handleGranularVariantEvent(data, 'deleted');
-    });
-
-    // --- OPÇÕES DE VARIANTE ---
-    _socket.on('variant_option_created', (data) {
-      AppLogger.d('🔘 [GRANULAR] Opção de variante criada recebida');
-      _handleGranularVariantOptionEvent(data, 'created');
-    });
-
-    _socket.on('variant_option_updated', (data) {
-      AppLogger.d('🔘 [GRANULAR] Opção de variante atualizada recebida');
-      _handleGranularVariantOptionEvent(data, 'updated');
-    });
-
-    _socket.on('variant_option_deleted', (data) {
-      AppLogger.d('🔘 [GRANULAR] Opção de variante deletada recebida');
-      _handleGranularVariantOptionEvent(data, 'deleted');
-    });
-
-    // --- ENDEREÇOS ---
-    _socket.on('address_created', (data) {
-      AppLogger.d('🏠 [GRANULAR] Endereço criado recebido');
-      try {
-        getIt<AddressCubit>().onRealtimeAddressEvent(
-          _convertToStringDynamicMap(data),
-        );
-      } catch (e) {
-        AppLogger.e('❌ Erro ao processar address_created: $e');
-      }
-    });
-
-    _socket.on('address_updated', (data) {
-      AppLogger.d('🏠 [GRANULAR] Endereço atualizado recebido');
-      try {
-        getIt<AddressCubit>().onRealtimeAddressEvent(
-          _convertToStringDynamicMap(data),
-        );
-      } catch (e) {
-        AppLogger.e('❌ Erro ao processar address_updated: $e');
-      }
-    });
-
-    _socket.on('address_deleted', (data) {
-      AppLogger.d('🏠 [GRANULAR] Endereço deletado recebido');
-      try {
-        getIt<AddressCubit>().onRealtimeAddressEvent(
-          _convertToStringDynamicMap(data),
-        );
-      } catch (e) {
-        AppLogger.e('❌ Erro ao processar address_deleted: $e');
-      }
-    });
-
-    // ✅ CORREÇÃO: Inicia a conexão em background, não aguarda
-    // A conexão continua em background e o heartbeat monitora a saúde
+    // ✅ PERF: Conecta ANTES de registrar handlers granulares
+    // O backend leva ~100ms para autorizar e enviar initial_state_loaded.
+    // Esse tempo é usado para registrar os 30+ handlers granulares em background.
+    print('🔌 [SOCKET] Calling _socket.connect()...');
     _socket.connect();
+
+    // ✅ PERF: Registra handlers granulares em batches via Timer(Duration.zero)
+    // Cada batch registra 5 handlers, depois cede ao event loop.
+    _scheduleGranularHandlers();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ✅ PERF: Registra handlers granulares em batches via Timer
+  // Cada batch registra ~5 handlers, depois cede ao event loop.
+  // Isso permite que o connect() + initial_state_loaded chegue
+  // enquanto os handlers granulares são registrados em background.
+  // ═══════════════════════════════════════════════════════════════
+  void _scheduleGranularHandlers() {
+    final handlers = <MapEntry<String, void Function(dynamic)>>[
+      // --- STORE GRANULARES ---
+      MapEntry('payment_methods_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final paymentMethodGroups =
+              (payload['payment_method_groups'] as List<dynamic>?)
+                  ?.map(
+                    (e) =>
+                        PaymentMethodGroup.fromJson(e as Map<String, dynamic>),
+                  )
+                  .toList() ??
+              [];
+          storeController.add(
+            currentStore.copyWith(paymentMethodGroups: paymentMethodGroups),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar payment_methods_updated: $e');
+        }
+      }),
+      MapEntry('delivery_fee_rules_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final deliveryFeeRules =
+              (payload['delivery_fee_rules'] as List<dynamic>?)
+                  ?.map(
+                    (e) => DeliveryFeeRule.fromJson(e as Map<String, dynamic>),
+                  )
+                  .toList() ??
+              [];
+          storeController.add(
+            currentStore.copyWith(deliveryFeeRules: deliveryFeeRules),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar delivery_fee_rules_updated: $e');
+        }
+      }),
+      MapEntry('store_hours_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final hours =
+              (payload['hours'] as List<dynamic>?)
+                  ?.map((e) => StoreHour.fromJson(e))
+                  .toList() ??
+              [];
+          storeController.add(currentStore.copyWith(hours: hours));
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar store_hours_updated: $e');
+        }
+      }),
+      MapEntry('scheduled_pauses_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final pauses =
+              (payload['pauses'] as List<dynamic>?)
+                  ?.map(
+                    (e) => ScheduledPause.fromJson(e as Map<String, dynamic>),
+                  )
+                  .toList() ??
+              [];
+          storeController.add(currentStore.copyWith(scheduledPauses: pauses));
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar scheduled_pauses_updated: $e');
+        }
+      }),
+      MapEntry('operation_config_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final operationConfig =
+              payload['operation_config'] != null
+                  ? StoreOperationConfig.fromJson(
+                    payload['operation_config'] as Map<String, dynamic>,
+                  )
+                  : null;
+          storeController.add(
+            currentStore.copyWith(store_operation_config: operationConfig),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar operation_config_updated: $e');
+        }
+      }),
+      // --- STORE STATUS ---
+      MapEntry('store_status_changed', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final isOpen = payload['is_open'] as bool? ?? true;
+          final pausedUntilStr = payload['paused_until'] as String?;
+          DateTime? pausedUntil;
+          if (pausedUntilStr != null)
+            pausedUntil = DateTime.tryParse(pausedUntilStr);
+          final currentConfig = currentStore.store_operation_config;
+          if (currentConfig != null) {
+            final updatedConfig = currentConfig.copyWith(
+              isStoreOpen: isOpen,
+              pausedUntil: isOpen ? null : pausedUntil,
+            );
+            storeController.add(
+              currentStore.copyWith(store_operation_config: updatedConfig),
+            );
+          }
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar store_status_changed: $e');
+        }
+      }),
+      MapEntry('store_profile_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final profile = payload['profile'] as Map<String, dynamic>?;
+          if (profile == null) return;
+          ImageModel? updatedImage;
+          ImageModel? updatedBanner;
+          if (profile['image_path'] != null &&
+              (profile['image_path'] as String).isNotEmpty) {
+            updatedImage = ImageModel(url: profile['image_path'] as String);
+          }
+          if (profile['banner_path'] != null &&
+              (profile['banner_path'] as String).isNotEmpty) {
+            updatedBanner = ImageModel(url: profile['banner_path'] as String);
+          }
+          final updatedStore = currentStore.copyWith(
+            name: profile['name'] ?? currentStore.name,
+            phone: profile['phone'] ?? currentStore.phone,
+            description: profile['description'] ?? currentStore.description,
+            urlSlug: profile['url_slug'] ?? currentStore.urlSlug,
+            zip_code: profile['zip_code'] ?? currentStore.zip_code,
+            street: profile['street'] ?? currentStore.street,
+            number: profile['number'] ?? currentStore.number,
+            neighborhood: profile['neighborhood'] ?? currentStore.neighborhood,
+            complement: profile['complement'] ?? currentStore.complement,
+            city: profile['city'] ?? currentStore.city,
+            state: profile['state'] ?? currentStore.state,
+            instagram: profile['instagram'] ?? currentStore.instagram,
+            facebook: profile['facebook'] ?? currentStore.facebook,
+            tiktok: profile['tiktok'] ?? currentStore.tiktok,
+            image: updatedImage ?? currentStore.image,
+            banner: updatedBanner ?? currentStore.banner,
+          );
+          storeController.add(updatedStore);
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar store_profile_updated: $e');
+        }
+      }),
+      MapEntry('coupons_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final coupons =
+              (payload['coupons'] as List<dynamic>?)
+                  ?.map((e) => Coupon.fromJson(e as Map<String, dynamic>))
+                  .toList() ??
+              [];
+          storeController.add(currentStore.copyWith(coupons: coupons));
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar coupons_updated: $e');
+        }
+      }),
+      MapEntry('store_internationalization_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final storeId = payload['store_id'] as int?;
+          if (storeId == null) return;
+          final currentStore = storeController.value;
+          if (currentStore.id != storeId) return;
+          final i18n = payload['internationalization'] as Map<String, dynamic>?;
+          if (i18n == null) return;
+          storeController.add(
+            currentStore.copyWith(
+              locale: i18n['locale'] ?? currentStore.locale,
+              currencyCode: i18n['currency_code'] ?? currentStore.currencyCode,
+              timezone: i18n['timezone'] ?? currentStore.timezone,
+            ),
+          );
+        } catch (e) {
+          AppLogger.e(
+            '❌ Erro ao processar store_internationalization_updated: $e',
+          );
+        }
+      }),
+      // --- ORDER ---
+      MapEntry('order_updated', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final Order order = Order.fromJson(payload);
+          final currentCustomer = getIt<AuthCubit>().state.customer;
+          if (currentCustomer != null && order.customer?.id != null) {
+            final currentId = currentCustomer.id.toString();
+            final orderId = order.customer!.id.toString();
+            if (currentId != orderId) return;
+          }
+          orderController.add(order);
+          getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar order_updated: $e');
+        }
+      }),
+      // --- PRODUTOS GRANULARES ---
+      MapEntry('product_created', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularProductEvent(data, 'created');
+      }),
+      MapEntry('product_updated', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularProductEvent(data, 'updated');
+      }),
+      MapEntry('product_deleted', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularProductEvent(data, 'deleted');
+      }),
+      // --- CATEGORIAS GRANULARES ---
+      MapEntry('category_created', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularCategoryEvent(data, 'created');
+      }),
+      MapEntry('category_updated', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularCategoryEvent(data, 'updated');
+      }),
+      MapEntry('category_deleted', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularCategoryEvent(data, 'deleted');
+      }),
+      // --- VARIANTES ---
+      MapEntry('variant_created', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularVariantEvent(data, 'created');
+      }),
+      MapEntry('variant_updated', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularVariantEvent(data, 'updated');
+      }),
+      MapEntry('variant_deleted', (data) {
+        _trackServerSeqFromEvent(data);
+        _handleGranularVariantEvent(data, 'deleted');
+      }),
+      // --- OPÇÕES DE VARIANTE ---
+      MapEntry('variant_option_created', (data) {
+        _handleGranularVariantOptionEvent(data, 'created');
+      }),
+      MapEntry('variant_option_updated', (data) {
+        _handleGranularVariantOptionEvent(data, 'updated');
+      }),
+      MapEntry('variant_option_deleted', (data) {
+        _handleGranularVariantOptionEvent(data, 'deleted');
+      }),
+      // --- ENDEREÇOS ---
+      MapEntry('address_created', (data) {
+        try {
+          getIt<AddressCubit>().onRealtimeAddressEvent(
+            _convertToStringDynamicMap(data),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar address_created: $e');
+        }
+      }),
+      MapEntry('address_updated', (data) {
+        try {
+          getIt<AddressCubit>().onRealtimeAddressEvent(
+            _convertToStringDynamicMap(data),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar address_updated: $e');
+        }
+      }),
+      MapEntry('address_deleted', (data) {
+        try {
+          getIt<AddressCubit>().onRealtimeAddressEvent(
+            _convertToStringDynamicMap(data),
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar address_deleted: $e');
+        }
+      }),
+    ];
+
+    // ✅ PERF: Registra em batches de 5, cedendo ao event loop entre batches
+    void registerBatch(int start) {
+      const batchSize = 5;
+      final end = (start + batchSize).clamp(0, handlers.length);
+      for (int i = start; i < end; i++) {
+        _socket.on(handlers[i].key, handlers[i].value);
+      }
+      if (end < handlers.length) {
+        Timer(Duration.zero, () => registerBatch(end));
+      } else {
+        AppLogger.d(
+          '✅ [PERF] ${handlers.length} granular handlers registered in batches',
+        );
+      }
+    }
+
+    // Inicia o primeiro batch via Timer para não bloquear initialize()
+    Timer(Duration.zero, () => registerBatch(0));
   }
 
   // ============================================================
@@ -2416,22 +2156,244 @@ class RealtimeRepository {
     }
   }
 
-  // ✅ SMART RECONNECT: Processa formato antigo com merge inteligente
-  void _processOldMenuFormat(Map<String, dynamic> payload) {
-    // Processa a loja (apenas configs, sem categorias)
-    if (keyExists(payload, 'store')) {
-      AppLogger.d('🏢 Processando dados da loja...');
-      final storeData = payload['store'] as Map<String, dynamic>;
-      final Store store = Store.fromJson(storeData);
+  // ═══════════════════════════════════════════════════════════════
+  // ✅ PERF: Handler assíncrono para initial_state_loaded
+  // Elimina o [Violation] 'message' handler took 771ms
+  // Estratégia:
+  //   1. Uma ÚNICA ponte JSON no payload raiz (resolve TODOS JS Proxies)
+  //   2. Emite store imediatamente (dados pequenos → nome da loja em <300ms)
+  //   3. Processa categorias/produtos em chunks com yield ao event loop
+  // ═══════════════════════════════════════════════════════════════
 
-      // ✅ AUDIT FIX: Sempre emite — o StoreCubit faz dedup expandido
-      storeController.add(store);
-      AppLogger.d('✅ Loja processada: ${store.name} (ID: ${store.id})');
+  /// Ponte JSON única: converte todo o grafo de JS Proxy → Dart puro de uma vez.
+  /// Evita O(N * serialization_cost) do antigo _deepConvertToJson por item.
+  Map<String, dynamic> _singleJsonBridge(dynamic data) {
+    if (data == null) return {};
+    // Se já é Map<String, dynamic> puro E estamos em VM (não web), shortcut
+    if (data is Map<String, dynamic>) {
+      // Em Flutter Web (DDC), JS Proxy passa `is Map<String, dynamic>`
+      // mas filhos NÃO são puros. Por segurança, SEMPRE fazemos a ponte.
+      try {
+        return Map<String, dynamic>.from(jsonDecode(jsonEncode(data)));
+      } catch (_) {
+        return _convertToStringDynamicMap(data);
+      }
     }
+    try {
+      final decoded = jsonDecode(jsonEncode(data));
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return _convertToStringDynamicMap(data);
+  }
 
-    // ✅ REFACTOR: Categorias agora vão para categoriesController (separado do store)
+  /// ✅ PERF: Handler principal — processa initial_state_loaded sem bloquear main thread
+  Future<void> _handleInitialStateLoaded(dynamic rawData) async {
+    print('⚡ [PERF] _handleInitialStateLoaded START');
+    final sw = Stopwatch()..start();
+    MenuWarmupBarrier.instance.startTiming();
+
+    try {
+      // ═══════════════════════════════════════════════════════════
+      // STEP 1: Uma ÚNICA ponte JSON no payload raiz (~20-50ms)
+      // Resolve TODOS os JS Proxies de uma só vez
+      // ═══════════════════════════════════════════════════════════
+      final Map<String, dynamic> payload = _singleJsonBridge(rawData);
+      final bridgeMs = sw.elapsedMilliseconds;
+      AppLogger.i(
+        '⚡ [PERF] JSON bridge: ${bridgeMs}ms | keys: ${payload.keys.toList()}',
+        tag: 'PERF',
+      );
+
+      // ═══════════════════════════════════════════════════════════
+      // STEP 2: Delta sync tracking (rápido, síncrono)
+      // ═══════════════════════════════════════════════════════════
+      final storeUuid = payload['store_uuid'] as String?;
+      final serverSeq = (payload['server_seq'] as num?)?.toInt() ?? 0;
+      if (storeUuid != null) {
+        _currentStoreUuid = storeUuid;
+        if (serverSeq > 0) {
+          _deltaSyncManager.trackInitialState(
+            storeUuid: storeUuid,
+            serverSeq: serverSeq,
+          );
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // STEP 3: Detecta formato e emite STORE primeiro (pequeno, rápido)
+      // Usuário vê nome da loja + status em <300ms
+      // ═══════════════════════════════════════════════════════════
+      final bool isNewMenuFormat =
+          payload.containsKey('data') &&
+          payload['data'] is Map &&
+          (payload['data'] as Map).containsKey('menu');
+
+      // Emite store IMEDIATAMENTE (dados pequenos ~1KB)
+      if (payload['store'] != null) {
+        try {
+          final Store store = Store.fromJson(
+            payload['store'] as Map<String, dynamic>,
+          );
+          storeController.add(store);
+          MenuWarmupBarrier.instance.onStoreReceived(store);
+          AppLogger.i(
+            '⚡ [PERF] Store emitted: ${sw.elapsedMilliseconds}ms — ${store.name}',
+            tag: 'PERF',
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar store: $e', tag: 'PERF');
+        }
+      }
+
+      // ✅ YIELD: Devolve controle ao event loop para renderizar store
+      await Future.delayed(Duration.zero);
+
+      // ═══════════════════════════════════════════════════════════
+      // STEP 4: Processa menu (categorias + produtos) de forma assíncrona
+      // ═══════════════════════════════════════════════════════════
+      if (isNewMenuFormat) {
+        await _processNewMenuFormatAsync(payload);
+      } else {
+        await _processOldMenuFormatAsync(payload);
+      }
+
+      // Emite banners (não crítico, pode ser último)
+      if (payload['banners'] != null) {
+        try {
+          final List<BannerModel> banners =
+              (payload['banners'] as List)
+                  .map(
+                    (json) =>
+                        BannerModel.fromJson(json as Map<String, dynamic>),
+                  )
+                  .toList();
+          bannersController.add(banners);
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar banners: $e', tag: 'PERF');
+        }
+      }
+
+      MenuWarmupBarrier.instance.onFullMenuReady();
+
+      // ✅ PERF: Salva payload BRUTO COMPLETO em sessionStorage (100% reativo)
+      _saveRawPayloadToCache(payload);
+
+      print(
+        '⚡ [PERF] initial_state_loaded COMPLETO: ${sw.elapsedMilliseconds}ms '
+        '(bridge=${bridgeMs}ms)',
+      );
+    } catch (e, stackTrace) {
+      print('❌ [PERF] Erro ao processar initial_state_loaded: $e');
+      print('📍 StackTrace: $stackTrace');
+    }
+  }
+
+  /// ✅ PERF: Salva o payload BRUTO COMPLETO do backend em sessionStorage.
+  /// Zero valores fixos — é o JSON exato do initial_state_loaded.
+  void _saveRawPayloadToCache(Map<String, dynamic> payload) {
+    try {
+      final storeSlug = _storeUrl;
+      if (storeSlug == null || storeSlug.isEmpty) return;
+      MenuCacheService.instance.saveRawPayload(
+        storeSlug: storeSlug,
+        rawPayload: payload,
+      );
+    } catch (e) {
+      print('⚠️ [CACHE] Failed to save raw payload: $e');
+    }
+  }
+
+  /// ✅ PERF: Carrega payload bruto cacheado e reprocessa pelo MESMO pipeline.
+  /// 100% reativo — usa dados reais do backend, não valores fixos.
+  /// O socket depois sobrescreve com dados frescos (stale-while-revalidate).
+  void loadCachedMenu(String storeSlug) {
+    try {
+      final cachedPayload = MenuCacheService.instance.loadRawPayload(storeSlug);
+      if (cachedPayload == null) return;
+
+      // Reprocessa pelo mesmo pipeline assíncrono — mesmo código que processa
+      // o initial_state_loaded do socket. Garante 100% consistência com backend.
+      print('⚡ [CACHE] Reprocessando payload cacheado para "$storeSlug"...');
+      _handleInitialStateLoaded(cachedPayload);
+    } catch (e) {
+      print('⚠️ [CACHE] Failed to load cached menu: $e');
+    }
+  }
+
+  /// ✅ PERF: Processa novo formato de menu com yield ao event loop
+  Future<void> _processNewMenuFormatAsync(Map<String, dynamic> payload) async {
+    try {
+      // Parse menu response
+      final dataPayload = payload['data'] as Map<String, dynamic>;
+      final menuResponseData = {
+        'code': payload['code'] ?? '00',
+        'message': payload['message'],
+        'timestamp': payload['timestamp'],
+        'data': dataPayload,
+      };
+
+      final MenuResponse menuResponse = MenuResponse.fromJson(menuResponseData);
+      final adapterResult = MenuAdapter.convertMenuResponse(menuResponse);
+
+      // ═══════════════════════════════════════════════════════════
+      // Emite CATEGORIAS primeiro (usuário vê tabs de navegação)
+      // ═══════════════════════════════════════════════════════════
+      print(
+        '📊 [PERF] MenuAdapter: ${adapterResult.categories.length} cats, ${adapterResult.products.length} prods',
+      );
+      if (adapterResult.categories.isNotEmpty) {
+        categoriesController.add(adapterResult.categories);
+        MenuWarmupBarrier.instance.onCatalogReceived();
+        print(
+          '✅ [PERF] ${adapterResult.categories.length} categorias emitidas → catalogReady!',
+        );
+      } else {
+        print('⚠️ [PERF] MenuAdapter retornou 0 categorias!');
+      }
+
+      // ✅ YIELD: Devolve controle ao event loop para renderizar categorias
+      await Future.delayed(Duration.zero);
+
+      // ═══════════════════════════════════════════════════════════
+      // Emite PRODUTOS em batches de 30 (evita >50ms no main thread)
+      // ═══════════════════════════════════════════════════════════
+      final allProducts = adapterResult.products;
+      if (allProducts.isNotEmpty) {
+        const batchSize = 30;
+        if (allProducts.length <= batchSize) {
+          // Poucos produtos — emite tudo de uma vez
+          productsController.add(allProducts);
+        } else {
+          // Muitos produtos — emite em batches com yield
+          final List<Product> accumulated = [];
+          for (int i = 0; i < allProducts.length; i += batchSize) {
+            final end = (i + batchSize).clamp(0, allProducts.length);
+            accumulated.addAll(allProducts.sublist(i, end));
+            productsController.add(List<Product>.from(accumulated));
+            if (end < allProducts.length) {
+              await Future.delayed(Duration.zero); // yield entre batches
+            }
+          }
+        }
+        print('✅ [PERF] ${allProducts.length} produtos emitidos');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [PERF] ERRO em _processNewMenuFormatAsync: $e');
+      print('📍 StackTrace: $stackTrace');
+      // Fallback para formato antigo
+      if (!categoriesController.hasValue ||
+          categoriesController.value.isEmpty) {
+        await _processOldMenuFormatAsync(payload);
+      }
+    }
+  }
+
+  /// ✅ PERF: Processa formato antigo com yield ao event loop
+  Future<void> _processOldMenuFormatAsync(Map<String, dynamic> payload) async {
+    // Categorias
     if (keyExists(payload, 'categories')) {
-      AppLogger.d('📁 Processando categorias...');
       final List<dynamic> categoriesJson =
           payload['categories'] as List<dynamic>;
       final List<models.Category> categories =
@@ -2441,15 +2403,9 @@ class RealtimeRepository {
                     models.Category.fromJson(json as Map<String, dynamic>),
               )
               .toList();
-
-      // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
-      // (ignorava mudanças de nome/preço/disponibilidade dentro das categorias)
       categoriesController.add(categories);
-      AppLogger.d(
-        '✅ ${categories.length} categorias publicadas no categoriesController',
-      );
+      MenuWarmupBarrier.instance.onCatalogReceived();
     } else if (keyExists(payload, 'store')) {
-      // Fallback: categorias vêm dentro do objeto store
       final storeData = payload['store'] as Map<String, dynamic>;
       if (storeData['categories'] != null) {
         final List<models.Category> cats =
@@ -2461,141 +2417,42 @@ class RealtimeRepository {
                 .toList();
         if (cats.isNotEmpty) {
           categoriesController.add(cats);
-          AppLogger.d(
-            '✅ ${cats.length} categorias do store publicadas no categoriesController',
-          );
+          MenuWarmupBarrier.instance.onCatalogReceived();
         }
       }
     }
 
-    // Processa produtos
+    // ✅ YIELD ao event loop para renderizar categorias
+    await Future.delayed(Duration.zero);
+
+    // Produtos em batches
     if (keyExists(payload, 'products')) {
-      AppLogger.d('📦 Processando produtos...');
-      final List<Product> products =
-          (payload['products'] as List).map((json) {
-            return Product.fromJson(json as Map<String, dynamic>);
-          }).toList();
-
-      // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
-      // (ignorava mudanças de preço/nome/disponibilidade dentro dos produtos)
-      productsController.add(products);
-      AppLogger.d('✅ Produtos processados: ${products.length}');
-    }
-
-    // Processa banners
-    if (keyExists(payload, 'banners')) {
-      AppLogger.d('🎨 Processando banners...');
-      final List<BannerModel> banners =
-          (payload['banners'] as List)
-              .map((json) => BannerModel.fromJson(json as Map<String, dynamic>))
+      final allProducts =
+          (payload['products'] as List)
+              .map((json) => Product.fromJson(json as Map<String, dynamic>))
               .toList();
-      bannersController.add(banners);
-      AppLogger.d('✅ Banners processados');
-    }
-  }
 
-  void _processNewMenuFormat(Map<String, dynamic> payload) {
-    try {
-      dynamic menuCategories;
-      dynamic menuProducts;
-
-      // Processa menu no novo formato PRIMEIRO
-      if (payload.containsKey('data') && payload['data'] is Map) {
-        final dataPayload = payload['data'] as Map<String, dynamic>;
-
-        if (dataPayload.containsKey('menu')) {
-          AppLogger.d('📋 Processando menu no novo formato...');
-
-          final menuResponseData = {
-            'code': payload['code'] ?? '00',
-            'message': payload['message'],
-            'timestamp': payload['timestamp'],
-            'data': dataPayload,
-          };
-
-          final MenuResponse menuResponse = MenuResponse.fromJson(
-            menuResponseData,
-          );
-          AppLogger.d(
-            '   ├─ Total de categorias no menu: ${menuResponse.data.menu.length}',
-          );
-
-          final adapterResult = MenuAdapter.convertMenuResponse(menuResponse);
-          menuCategories = adapterResult.categories;
-          menuProducts = adapterResult.products;
-
-          AppLogger.d(
-            '✅ [MENU ADAPTER] Menu convertido: ${adapterResult.categories.length} cats, ${adapterResult.products.length} prods',
-          );
-        }
-      }
-
-      // Processa a loja (apenas configs, sem categorias embutidas)
-      if (payload['store'] != null) {
-        AppLogger.d('🏢 Processando dados da loja...');
-        final Store store = Store.fromJson(
-          payload['store'] as Map<String, dynamic>,
-        );
-
-        // ✅ AUDIT FIX: Sempre emite — o StoreCubit faz dedup expandido
-        storeController.add(store);
-        AppLogger.d('✅ Loja publicada: ${store.name}');
-      }
-
-      // ✅ REFACTOR: Publica categorias no stream separado
-      if (menuCategories != null) {
-        try {
-          final List<models.Category> categoriesList = [];
-          if (menuCategories is List<models.Category>) {
-            categoriesList.addAll(menuCategories);
-          } else if (menuCategories is List) {
-            categoriesList.addAll(menuCategories.cast<models.Category>());
-          }
-          if (categoriesList.isNotEmpty) {
-            // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
-            categoriesController.add(categoriesList);
-            AppLogger.d(
-              '✅ ${categoriesList.length} categorias publicadas no categoriesController',
-            );
-          } else {
-            AppLogger.w('⚠️ Lista de categorias do MenuAdapter está VAZIA.');
-          }
-        } catch (e) {
-          AppLogger.e('❌ Erro ao publicar categorias: $e');
-        }
-      }
-
-      // Publica produtos
-      if (menuProducts != null && (menuProducts as List).isNotEmpty) {
-        // ✅ AUDIT FIX: Sempre emite — length-only diff era insuficiente
-        final productsList = menuProducts as List<Product>;
-        productsController.add(productsList);
-        AppLogger.d('✅ ${productsList.length} produtos do menu adicionados');
-      }
-
-      // Processa banners
-      if (payload['banners'] != null) {
-        final List<BannerModel> banners =
-            (payload['banners'] as List)
-                .map((json) => BannerModel.fromJson(json))
-                .toList();
-        bannersController.add(banners);
-        AppLogger.d('✅ Banners processados: ${banners.length}');
-      }
-    } catch (e, stackTrace) {
-      AppLogger.e('❌ ERRO CRÍTICO no _processNewMenuFormat: $e');
-      AppLogger.e('📍 StackTrace: $stackTrace');
-
-      // Fallback: tenta formato antigo se não tem categorias ainda
-      if (!categoriesController.hasValue ||
-          categoriesController.value.isEmpty) {
-        AppLogger.d('🔄 Fallback: Tentando formato antigo...');
-        _processOldMenuFormat(payload);
+      const batchSize = 30;
+      if (allProducts.length <= batchSize) {
+        productsController.add(allProducts);
       } else {
-        AppLogger.w('⚠️ Erro no processamento, mantendo dados atuais.');
+        final List<Product> accumulated = [];
+        for (int i = 0; i < allProducts.length; i += batchSize) {
+          final end = (i + batchSize).clamp(0, allProducts.length);
+          accumulated.addAll(allProducts.sublist(i, end));
+          productsController.add(List<Product>.from(accumulated));
+          if (end < allProducts.length) {
+            await Future.delayed(Duration.zero);
+          }
+        }
       }
     }
   }
+
+  // ✅ PERF: _processOldMenuFormat removido — substituído por _processOldMenuFormatAsync
+
+  // ✅ PERF: _processNewMenuFormat removido — substituído por _processNewMenuFormatAsync
+  // A versão async elimina o [Violation] 'message' handler took 771ms
 
   // ✅ AUDIT FIX: Processa atualização da loja com MERGE inteligente
   // Preserva listas operacionais existentes quando o incoming tem listas vazias

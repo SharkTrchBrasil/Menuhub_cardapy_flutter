@@ -36,6 +36,7 @@ import 'cubit/store_state.dart';
 import 'package:web/web.dart' as web;
 import 'utils/performance_optimizer.dart';
 import 'core/utils/app_logger.dart';
+import 'core/services/menu_warmup_barrier.dart';
 
 /// ✅ Sinal global: SplashPage seta true quando navega para home.
 /// O SkeletonShimmer overlay espera este sinal para fazer fade-out.
@@ -177,19 +178,49 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       final p3 = sw.elapsedMilliseconds;
 
       // ═══════════════════════════════════════════════════════════
-      // PHASE 4: Socket + Auth status (~700ms)
+      // PHASE 4: Socket (NON-BLOCKING) + Auth status (~50ms)
+      // ✅ PERF: initialize() é fire-and-forget — apenas cria socket
+      // e chama connect(). Os dados chegam via initial_state_loaded
+      // event assincronamente. A UI já mostra skeleton progressivo.
+      // checkInitialAuthStatus é em background — não bloqueia frame.
       // ═══════════════════════════════════════════════════════════
       if (authResult.isRight) {
         final totemAuth = authResult.right;
         final realtimeRepo = getIt<RealtimeRepository>();
-        await realtimeRepo.initialize(totemAuth.connectionToken);
 
+        // ✅ PERF: stale-while-revalidate — emite dados cacheados ANTES do socket
+        realtimeRepo.loadCachedMenu(storeUrl);
+
+        // ✅ PERF: initialize() registra handlers + connect() — não precisa de await
+        // O socket conecta em background e emite dados progressivamente
+        realtimeRepo.initialize(totemAuth.connectionToken);
+
+        // ✅ PERF: checkInitialAuthStatus em background (não bloqueia frame)
+        // Para usuários não-logados, retorna imediatamente (AuthStatus.unauthenticated)
+        // Para logados, faz linkCustomerToSession em background
         final authCubit = getIt<AuthCubit>();
-        await authCubit.checkInitialAuthStatus().timeout(
+        // ignore: unawaited_futures
+        authCubit.checkInitialAuthStatus().timeout(
           const Duration(seconds: 60),
+          onTimeout: () {
+            if (kDebugMode) print('⚠️ checkInitialAuthStatus timeout (60s)');
+          },
         );
 
         _registerSingleton<bool>('isInitialized', true);
+
+        // ✅ PERF: Splash fade-out driven by actual data arrival (not timeout)
+        // catalogReady completes when store + categories are emitted (~500ms)
+        MenuWarmupBarrier.instance.catalogReady.then((_) {
+          if (!homeReadySignal.value) {
+            print('🏠 [SPLASH] catalogReady → homeReadySignal = true');
+            homeReadySignal.value = true;
+          } else {
+            print(
+              '🏠 [SPLASH] catalogReady fired but homeReadySignal already true',
+            );
+          }
+        });
       } else {
         if (kDebugMode) print('❌ Store auth failed: ${authResult.left}');
         _registerSingleton<bool>('isInitialized', false);
@@ -450,8 +481,19 @@ class _SplashOverlayState extends State<_SplashOverlay> {
     super.initState();
     // Espera SplashPage sinalizar que a home está pronta
     homeReadySignal.addListener(_onHomeReady);
+
+    // ✅ FIX RACE CONDITION: Se o sinal já foi setado ANTES deste widget ser criado
+    // (dados chegaram muito rápido), faz fade imediatamente.
+    // ValueNotifier.addListener só dispara em FUTURAS mudanças, não no valor atual.
+    if (homeReadySignal.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _opacity == 1.0) {
+          setState(() => _opacity = 0.0);
+        }
+      });
+    }
+
     // ✅ Fallback: se por algum motivo o sinal não chegar em 15s, faz fade
-    // Reduzido de 30s para 15s — se dados não chegaram em 15s, algo está errado
     Future.delayed(const Duration(seconds: 15), () {
       if (mounted && _opacity == 1.0) {
         print('⚠️ SplashOverlay: fallback timeout (15s) — forçando fade');

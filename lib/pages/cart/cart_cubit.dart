@@ -32,19 +32,24 @@ class CartCubit extends Cubit<CartState> {
     );
   }
 
-  /// ✅ CRITICAL FIX: Escuta quando Socket está pronto e tenta carregar carrinho
-  /// se ainda não foi carregado (initial) ou estava em erro (ex: "Usuário não autenticado")
+  /// ✅ PERF FIX: Escuta quando Socket está pronto e tenta carregar carrinho.
+  /// Guards:
+  ///   1. distinctUntilChanged — evita emissões duplicadas (4x CartStatus.initial)
+  ///   2. Só faz fetch se ainda não carregou (initial) ou estava em erro
+  ///   3. Não tenta fetch prematuro — o fetchCart falhará graciosamente se
+  ///      não houver customer vinculado (retorna carrinho vazio, não erro)
   void _listenToSocketReady() {
     _socketReadySubscription?.cancel();
     _socketReadySubscription = _realtimeRepository
         .isSocketReadyController
         .stream
+        .distinct() // ✅ PERF: Elimina emissões duplicadas de true/true
         .listen((isReady) {
-          // Tenta carregar se Socket pronto E (ainda não carregado OU em erro)
+          if (!isReady) return;
+
           final shouldFetch =
-              isReady &&
-              (state.status == CartStatus.initial ||
-                  state.status == CartStatus.error);
+              state.status == CartStatus.initial ||
+              state.status == CartStatus.error;
 
           if (shouldFetch) {
             AppLogger.i(
