@@ -17,8 +17,15 @@ import 'package:totem/repositories/realtime_repository.dart';
 ///   ],
 /// )
 /// ```
-class ConnectionStatusBanner extends StatelessWidget {
+class ConnectionStatusBanner extends StatefulWidget {
   const ConnectionStatusBanner({super.key});
+
+  @override
+  State<ConnectionStatusBanner> createState() => _ConnectionStatusBannerState();
+}
+
+class _ConnectionStatusBannerState extends State<ConnectionStatusBanner> {
+  bool _hasConnectedOnce = false;
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +39,15 @@ class ConnectionStatusBanner extends StatelessWidget {
       builder: (context, snapshot) {
         final status = snapshot.data ?? WebSocketConnectionStatus.connected;
 
-        // ✅ Conectado = sem banner
+        // ✅ Conectado = sem banner + marca que já conectou pelo menos uma vez
         if (status == WebSocketConnectionStatus.connected) {
+          _hasConnectedOnce = true;
+          return const SizedBox.shrink();
+        }
+
+        // ✅ Não mostra banner durante conexão inicial (splash/loading)
+        // Só mostra após a primeira conexão real ser perdida
+        if (!_hasConnectedOnce) {
           return const SizedBox.shrink();
         }
 

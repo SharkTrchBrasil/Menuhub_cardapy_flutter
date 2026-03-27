@@ -1,6 +1,9 @@
 /// main.dart
+import 'dart:convert';
+import 'dart:js_interop';
 import 'dart:ui';
 import 'package:bot_toast/bot_toast.dart';
+import 'package:either_dart/either.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +11,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:totem/models/totem_auth.dart';
+import 'package:totem/widgets/skeleton_shimmer.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:provider/provider.dart';
@@ -32,6 +37,34 @@ import 'package:web/web.dart' as web;
 import 'utils/performance_optimizer.dart';
 import 'core/utils/app_logger.dart';
 
+/// ✅ Sinal global: SplashPage seta true quando navega para home.
+/// O SkeletonShimmer overlay espera este sinal para fazer fade-out.
+final ValueNotifier<bool> homeReadySignal = ValueNotifier(false);
+
+/// ✅ PERF: Lê dados auth pre-fetched do index.html (evita chamada duplicada ~1000ms)
+@JS('_getMenuhubAuth')
+external JSString? _jsGetMenuhubAuth();
+
+Map<String, dynamic>? _readPreFetchedAuthData() {
+  if (!kIsWeb) return null;
+  try {
+    final jsStr = _jsGetMenuhubAuth();
+    if (jsStr == null) return null;
+    final str = jsStr.toDart;
+    if (str.isEmpty) return null;
+    final data = jsonDecode(str) as Map<String, dynamic>;
+    // Valida campos obrigatórios
+    if (data['access_token'] == null || data['connection_token'] == null) {
+      return null;
+    }
+    print('⚡ Pre-fetched auth data found from index.html!');
+    return data;
+  } catch (e) {
+    print('⚠️ Pre-fetched auth not available: $e');
+    return null;
+  }
+}
+
 void main() {
   print('🚀 App Starting...');
   // ✅ ENTERPRISE: Inicialização Imediata (Splash Screen)
@@ -50,237 +83,272 @@ class AppBootstrapper extends StatefulWidget {
 
 class _AppBootstrapperState extends State<AppBootstrapper> {
   bool _initialized = false;
+  bool _showSplashOverlay = true;
   String? _error;
+  Widget? _cachedApp;
 
   @override
   void initState() {
     super.initState();
+    // Remove HTML overlay as soon as Flutter renders first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (kIsWeb) {
+        try {
+          web.window.dispatchEvent(web.Event('flutter_ready'));
+        } catch (_) {}
+      }
+    });
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
-    print('ℹ️ Starting _initializeApp (Resilient Mode)...');
+    final sw = Stopwatch()..start();
+    print('ℹ️ Starting _initializeApp (V2 — Pre-fetch + Deferred)...');
     try {
-      // 1. Dotenv
-      try {
-        print('📂 Loading .env...');
-        await dotenv
-            .load(fileName: 'assets/env')
-            .timeout(const Duration(seconds: 3));
-        print('✅ .env loaded');
-      } catch (e) {
-        print(
-          '⚠️ Dotenv failed to load in 3s or error: $e. Using fallback env.',
-        );
-        // ✅ FALLBACK MANUAL para caso de erro no carregamento do arquivo
-        // Chamamos load com isOptional: true para garantir que o sistema seja inicializado mesmo sem o arquivo
-        await dotenv.load(fileName: 'assets/env', isOptional: true);
-        dotenv.env.addAll({
-          'API_URL': 'https://api.menuhub.com.br',
-          'FIREBASE_PROJECT_ID': 'pdvix-c69fe',
-          'FIREBASE_API_KEY': 'AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8',
-          'FIREBASE_APP_ID': '1:209909701330:web:03ea9f309ce422c35e6b0b',
-        });
-      }
-
-      // 2. Locale
-      try {
-        print('🌍 Initializing locale...');
-        await initializeDateFormatting(
-          'pt_BR',
-          null,
-        ).timeout(const Duration(seconds: 2));
-        print('✅ Locale initialized');
-      } catch (e) {
-        print('⚠️ Locale initialization failed or timeout');
-      }
-
-      // 2.1 Timezone
-      try {
-        print('⏰ Initializing timezone...');
-        await TimezoneService.initialize();
-        print('✅ Timezone initialized');
-      } catch (e) {
-        print('⚠️ Timezone initialization failed: $e');
-      }
-
-      // 3. Performance
+      // ═══════════════════════════════════════════════════════════
+      // PHASE 1: Parallel — dotenv + locale + timezone (~500ms)
+      // ═══════════════════════════════════════════════════════════
+      await Future.wait([_initDotenv(), _initLocale(), _initTimezone()]);
       PerformanceOptimizer.configureForWeb();
-      print('✅ PerformanceOptimizer configured');
+      print('⚡ Phase 1 done in ${sw.elapsedMilliseconds}ms');
 
-      // 4. Firebase
-      try {
-        final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
-        final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
-
-        if (firebaseApiKey.isNotEmpty && firebaseProjectId.isNotEmpty) {
-          print('🔥 Initializing Firebase for project: $firebaseProjectId...');
-          await Firebase.initializeApp(
-            options: FirebaseOptions(
-              apiKey: firebaseApiKey,
-              authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'] ?? '',
-              projectId: firebaseProjectId,
-              storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? '',
-              messagingSenderId:
-                  dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '',
-              appId: dotenv.env['FIREBASE_APP_ID'] ?? '',
-              measurementId: dotenv.env['FIREBASE_MEASUREMENT_ID'],
-            ),
-          ).timeout(const Duration(seconds: 5));
-          print('✅ Firebase initialized');
-        } else {
-          print('⚠️ Firebase config missing in .env');
-        }
-      } catch (e) {
-        print('⚠️ Firebase initialization failed or timeout: $e');
-      }
-
-      // 4.1 AppLogger (Monitoring)
-      try {
-        print('📊 Initializing AppLogger...');
-        await AppLogger.initialize(
-          minLevel: kDebugMode ? LogLevel.debug : LogLevel.info,
-          enableSentry: true,
-          enableCrashlytics: true,
-          environment: kDebugMode ? 'development' : 'production',
-          dsn: dotenv.env['SENTRY_DSN'],
-        );
-        print('✅ AppLogger initialized');
-      } catch (e) {
-        print('⚠️ AppLogger initialization failed: $e');
-      }
-
-      // 5. DI (Critical)
+      // ═══════════════════════════════════════════════════════════
+      // PHASE 2: DI only — Firebase/Sentry deferred (~200ms vs ~500ms)
+      // ═══════════════════════════════════════════════════════════
+      bool diOk = false;
+      String? diErrorMsg;
       try {
         print('💉 Configuring dependencies...');
-        // Aumentamos o timeout drasticamente pois o DB local (SharedPreferences/SecureStorage)
-        // pode demorar a responder na primeira execução ou em máquinas lentas.
         await configureDependencies().timeout(const Duration(seconds: 30));
         print('✅ Dependencies configured');
+        diOk = true;
       } catch (e) {
-        print('❌ FATAL: Dependency configuration failed or timeout: $e');
-        // Se o DI falhar, o app NÃO PODE continuar pois vai dar erro de GetIt logo à frente.
-        if (getIt.isRegistered<bool>(instanceName: 'isInitialized'))
-          getIt.unregister<bool>(instanceName: 'isInitialized');
-        getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
+        print('❌ FATAL: DI failed: $e');
+        diErrorMsg = e.toString();
+      }
+      print('⚡ Phase 2 done in ${sw.elapsedMilliseconds}ms');
 
-        if (getIt.isRegistered<String>(instanceName: 'authError'))
-          getIt.unregister<String>(instanceName: 'authError');
-        getIt.registerSingleton<String>(
-          'Erro ao configurar o sistema (DI). Detalhes: $e',
-          instanceName: 'authError',
+      if (!diOk) {
+        _registerSingleton<bool>('isInitialized', false);
+        _registerSingleton<String>(
+          'authError',
+          'Erro ao configurar o sistema (DI). Detalhes: $diErrorMsg',
         );
-
-        if (mounted)
-          setState(
-            () => _initialized = true,
-          ); // Para mostrar a tela de erro configurada
-        return; // Sai do _initializeApp
+        if (mounted) setState(() => _initialized = true);
+        return;
       }
 
-      // 6. Secure Storage (Critical Load)
-      try {
-        print('🔐 Loading customer from storage...');
-        await getIt<CustomerController>()
-            .loadCustomerFromSecureStorage()
-            .timeout(const Duration(seconds: 10));
-        print('✅ Customer loaded');
-      } catch (e) {
-        print('⚠️ Customer storage load failed: $e');
-      }
+      // ═══════════════════════════════════════════════════════════
+      // PHASE 3: Parallel — customerStorage + auth token (~1000ms)
+      // ✅ OPT: Tenta reusar auth pre-fetched do index.html JS
+      //         Se disponível, elimina chamada de rede (~1000ms)
+      // ═══════════════════════════════════════════════════════════
+      final String storeUrl = _extractStoreUrlFromBrowser();
+      print('🏪 Store Slug: $storeUrl');
+      _registerSingleton<String>('storeUrl', storeUrl);
 
-      // 7. Auth Flow (Critical)
-      print('🔐 Starting auth flow...');
-      try {
-        String storeUrl = _extractStoreUrlFromBrowser();
-        print('🏪 Store Slug Detected: $storeUrl');
+      // Parallel: customer storage + auth token
+      final authRepo = getIt<AuthRepository>();
+      late Either<String, TotemAuth> authResult;
 
-        if (getIt.isRegistered<String>(instanceName: 'storeUrl')) {
-          getIt.unregister<String>(instanceName: 'storeUrl');
-        }
-        getIt.registerSingleton<String>(storeUrl, instanceName: 'storeUrl');
-
-        final authRepo = getIt<AuthRepository>();
-        print('📡 Fetching store token for: $storeUrl...');
-
-        // Aumentamos o timeout para garantir que conexões oscilantes não quebrem o app
-        final authResult = await authRepo
-            .getToken(storeUrl)
-            .timeout(const Duration(seconds: 30));
-        print(
-          '✅ Store token result received: ${authResult.isRight ? "SUCCESS" : "ERROR"}',
-        );
-
-        if (authResult.isRight) {
-          final totemAuth = authResult.right;
-          print(
-            '🔌 Initializing realtime socket (Token: ${totemAuth.connectionToken.substring(0, 5)}...)',
-          );
-          final realtimeRepo = getIt<RealtimeRepository>();
-          // ✅ CORREÇÃO: Inicializa socket em background, não aguarda conexão
-          // A conexão continua em background e o heartbeat monitora a saúde
-          await realtimeRepo.initialize(totemAuth.connectionToken);
-          print('✅ Socket initialized');
-
-          print('👤 Running checkInitialAuthStatus (Google Redirect check)...');
-          final authCubit = getIt<AuthCubit>();
-          // IMPORTANTE: Esse passo pode demorar muito se estiver voltando de um redirect do Google
-          await authCubit.checkInitialAuthStatus().timeout(
-            const Duration(seconds: 60),
-          );
-          print('✅ Auth status checked and verified.');
-
-          if (getIt.isRegistered<bool>(instanceName: 'isInitialized')) {
-            getIt.unregister<bool>(instanceName: 'isInitialized');
-          }
-          getIt.registerSingleton<bool>(true, instanceName: 'isInitialized');
-        } else {
-          print('❌ Store authentication failed: ${authResult.left}');
-
-          if (getIt.isRegistered<bool>(instanceName: 'isInitialized'))
-            getIt.unregister<bool>(instanceName: 'isInitialized');
-          getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
-
-          if (getIt.isRegistered<String>(instanceName: 'authError'))
-            getIt.unregister<String>(instanceName: 'authError');
-          getIt.registerSingleton<String>(
-            'Loja "$storeUrl" não encontrada no sistema.',
-            instanceName: 'authError',
-          );
-        }
-      } catch (e, stack) {
-        print("❌ CRITICAL: Auth flow failed or timeout: $e");
-        print(stack);
-
-        if (getIt.isRegistered<bool>(instanceName: 'isInitialized'))
-          getIt.unregister<bool>(instanceName: 'isInitialized');
-        getIt.registerSingleton<bool>(false, instanceName: 'isInitialized');
-
-        if (getIt.isRegistered<String>(instanceName: 'authError'))
-          getIt.unregister<String>(instanceName: 'authError');
-        getIt.registerSingleton<String>(
-          'Erro de conexão crítica na inicialização. Detalhes: $e',
-          instanceName: 'authError',
-        );
-      }
-
-      if (mounted) {
-        print('🚀 App Ready. Dispatching flutter_ready event.');
-        setState(() => _initialized = true);
-
-        if (kIsWeb) {
+      await Future.wait([
+        // 🔐 Customer storage (local — ~100ms)
+        () async {
           try {
-            web.window.dispatchEvent(web.Event('flutter_ready'));
+            await getIt<CustomerController>()
+                .loadCustomerFromSecureStorage()
+                .timeout(const Duration(seconds: 10));
+            print('✅ Customer loaded');
           } catch (e) {
-            print('⚠️ Failed to dispatch flutter_ready: $e');
+            print('⚠️ Customer storage load failed: $e');
           }
-        }
+        }(),
+        // 🔐 Auth token (pre-fetch ou rede)
+        () async {
+          final preFetched = _readPreFetchedAuthData();
+          if (preFetched != null) {
+            try {
+              final totemAuth = authRepo.initFromPreFetchedData(preFetched);
+              authResult = Right(totemAuth);
+              print(
+                '⚡ Pre-fetched auth used! Saved ~1000ms (store: ${totemAuth.storeName})',
+              );
+              return;
+            } catch (e) {
+              print(
+                '⚠️ Pre-fetched auth parse failed, falling back to API: $e',
+              );
+            }
+          }
+          // Fallback: chamada de rede normal
+          print('📡 Fetching store token for: $storeUrl...');
+          authResult = await authRepo
+              .getToken(storeUrl)
+              .timeout(const Duration(seconds: 30));
+          print('✅ Store token: ${authResult.isRight ? "SUCCESS" : "ERROR"}');
+        }(),
+      ]);
+      print('⚡ Phase 3 done in ${sw.elapsedMilliseconds}ms');
+
+      // ═══════════════════════════════════════════════════════════
+      // PHASE 4: Socket + Auth status (~700ms)
+      // ═══════════════════════════════════════════════════════════
+      if (authResult.isRight) {
+        final totemAuth = authResult.right;
+        print(
+          '🔌 Initializing realtime socket (Token: ${totemAuth.connectionToken.substring(0, 5)}...)',
+        );
+        final realtimeRepo = getIt<RealtimeRepository>();
+        await realtimeRepo.initialize(totemAuth.connectionToken);
+        print('✅ Socket initialized');
+
+        print('👤 Running checkInitialAuthStatus...');
+        final authCubit = getIt<AuthCubit>();
+        await authCubit.checkInitialAuthStatus().timeout(
+          const Duration(seconds: 60),
+        );
+        print('✅ Auth status checked.');
+
+        _registerSingleton<bool>('isInitialized', true);
+      } else {
+        print('❌ Store authentication failed: ${authResult.left}');
+        _registerSingleton<bool>('isInitialized', false);
+        _registerSingleton<String>(
+          'authError',
+          'Loja "$storeUrl" não encontrada no sistema.',
+        );
       }
+
+      print('🚀 Total init: ${sw.elapsedMilliseconds}ms');
+      if (mounted) {
+        setState(() => _initialized = true);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // DEFERRED: Firebase + AppLogger/Sentry (após home renderizar)
+      // Não são necessários para o carregamento inicial.
+      // ═══════════════════════════════════════════════════════════
+      _initDeferredServices();
     } catch (e, stack) {
       print('💥 CRITICAL ERROR during _initializeApp: $e');
       print(stack);
       if (mounted) setState(() => _error = e.toString());
     }
+  }
+
+  /// Inicializa Firebase + Sentry em background após home renderizar.
+  void _initDeferredServices() {
+    Future.wait([_initFirebase(), _initAppLogger()])
+        .then((_) {
+          print('✅ Deferred services ready (Firebase + Sentry)');
+        })
+        .catchError((e) {
+          print('⚠️ Deferred services partial failure: $e');
+        });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Helper methods for parallel init
+  // ═══════════════════════════════════════════════════════════
+
+  Future<void> _initDotenv() async {
+    try {
+      print('📂 Loading .env...');
+      // ✅ PERF: Timeout reduzido de 3s para 500ms
+      // Em web, se o asset não carrega em 500ms, o fallback inline é suficiente.
+      // Isso economiza ~2.5s no boot quando o load falha.
+      await dotenv
+          .load(fileName: 'assets/env')
+          .timeout(const Duration(milliseconds: 500));
+      print('✅ .env loaded');
+    } catch (e) {
+      print('⚠️ Dotenv failed: $e. Using fallback.');
+      // ✅ PERF: Usa load com isOptional + mergeWith para inicializar o env map
+      // sem depender do arquivo, injetando valores de fallback inline
+      await dotenv.load(
+        fileName: 'assets/env',
+        isOptional: true,
+        mergeWith: {
+          'API_URL': 'https://api.menuhub.com.br',
+          'FIREBASE_PROJECT_ID': 'pdvix-c69fe',
+          'FIREBASE_API_KEY': 'AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8',
+          'FIREBASE_APP_ID': '1:209909701330:web:03ea9f309ce422c35e6b0b',
+          'FIREBASE_AUTH_DOMAIN': 'pdvix-c69fe.firebaseapp.com',
+          'FIREBASE_STORAGE_BUCKET': 'pdvix-c69fe.appspot.com',
+          'FIREBASE_MESSAGING_SENDER_ID': '209909701330',
+          'FIREBASE_MEASUREMENT_ID': 'G-R2QQ42E9T7',
+        },
+      );
+    }
+  }
+
+  Future<void> _initLocale() async {
+    try {
+      await initializeDateFormatting(
+        'pt_BR',
+        null,
+      ).timeout(const Duration(seconds: 2));
+      print('✅ Locale initialized');
+    } catch (e) {
+      print('⚠️ Locale initialization failed or timeout');
+    }
+  }
+
+  Future<void> _initTimezone() async {
+    try {
+      await TimezoneService.initialize();
+      print('✅ Timezone initialized');
+    } catch (e) {
+      print('⚠️ Timezone initialization failed: $e');
+    }
+  }
+
+  Future<void> _initFirebase() async {
+    try {
+      final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
+      final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
+      if (firebaseApiKey.isNotEmpty && firebaseProjectId.isNotEmpty) {
+        print('🔥 Initializing Firebase...');
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: firebaseApiKey,
+            authDomain: dotenv.env['FIREBASE_AUTH_DOMAIN'] ?? '',
+            projectId: firebaseProjectId,
+            storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? '',
+            messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '',
+            appId: dotenv.env['FIREBASE_APP_ID'] ?? '',
+            measurementId: dotenv.env['FIREBASE_MEASUREMENT_ID'],
+          ),
+        ).timeout(const Duration(seconds: 5));
+        print('✅ Firebase initialized');
+      } else {
+        print('⚠️ Firebase config missing in .env');
+      }
+    } catch (e) {
+      print('⚠️ Firebase initialization failed: $e');
+    }
+  }
+
+  Future<void> _initAppLogger() async {
+    try {
+      await AppLogger.initialize(
+        minLevel: kDebugMode ? LogLevel.debug : LogLevel.info,
+        enableSentry: true,
+        enableCrashlytics: true,
+        environment: kDebugMode ? 'development' : 'production',
+        dsn: dotenv.env['SENTRY_DSN'],
+      );
+      print('✅ AppLogger initialized');
+    } catch (e) {
+      print('⚠️ AppLogger initialization failed: $e');
+    }
+  }
+
+  void _registerSingleton<T extends Object>(String name, T value) {
+    if (getIt.isRegistered<T>(instanceName: name)) {
+      getIt.unregister<T>(instanceName: name);
+    }
+    getIt.registerSingleton<T>(value, instanceName: name);
   }
 
   // ✅ Função auxiliar para extrair slug da URL
@@ -303,35 +371,26 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       );
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // PRE-INIT: SkeletonShimmer enquanto inicializa (mesmo visual
+    // que o overlay, garantindo continuidade visual sem piscada)
+    // ═══════════════════════════════════════════════════════════
     if (!_initialized) {
-      // ✅ Mostra loading idêntico ao do index.html para uma transição suave
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.white,
-          body: Center(
-            child: SizedBox(
-              width: 50,
-              height: 50,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                backgroundColor: Color(0xFFF3F3F3), // Trilha cinza (#f3f3f3)
-              ),
-            ),
-          ),
-        ),
+        home: SkeletonShimmer(),
       );
     }
 
-    // ✅ SEGURANÇA: Verifica se houve erro de autenticação
+    // ═══════════════════════════════════════════════════════════
+    // ERRO DE AUTH: Mostra tela de erro
+    // ═══════════════════════════════════════════════════════════
     final authError =
         getIt.isRegistered<String>(instanceName: 'authError')
             ? getIt.get<String>(instanceName: 'authError')
             : null;
 
     if (authError != null) {
-      // ✅ SEGURANÇA: Mostra tela de erro ao invés de loading infinito
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         home: Scaffold(
@@ -386,7 +445,82 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       );
     }
 
-    return MyApp();
+    // ═══════════════════════════════════════════════════════════
+    // SEAMLESS TRANSITION: MyApp renderiza por baixo, splash
+    // overlay faz fade-out só quando a home já pintou.
+    // Zero piscada branca.
+    // ═══════════════════════════════════════════════════════════
+    _cachedApp ??= MyApp();
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Stack(
+        children: [
+          _cachedApp!,
+          if (_showSplashOverlay)
+            _SplashOverlay(
+              onFadeComplete: () {
+                if (mounted) setState(() => _showSplashOverlay = false);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Overlay que cobre o MyApp com o splash Lottie e faz fade-out
+/// após a home ter renderizado por baixo.
+class _SplashOverlay extends StatefulWidget {
+  final VoidCallback onFadeComplete;
+  const _SplashOverlay({required this.onFadeComplete});
+
+  @override
+  State<_SplashOverlay> createState() => _SplashOverlayState();
+}
+
+class _SplashOverlayState extends State<_SplashOverlay> {
+  double _opacity = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Espera SplashPage sinalizar que a home está pronta
+    homeReadySignal.addListener(_onHomeReady);
+    // ✅ Fallback: se por algum motivo o sinal não chegar em 15s, faz fade
+    // Reduzido de 30s para 15s — se dados não chegaram em 15s, algo está errado
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && _opacity == 1.0) {
+        print('⚠️ SplashOverlay: fallback timeout (15s) — forçando fade');
+        setState(() => _opacity = 0.0);
+      }
+    });
+  }
+
+  void _onHomeReady() {
+    if (!homeReadySignal.value || !mounted) return;
+    // Espera 1 frame para a home pintar, depois faz fade
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _opacity = 0.0);
+    });
+  }
+
+  @override
+  void dispose() {
+    homeReadySignal.removeListener(_onHomeReady);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: _opacity < 1.0,
+      child: AnimatedOpacity(
+        opacity: _opacity,
+        duration: const Duration(milliseconds: 500),
+        onEnd: widget.onFadeComplete,
+        child: const SkeletonShimmer(),
+      ),
+    );
   }
 }
 

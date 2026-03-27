@@ -6,11 +6,50 @@ import 'package:totem/themes/classic/desktop/home_body_desktop.dart';
 import 'package:totem/themes/classic/mobile/home_body_mobile.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/cubit/catalog_state.dart';
+import 'package:totem/main.dart' show homeReadySignal;
 
 /// Home Tab Page - Otimizada para funcionar como tab
 /// Usa ResponsiveBuilder para adaptar mobile/desktop
-class HomeTabPage extends StatelessWidget {
+///
+/// ✅ CORREÇÃO: homeReadySignal só dispara quando dados estão prontos
+class HomeTabPage extends StatefulWidget {
   const HomeTabPage({super.key});
+
+  @override
+  State<HomeTabPage> createState() => _HomeTabPageState();
+}
+
+class _HomeTabPageState extends State<HomeTabPage> {
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Verifica se os dados já estão disponíveis no primeiro frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndSignalReady();
+    });
+  }
+
+  /// ✅ Verifica se CatalogCubit + StoreCubit já possuem dados
+  /// e só então sinaliza homeReady para o overlay fazer fade-out.
+  void _checkAndSignalReady() {
+    if (!mounted || homeReadySignal.value) return;
+
+    final catalogState = context.read<CatalogCubit>().state;
+    final storeState = context.read<StoreCubit>().state;
+
+    final hasProducts =
+        catalogState.products != null && catalogState.products!.isNotEmpty;
+    final hasStore = storeState.store != null;
+
+    if (hasProducts && hasStore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !homeReadySignal.value) {
+          print('✅ [HomeTabPage] Dados prontos! Sinalizando homeReady.');
+          homeReadySignal.value = true;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

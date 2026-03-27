@@ -48,6 +48,22 @@ class AuthRepository {
     return _refreshDio!;
   }
 
+  /// ✅ PERF: Inicializa sessão a partir de dados pre-fetched do index.html JS.
+  /// Evita chamada duplicada ao /auth/subdomain (~1000ms economizados).
+  TotemAuth initFromPreFetchedData(Map<String, dynamic> json) {
+    final totemAuth = TotemAuth.fromJson(json);
+    _session.setStoreSession(
+      accessToken: totemAuth.accessToken,
+      refreshToken: totemAuth.refreshToken,
+      expiresIn: totemAuth.expiresIn,
+      storeUrl: totemAuth.storeUrl,
+      storeName: totemAuth.storeName,
+      storeId: totemAuth.storeId,
+      connectionToken: totemAuth.connectionToken,
+    );
+    return totemAuth;
+  }
+
   /// ✅ STATELESS: Autentica na loja via subdomínio (URL é o único requisito)
   /// NÃO depende de localStorage, sessionStorage ou cookies.
   /// Tokens são armazenados APENAS em memória (InMemorySessionStore).

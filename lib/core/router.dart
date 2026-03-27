@@ -80,10 +80,22 @@ GoRouter createGoRouter() {
     routes: [
       GoRoute(
         path: '/splash',
-        builder:
-            (_, state) => BlocProvider(
-              create: (_) => SplashPageCubit(),
-              child: const SplashPage(),
+        pageBuilder:
+            (_, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: BlocProvider(
+                create: (_) => SplashPageCubit(),
+                child: const SplashPage(),
+              ),
+              transitionsBuilder: (
+                context,
+                animation,
+                secondaryAnimation,
+                child,
+              ) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 200),
             ),
       ),
       GoRoute(path: '/not-found', builder: (_, state) => const NotFoundPage()),
@@ -334,13 +346,23 @@ GoRouter createGoRouter() {
           // 🏠 HOME - /
           GoRoute(
             path: '/',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final isMobile = MediaQuery.of(context).size.width < 768;
-              if (isMobile) {
-                return const MainTabPage();
-              } else {
-                return const DesktopHomeWrapper();
-              }
+              final child =
+                  isMobile ? const MainTabPage() : const DesktopHomeWrapper();
+              return CustomTransitionPage(
+                key: state.pageKey,
+                child: child,
+                transitionsBuilder: (
+                  context,
+                  animation,
+                  secondaryAnimation,
+                  child,
+                ) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              );
             },
             routes: [
               // Subrotas que ainda fazem sentido estar aninhadas na home
@@ -649,20 +671,21 @@ GoRouter createGoRouter() {
                 path: 'orders/waiting',
                 builder: (context, state) {
                   final publicId = state.uri.queryParameters['order'] ?? '';
-                  
+
                   // Tenta buscar da lista já carregada se o cliente estiver logado
                   final ordersCubit = context.read<OrdersCubit>();
-                  final order = ordersCubit.state.orders.where((o) => o.publicId == publicId).firstOrNull;
-                  
+                  final order =
+                      ordersCubit.state.orders
+                          .where((o) => o.publicId == publicId)
+                          .firstOrNull;
+
                   if (order != null) {
                     return OrderDetailsPage(order: order);
                   }
-                  
+
                   // Fallback se não estiver carregado ou não existir na sessão atual
                   return Scaffold(
-                    appBar: AppBar(
-                      title: const Text('Rastrear Pedido'),
-                    ),
+                    appBar: AppBar(title: const Text('Rastrear Pedido')),
                     body: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,

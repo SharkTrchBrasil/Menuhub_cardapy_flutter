@@ -2,14 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page_state.dart';
 import 'package:totem/themes/ds_theme.dart';
-import 'package:totem/widgets/food_loading_animation.dart';
+import 'package:totem/widgets/dot_loading.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import '../../themes/ds_theme_switcher.dart';
+import 'package:totem/main.dart' show homeReadySignal;
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -60,9 +60,6 @@ class _SplashPageState extends State<SplashPage> {
         final addressCubit = context.read<AddressCubit>();
         await addressCubit.loadAddresses(customer.id!);
 
-        // ✅ Espera um frame para garantir que o estado foi atualizado
-        await Future.delayed(const Duration(milliseconds: 100));
-
         if (!mounted || _hasNavigated) return;
 
         // ✅ Verifica novamente se ainda estamos no splash após o await
@@ -88,6 +85,7 @@ class _SplashPageState extends State<SplashPage> {
             "📍 [SplashPage] Usuário logado SEM endereço. Redirecionando para /address-onboarding",
           );
           _hasNavigated = true;
+          homeReadySignal.value = true;
           context.go('/address-onboarding');
           return;
         }
@@ -102,6 +100,7 @@ class _SplashPageState extends State<SplashPage> {
       // ✅ Tem endereço ou não está logado: vai para home normalmente
       _hasNavigated = true;
       if (mounted) {
+        // homeReadySignal.value = true; // Removido: o sinal será enviado pela HomeTabPage após renderizar a UI
         context.go('/');
       }
     } catch (e) {
@@ -109,6 +108,7 @@ class _SplashPageState extends State<SplashPage> {
       // Em caso de erro, vai para home
       _hasNavigated = true;
       if (mounted) {
+        // homeReadySignal.value = true; // Removido
         context.go('/');
       }
     }
@@ -155,34 +155,7 @@ class _SplashPageState extends State<SplashPage> {
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // ✅ Logo da loja
-              Image.asset('assets/logo.png', width: 280, height: 280),
-              const SizedBox(height: 32),
-              // ✅ Lottie: Animação de loading interativa
-              SizedBox(
-                width: 180,
-                height: 180,
-                child: Lottie.asset(
-                  'assets/animations/splash_loading.json',
-                  fit: BoxFit.contain,
-                  repeat: true,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const FoodLoadingAnimation(size: 60);
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Preparando seu cardápio...',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
+            children: const [DotLoading(color: Colors.black, size: 10)],
           ),
         ),
       ),
