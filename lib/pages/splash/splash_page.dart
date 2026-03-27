@@ -4,11 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:totem/pages/splash/splash_page_cubit.dart';
 import 'package:totem/pages/splash/splash_page_state.dart';
-import 'package:totem/themes/ds_theme.dart';
-import 'package:totem/widgets/dot_loading.dart';
 import 'package:totem/cubit/auth_cubit.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
-import '../../themes/ds_theme_switcher.dart';
+import 'package:totem/widgets/skeleton_shimmer.dart';
 import 'package:totem/main.dart' show homeReadySignal;
 
 class SplashPage extends StatefulWidget {
@@ -116,7 +114,6 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
-    final DsTheme theme = context.watch<DsThemeSwitcher>().theme;
 
     return MultiBlocListener(
       listeners: [
@@ -150,15 +147,7 @@ class _SplashPageState extends State<SplashPage> {
           },
         ),
       ],
-      child: Scaffold(
-        backgroundColor: theme.backgroundColor,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [DotLoading(color: Colors.black, size: 10)],
-          ),
-        ),
-      ),
+      child: const SkeletonShimmer(),
     );
   }
 }
