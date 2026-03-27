@@ -70,12 +70,6 @@ class AddressCubit extends Cubit<AddressState> {
         );
       } else {
         final addresses = result.right;
-        print('🔍 [AddressCubit] Endereços carregados: ${addresses.length}');
-        for (var addr in addresses) {
-          print(
-            '   ├─ ID: ${addr.id}, Favorito: ${addr.isFavorite}, Rua: ${addr.street}',
-          );
-        }
 
         // --- ✅ LÓGICA DE SELEÇÃO INTELIGENTE REFORÇADA ---
         CustomerAddress? selected;
@@ -119,10 +113,6 @@ class AddressCubit extends Cubit<AddressState> {
   /// ✅ OTIMIZAÇÃO: Popula endereços diretamente a partir da resposta do login
   /// Evita chamada HTTP separada para /customer/{id}/addresses
   void setAddressesFromLogin(List<CustomerAddress> addresses) {
-    print(
-      '🔍 [AddressCubit] setAddressesFromLogin: recebidos ${addresses.length} endereços',
-    );
-
     // --- ✅ LÓGICA DE SELEÇÃO INTELIGENTE REFORÇADA ---
     CustomerAddress? selected;
     if (addresses.isNotEmpty) {
@@ -145,7 +135,6 @@ class AddressCubit extends Cubit<AddressState> {
         addressFees: {}, // Reset
       ),
     );
-    print('✅ [AddressCubit] Status atualizado via dados de login');
 
     // ✅ PRE-CÁLCULO DE FRETE
     _precalculateAllFees(addresses);

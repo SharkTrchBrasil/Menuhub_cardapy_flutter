@@ -58,8 +58,9 @@ class OrdersCubit extends Cubit<OrdersState> {
   /// Evita chamada HTTP separada para /customer/{id}/orders
   void setOrdersFromLogin(List<Order> orders) {
     emit(state.copyWith(status: OrdersStatus.success, orders: orders));
-    print(
-      '✅ [OrdersCubit] ${orders.length} pedidos carregados do login (sem HTTP)',
+    AppLogger.d(
+      '${orders.length} pedidos carregados do login (sem HTTP)',
+      tag: 'ORDERS',
     );
   }
 

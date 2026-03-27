@@ -2,6 +2,13 @@
 <html>
 
 <head>
+  <!-- ✅ PERF: Preconnect to API domain — starts DNS+SSL+TCP in parallel with HTML parsing.
+       Saves ~340ms on the CORS preflight (OPTIONS) that would otherwise open a cold connection. -->
+  <link rel="preconnect" href="https://api.menuhub.com.br" crossorigin>
+  <link rel="dns-prefetch" href="https://api.menuhub.com.br">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
   <!-- ✅ PREVIEW SOCIAL: Injeta meta tags dinamicamente via POST /auth/subdomain -->
   <script>
     (async function() {

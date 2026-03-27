@@ -57,16 +57,15 @@ Map<String, dynamic>? _readPreFetchedAuthData() {
     if (data['access_token'] == null || data['connection_token'] == null) {
       return null;
     }
-    print('⚡ Pre-fetched auth data found from index.html!');
+    if (kDebugMode) print('⚡ Pre-fetched auth data found from index.html!');
     return data;
   } catch (e) {
-    print('⚠️ Pre-fetched auth not available: $e');
+    if (kDebugMode) print('⚠️ Pre-fetched auth not available: $e');
     return null;
   }
 }
 
 void main() {
-  print('🚀 App Starting...');
   // ✅ ENTERPRISE: Inicialização Imediata (Splash Screen)
   // Removemos todos os 'await' antes do runApp para garantir feedback visual instantâneo.
   WidgetsFlutterBinding.ensureInitialized();
@@ -103,14 +102,13 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
 
   Future<void> _initializeApp() async {
     final sw = Stopwatch()..start();
-    print('ℹ️ Starting _initializeApp (V2 — Pre-fetch + Deferred)...');
     try {
       // ═══════════════════════════════════════════════════════════
       // PHASE 1: Parallel — dotenv + locale + timezone (~500ms)
       // ═══════════════════════════════════════════════════════════
       await Future.wait([_initDotenv(), _initLocale(), _initTimezone()]);
       PerformanceOptimizer.configureForWeb();
-      print('⚡ Phase 1 done in ${sw.elapsedMilliseconds}ms');
+      final p1 = sw.elapsedMilliseconds;
 
       // ═══════════════════════════════════════════════════════════
       // PHASE 2: DI only — Firebase/Sentry deferred (~200ms vs ~500ms)
@@ -118,15 +116,13 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       bool diOk = false;
       String? diErrorMsg;
       try {
-        print('💉 Configuring dependencies...');
         await configureDependencies().timeout(const Duration(seconds: 30));
-        print('✅ Dependencies configured');
         diOk = true;
       } catch (e) {
         print('❌ FATAL: DI failed: $e');
         diErrorMsg = e.toString();
       }
-      print('⚡ Phase 2 done in ${sw.elapsedMilliseconds}ms');
+      final p2 = sw.elapsedMilliseconds;
 
       if (!diOk) {
         _registerSingleton<bool>('isInitialized', false);
@@ -144,7 +140,6 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       //         Se disponível, elimina chamada de rede (~1000ms)
       // ═══════════════════════════════════════════════════════════
       final String storeUrl = _extractStoreUrlFromBrowser();
-      print('🏪 Store Slug: $storeUrl');
       _registerSingleton<String>('storeUrl', storeUrl);
 
       // Parallel: customer storage + auth token
@@ -158,9 +153,8 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
             await getIt<CustomerController>()
                 .loadCustomerFromSecureStorage()
                 .timeout(const Duration(seconds: 10));
-            print('✅ Customer loaded');
           } catch (e) {
-            print('⚠️ Customer storage load failed: $e');
+            if (kDebugMode) print('⚠️ Customer storage load failed: $e');
           }
         }(),
         // 🔐 Auth token (pre-fetch ou rede)
@@ -170,48 +164,34 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
             try {
               final totemAuth = authRepo.initFromPreFetchedData(preFetched);
               authResult = Right(totemAuth);
-              print(
-                '⚡ Pre-fetched auth used! Saved ~1000ms (store: ${totemAuth.storeName})',
-              );
               return;
             } catch (e) {
-              print(
-                '⚠️ Pre-fetched auth parse failed, falling back to API: $e',
-              );
+              if (kDebugMode) print('⚠️ Pre-fetched auth parse failed: $e');
             }
           }
-          // Fallback: chamada de rede normal
-          print('📡 Fetching store token for: $storeUrl...');
           authResult = await authRepo
               .getToken(storeUrl)
               .timeout(const Duration(seconds: 30));
-          print('✅ Store token: ${authResult.isRight ? "SUCCESS" : "ERROR"}');
         }(),
       ]);
-      print('⚡ Phase 3 done in ${sw.elapsedMilliseconds}ms');
+      final p3 = sw.elapsedMilliseconds;
 
       // ═══════════════════════════════════════════════════════════
       // PHASE 4: Socket + Auth status (~700ms)
       // ═══════════════════════════════════════════════════════════
       if (authResult.isRight) {
         final totemAuth = authResult.right;
-        print(
-          '🔌 Initializing realtime socket (Token: ${totemAuth.connectionToken.substring(0, 5)}...)',
-        );
         final realtimeRepo = getIt<RealtimeRepository>();
         await realtimeRepo.initialize(totemAuth.connectionToken);
-        print('✅ Socket initialized');
 
-        print('👤 Running checkInitialAuthStatus...');
         final authCubit = getIt<AuthCubit>();
         await authCubit.checkInitialAuthStatus().timeout(
           const Duration(seconds: 60),
         );
-        print('✅ Auth status checked.');
 
         _registerSingleton<bool>('isInitialized', true);
       } else {
-        print('❌ Store authentication failed: ${authResult.left}');
+        if (kDebugMode) print('❌ Store auth failed: ${authResult.left}');
         _registerSingleton<bool>('isInitialized', false);
         _registerSingleton<String>(
           'authError',
@@ -219,7 +199,9 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         );
       }
 
-      print('🚀 Total init: ${sw.elapsedMilliseconds}ms');
+      print(
+        '🚀 Init: P1=${p1}ms P2=${p2}ms P3=${p3}ms Total=${sw.elapsedMilliseconds}ms',
+      );
       if (mounted) {
         setState(() => _initialized = true);
       }
@@ -230,21 +212,18 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       // ═══════════════════════════════════════════════════════════
       _initDeferredServices();
     } catch (e, stack) {
-      print('💥 CRITICAL ERROR during _initializeApp: $e');
-      print(stack);
+      print('💥 CRITICAL: $e\n$stack');
       if (mounted) setState(() => _error = e.toString());
     }
   }
 
   /// Inicializa Firebase + Sentry em background após home renderizar.
   void _initDeferredServices() {
-    Future.wait([_initFirebase(), _initAppLogger()])
-        .then((_) {
-          print('✅ Deferred services ready (Firebase + Sentry)');
-        })
-        .catchError((e) {
-          print('⚠️ Deferred services partial failure: $e');
-        });
+    Future.wait([_initFirebase(), _initAppLogger()]).then((_) {}).catchError((
+      Object e,
+    ) {
+      if (kDebugMode) print('⚠️ Deferred services failure: $e');
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -252,34 +231,24 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
   // ═══════════════════════════════════════════════════════════
 
   Future<void> _initDotenv() async {
-    try {
-      print('📂 Loading .env...');
-      // ✅ PERF: Timeout reduzido de 3s para 500ms
-      // Em web, se o asset não carrega em 500ms, o fallback inline é suficiente.
-      // Isso economiza ~2.5s no boot quando o load falha.
-      await dotenv
-          .load(fileName: 'assets/env')
-          .timeout(const Duration(milliseconds: 500));
-      print('✅ .env loaded');
-    } catch (e) {
-      print('⚠️ Dotenv failed: $e. Using fallback.');
-      // ✅ PERF: Usa load com isOptional + mergeWith para inicializar o env map
-      // sem depender do arquivo, injetando valores de fallback inline
-      await dotenv.load(
-        fileName: 'assets/env',
-        isOptional: true,
-        mergeWith: {
-          'API_URL': 'https://api.menuhub.com.br',
-          'FIREBASE_PROJECT_ID': 'pdvix-c69fe',
-          'FIREBASE_API_KEY': 'AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8',
-          'FIREBASE_APP_ID': '1:209909701330:web:03ea9f309ce422c35e6b0b',
-          'FIREBASE_AUTH_DOMAIN': 'pdvix-c69fe.firebaseapp.com',
-          'FIREBASE_STORAGE_BUCKET': 'pdvix-c69fe.appspot.com',
-          'FIREBASE_MESSAGING_SENDER_ID': '209909701330',
-          'FIREBASE_MEASUREMENT_ID': 'G-R2QQ42E9T7',
-        },
-      );
-    }
+    // ✅ PERF: Single load com isOptional + mergeWith (fallback inline).
+    // Evita double-load: antes, timeout de 500ms SEMPRE falhava no Web,
+    // desperdiçando ~500ms antes de cair no fallback.
+    // Agora: tenta carregar o arquivo, se não existir usa valores inline.
+    await dotenv.load(
+      fileName: 'assets/env',
+      isOptional: true,
+      mergeWith: {
+        'API_URL': 'https://api.menuhub.com.br',
+        'FIREBASE_PROJECT_ID': 'pdvix-c69fe',
+        'FIREBASE_API_KEY': 'AIzaSyAvI8rSa8mgZcg4IJAqJOgMIQEF7IwtDt8',
+        'FIREBASE_APP_ID': '1:209909701330:web:03ea9f309ce422c35e6b0b',
+        'FIREBASE_AUTH_DOMAIN': 'pdvix-c69fe.firebaseapp.com',
+        'FIREBASE_STORAGE_BUCKET': 'pdvix-c69fe.appspot.com',
+        'FIREBASE_MESSAGING_SENDER_ID': '209909701330',
+        'FIREBASE_MEASUREMENT_ID': 'G-R2QQ42E9T7',
+      },
+    );
   }
 
   Future<void> _initLocale() async {
@@ -288,18 +257,16 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         'pt_BR',
         null,
       ).timeout(const Duration(seconds: 2));
-      print('✅ Locale initialized');
     } catch (e) {
-      print('⚠️ Locale initialization failed or timeout');
+      if (kDebugMode) print('⚠️ Locale init failed');
     }
   }
 
   Future<void> _initTimezone() async {
     try {
       await TimezoneService.initialize();
-      print('✅ Timezone initialized');
     } catch (e) {
-      print('⚠️ Timezone initialization failed: $e');
+      if (kDebugMode) print('⚠️ Timezone init failed: $e');
     }
   }
 
@@ -308,7 +275,6 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
       final firebaseApiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';
       final firebaseProjectId = dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
       if (firebaseApiKey.isNotEmpty && firebaseProjectId.isNotEmpty) {
-        print('🔥 Initializing Firebase...');
         await Firebase.initializeApp(
           options: FirebaseOptions(
             apiKey: firebaseApiKey,
@@ -320,12 +286,11 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
             measurementId: dotenv.env['FIREBASE_MEASUREMENT_ID'],
           ),
         ).timeout(const Duration(seconds: 5));
-        print('✅ Firebase initialized');
       } else {
-        print('⚠️ Firebase config missing in .env');
+        if (kDebugMode) print('⚠️ Firebase config missing in .env');
       }
     } catch (e) {
-      print('⚠️ Firebase initialization failed: $e');
+      if (kDebugMode) print('⚠️ Firebase init failed: $e');
     }
   }
 
@@ -338,9 +303,8 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
         environment: kDebugMode ? 'development' : 'production',
         dsn: dotenv.env['SENTRY_DSN'],
       );
-      print('✅ AppLogger initialized');
     } catch (e) {
-      print('⚠️ AppLogger initialization failed: $e');
+      if (kDebugMode) print('⚠️ AppLogger init failed: $e');
     }
   }
 
@@ -613,13 +577,7 @@ class MyApp extends StatelessWidget {
                   // ✅ Calcula/Recalcula frete
                   final deliveryFeeCubit = context.read<DeliveryFeeCubit>();
 
-                  // Força recálculo chamando com um pequeno delay para garantir que o store foi atualizado
                   Future.microtask(() {
-                    print('🚚 [MAIN] Calculando frete automaticamente...');
-                    print(
-                      '   ├─ Endereço: ${addressState.selectedAddress!.street}',
-                    );
-                    print('   └─ Subtotal: $subtotal');
                     deliveryFeeCubit.calculate(
                       address: addressState.selectedAddress,
                       store: storeState.store!,

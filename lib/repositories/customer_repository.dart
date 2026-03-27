@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:either_dart/either.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nb_utils/nb_utils.dart'; // Certifique-se de que está importado
@@ -56,60 +56,50 @@ class CustomerRepository {
         final expiresIn = responseData['expires_in'] as int? ?? 1800;
 
         if (customerAccessToken != null) {
-          print('✅ [CUSTOMER_REPO] Salvando tokens de customer...');
           final customerExpiration = DateTime.now().add(
             Duration(seconds: expiresIn),
           );
 
-          // Salva tokens em chaves separadas (não sobrescreve tokens de menu)
           await _secureStorage.write(
             key: _keyCustomerAccessToken,
             value: customerAccessToken,
           );
-          print('   ✅ Customer access token salvo');
 
           if (customerRefreshToken != null) {
             await _secureStorage.write(
               key: _keyCustomerRefreshToken,
               value: customerRefreshToken,
             );
-            print('   ✅ Customer refresh token salvo');
           }
 
           await _secureStorage.write(
             key: _keyCustomerTokenExpiration,
             value: customerExpiration.toIso8601String(),
           );
-          print(
-            '   ✅ Customer expiração salva: ${customerExpiration.toIso8601String()}',
-          );
-          print(
-            '✅ [CUSTOMER_REPO] Tokens de customer salvos com sucesso (expira em ${expiresIn}s)',
-          );
-          print(
-            '✅ [CUSTOMER_REPO] Login incluiu ${loginResponse.addresses.length} endereços e ${loginResponse.orders.length} pedidos',
-          );
+
+          if (kDebugMode) {
+            print(
+              '✅ [CUSTOMER_REPO] Tokens salvos (expira em ${expiresIn}s). '
+              '${loginResponse.addresses.length} endereços, ${loginResponse.orders.length} pedidos',
+            );
+          }
         } else {
-          print(
+          debugPrint(
             '⚠️ [CUSTOMER_REPO] Backend não retornou access_token de customer',
           );
         }
 
         return Right(loginResponse);
       } else {
-        print(
-          'Erro na API ao processar cliente Google: ${response.statusCode} - ${response.data}',
-        );
+        debugPrint('❌ [CUSTOMER_REPO] Erro API: ${response.statusCode}');
         return Left(
           'Erro no servidor: ${response.data['message'] ?? 'Detalhes desconhecidos'}',
         );
       }
     } on DioException catch (e) {
-      print('Erro Dio ao processar cliente Google: ${e.message}');
-      print('Status: ${e.response?.statusCode}');
-      print('URL: ${e.requestOptions.uri}');
-      print('Data enviado: ${e.requestOptions.data}');
-      print('Resposta: ${e.response?.data}');
+      debugPrint(
+        '❌ [CUSTOMER_REPO] DioError: ${e.response?.statusCode} ${e.message}',
+      );
       String errorMessage = 'Erro de conexão ou no servidor.';
       if (e.response?.data != null) {
         final data = e.response!.data;
@@ -125,7 +115,7 @@ class CustomerRepository {
       }
       return Left(errorMessage);
     } catch (e) {
-      print('Erro inesperado ao processar cliente Google: $e');
+      debugPrint('❌ [CUSTOMER_REPO] Erro inesperado: $e');
       return Left('Um erro inesperado ocorreu: ${e.toString()}');
     }
   }
@@ -138,39 +128,22 @@ class CustomerRepository {
     String? cpf, // ✅ ADICIONADO
   }) async {
     try {
-      print('💾 [CUSTOMER_REPO] Atualizando cliente ID: $customerId');
-      print('   ├─ Nome: $name');
-      print('   ├─ Telefone: $phone');
-      if (email != null) print('   ├─ Email: $email');
-      if (cpf != null) print('   ├─ CPF: $cpf');
-
       final data = <String, dynamic>{'name': name, 'phone': phone};
       if (email != null && email.isNotEmpty) data['email'] = email;
       if (cpf != null) data['cpf'] = cpf; // ✅ Envia o CPF
 
-      print('📤 [CUSTOMER_REPO] Enviando PATCH /customer/$customerId');
       final response = await _dio.patch('/customer/$customerId', data: data);
-      print('✅ [CUSTOMER_REPO] Resposta recebida: ${response.statusCode}');
 
       final updatedCustomer = Customer.fromJson(response.data);
-      print('✅ [CUSTOMER_REPO] Cliente atualizado com sucesso:');
-      print('   ├─ ID: ${updatedCustomer.id}');
-      print('   ├─ Nome: ${updatedCustomer.name}');
-      print('   └─ Telefone: ${updatedCustomer.phone}');
       return Right(updatedCustomer);
     } on DioException catch (e) {
       final errorMessage =
           e.response?.data['detail'] ??
           e.response?.data['message'] ??
           'Erro desconhecido ao atualizar cliente.';
-      print('❌ [CUSTOMER_REPO] Erro ao atualizar cliente:');
-      print('   ├─ Status: ${e.response?.statusCode}');
-      print('   ├─ Mensagem: $errorMessage');
-      print('   └─ URL: ${e.requestOptions.uri}');
       return Left(errorMessage);
-    } catch (e, stackTrace) {
-      print('❌ [CUSTOMER_REPO] Erro inesperado ao atualizar cliente: $e');
-      print('   └─ Stack: $stackTrace');
+    } catch (e) {
+      debugPrint('❌ [CUSTOMER_REPO] Erro inesperado: $e');
       return Left('Erro inesperado: $e');
     }
   }
@@ -212,7 +185,9 @@ class CustomerRepository {
   }) async {
     // Verifica se o ID do endereço está presente. É crucial para a atualização.
     if (address.id == null) {
-      print('Erro: O ID do endereço é obrigatório para atualização.');
+      debugPrint(
+        '❌ [CUSTOMER_REPO] ID do endereço obrigatório para atualização',
+      );
       return Left(null); // Retorna um erro se o ID não estiver presente
     }
 
@@ -224,7 +199,7 @@ class CustomerRepository {
       );
       return Right(CustomerAddress.fromJson(response.data));
     } on DioException catch (e) {
-      print('Erro ao atualizar endereço: ${e.message}');
+      debugPrint('❌ [CUSTOMER_REPO] Erro ao atualizar endereço: ${e.message}');
       return Left(null);
     }
   }
@@ -241,7 +216,7 @@ class CustomerRepository {
       );
       return Right(CustomerAddress.fromJson(response.data));
     } on DioException catch (e) {
-      print('Erro ao adicionar endereço: ${e.message}');
+      debugPrint('❌ [CUSTOMER_REPO] Erro ao adicionar endereço: ${e.message}');
       return Left(null);
     }
   }
@@ -252,7 +227,7 @@ class CustomerRepository {
       await _dio.delete('/customer/$customerId/addresses/$addressId');
       return true;
     } on DioException catch (e) {
-      print('Erro ao deletar endereço: ${e.message}');
+      debugPrint('❌ [CUSTOMER_REPO] Erro ao deletar endereço: ${e.message}');
       return false;
     }
   }
@@ -283,7 +258,7 @@ class CustomerRepository {
           data.map((json) => CustomerAddress.fromJson(json)).toList();
       return Right(addresses);
     } on DioException catch (e) {
-      print('Erro ao buscar todos os endereços: ${e.message}');
+      debugPrint('❌ [CUSTOMER_REPO] Erro ao buscar endereços: ${e.message}');
       return Left(null);
     }
   }

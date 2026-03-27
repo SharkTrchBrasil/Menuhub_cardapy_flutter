@@ -1,6 +1,7 @@
 // lib/helpers/menu_adapter.dart
 // Adapter para converter o novo formato de menu para os models existentes do Totem
 
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:totem/models/menu/menu_response.dart';
 import 'package:totem/models/menu/menu_category.dart';
 import 'package:totem/models/menu/menu_item.dart';
@@ -110,9 +111,6 @@ class MenuAdapter {
     if (menuCategory.productOptionGroups != null &&
         menuCategory.productOptionGroups!.isNotEmpty) {
       // ✅ CANÔNICO: Parseia product_option_groups do backend
-      print(
-        '🔍 [MenuAdapter] product_option_groups recebido: ${menuCategory.productOptionGroups!.length} chaves',
-      );
       menuCategory.productOptionGroups!.forEach((key, value) {
         final productId = int.tryParse(key.toString());
         if (productId == null) return;
@@ -133,11 +131,9 @@ class MenuAdapter {
             }
             final group = OptionGroup.fromJson(groupMap);
             groups.add(group);
-            print(
-              '   ✅ Grupo ${group.groupType} "${group.name}": ${group.items.length} items',
-            );
           } catch (e) {
-            print('   ❌ Erro ao parsear grupo: $e');
+            if (kDebugMode)
+              print('   ❌ [MenuAdapter] Erro ao parsear grupo: $e');
             // Skip bad group
           }
         }

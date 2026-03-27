@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:totem/models/customer_address.dart';
 import 'package:totem/models/order.dart';
 
@@ -27,7 +28,6 @@ class Customer {
     cpf: json['cpf'] ?? json['tax_id'], // Aceita cpf ou tax_id
   );
 
-
   Customer copyWith({
     int? id,
     String? name,
@@ -46,9 +46,6 @@ class Customer {
     );
   }
 
-
-
-
   Map<String, dynamic> toJson() => {
     "id": id,
     "name": name,
@@ -57,9 +54,6 @@ class Customer {
     "photo": photo,
     "cpf": cpf,
   };
-
-
-
 }
 
 /// ✅ OTIMIZAÇÃO: Resposta completa do login incluindo addresses e orders
@@ -84,13 +78,16 @@ class LoginResponse {
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
     // Parse customer data
     final customer = Customer.fromJson(json);
-    
+
     // Parse addresses
     final addressesList = (json['addresses'] as List<dynamic>?) ?? [];
-    final addresses = addressesList
-        .map((addr) => CustomerAddress.fromJson(addr as Map<String, dynamic>))
-        .toList();
-    
+    final addresses =
+        addressesList
+            .map(
+              (addr) => CustomerAddress.fromJson(addr as Map<String, dynamic>),
+            )
+            .toList();
+
     // Parse orders
     final ordersList = (json['orders'] as List<dynamic>?) ?? [];
     final orders = <Order>[];
@@ -98,10 +95,10 @@ class LoginResponse {
       try {
         orders.add(Order.fromJson(orderJson as Map<String, dynamic>));
       } catch (e) {
-        print('⚠️ [LoginResponse] Erro ao parsear order: $e');
+        if (kDebugMode) print('⚠️ [LoginResponse] Erro ao parsear order: $e');
       }
     }
-    
+
     return LoginResponse(
       customer: customer,
       accessToken: json['access_token'] as String? ?? '',
