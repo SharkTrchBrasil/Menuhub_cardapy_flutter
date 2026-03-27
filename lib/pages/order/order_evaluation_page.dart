@@ -263,9 +263,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                           )
                           : Text(
                             _currentStep == 1
-                                ? (_onlyForStore
-                                    ? 'Enviar avaliação'
-                                    : 'Avaliar entrega')
+                                ? 'Avaliar entrega'
                                 : 'Enviar avaliação',
                             style: TextStyle(
                               color:
@@ -298,11 +296,6 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
             content: Text('Por favor, selecione uma nota para o pedido.'),
           ),
         );
-        return;
-      }
-
-      if (_onlyForStore) {
-        _submitFeedback();
         return;
       }
 
@@ -342,6 +335,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
         stars: _orderRating,
         comment: storeComment.isEmpty ? null : storeComment,
         positiveTags: _selectedTags.toList(),
+        isPrivate: _onlyForStore,
       );
 
       if (orderResult.isLeft) {

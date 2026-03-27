@@ -62,6 +62,7 @@ class OrderRepository {
     required int stars,
     String? comment,
     List<String>? positiveTags,
+    bool isPrivate = false,
   }) async {
     try {
       await _dio.post(
@@ -70,6 +71,7 @@ class OrderRepository {
           'stars': stars,
           'comment': comment,
           'positive_tags': positiveTags,
+          'is_private': isPrivate,
         },
       );
       return Right(null);
