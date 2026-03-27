@@ -11,6 +11,7 @@ import 'package:equatable/equatable.dart';
 import 'package:totem/core/di.dart';
 import 'package:totem/controllers/customer_controller.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
+import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/store_state.dart';
 import 'package:totem/models/store.dart';
@@ -27,17 +28,57 @@ class AddressCubit extends Cubit<AddressState> {
   StreamSubscription<StoreState>? _storeSubscription;
   Store? _lastStore;
 
+  /// ✅ FIX BUG 4: Guarda hash das regras de frete para comparar apenas elas
+  String _lastDeliveryRulesHash = '';
+
+  /// Gera um hash simples das regras de frete ativas para detectar mudanças reais
+  String _buildDeliveryRulesHash(Store store) {
+    final rules = store.deliveryFeeRules;
+    if (rules.isEmpty) return 'empty';
+    final sb = StringBuffer();
+    for (final r in rules) {
+      sb.write('${r.id}_${r.isActive}_${r.ruleType}_${r.config.hashCode}_');
+      sb.write('${r.freeDeliveryThreshold}_${r.deliveryMethod};');
+    }
+    return sb.toString();
+  }
+
   void _subscribeToStoreChanges() {
     final storeCubit = getIt<StoreCubit>();
     _lastStore = storeCubit.state.store;
+    if (_lastStore != null) {
+      _lastDeliveryRulesHash = _buildDeliveryRulesHash(_lastStore!);
+    }
 
-    // Escuta mudanças no StoreCubit para re-calcular fretes se as regras mudarem
+    // ✅ FIX BUG 4: Escuta mudanças APENAS nas regras de frete, não em todo o Store
     _storeSubscription = storeCubit.stream.listen((storeState) {
       if (state.addresses.isNotEmpty && storeState.store != null) {
-        // Só recalcula se o objeto Store for diferente (foi atualizado via Realtime)
-        if (storeState.store != _lastStore) {
+        final newHash = _buildDeliveryRulesHash(storeState.store!);
+        if (newHash != _lastDeliveryRulesHash) {
+          _lastDeliveryRulesHash = newHash;
           _lastStore = storeState.store;
+          // ✅ FIX BUG 2: Invalida cache do DeliveryFeeCubit antes de recalcular
+          try {
+            final feeCubit = getIt<DeliveryFeeCubit>();
+            feeCubit.invalidateCache();
+            // ✅ FIX BUG 6: Recalcula NON-silent para o endereço selecionado
+            // Isso faz o DeliveryFeeCubit emitir novo estado → checkout rebuilda
+            if (state.selectedAddress != null) {
+              double cartSubtotal = 0;
+              try {
+                final cartCubit = getIt<CartCubit>();
+                cartSubtotal = cartCubit.state.cart.subtotal / 100.0;
+              } catch (_) {}
+              feeCubit.calculate(
+                address: state.selectedAddress,
+                store: storeState.store!,
+                cartSubtotal: cartSubtotal,
+              );
+            }
+          } catch (_) {}
           _precalculateAllFees(state.addresses);
+        } else {
+          _lastStore = storeState.store;
         }
       }
     });
@@ -146,13 +187,22 @@ class AddressCubit extends Cubit<AddressState> {
       final storeCubit = getIt<StoreCubit>();
       final store = storeCubit.state.store;
 
+      // ✅ FIX BUG 3: Usa subtotal real do carrinho para cálculo correto de frete grátis
+      double cartSubtotal = 0;
+      try {
+        final cartCubit = getIt<CartCubit>();
+        cartSubtotal = cartCubit.state.cart.subtotal / 100.0;
+      } catch (_) {
+        // CartCubit pode não estar disponível ainda (antes do login)
+      }
+
       if (store != null) {
         for (var addr in addresses) {
           if (addr.id != null) {
             feeCubit.calculate(
               address: addr,
               store: store,
-              cartSubtotal: 0,
+              cartSubtotal: cartSubtotal,
               isSilent: true,
               onResult: (fee, error) {
                 setAddressFee(addr.id!, fee, isOutOfArea: error != null);
