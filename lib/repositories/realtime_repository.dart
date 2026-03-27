@@ -177,16 +177,23 @@ class RealtimeRepository {
     _socket = IO.io(apiUrl, _buildSocketOptions(connectionToken));
 
     // ✅ FIX: Reconexão proativa no disconnect.
-    // ANTES: disconnect apenas logava e esperava socket.io client tentar reconectar
-    // com backoff de ~60s (token expirava). AGORA: busca token fresco e reconecta imediatamente.
+    // GUARDS: Não dispara se já estamos reconectando (evita loop) ou se
+    // foi disconnect intencional (dispose/clearListeners).
     _socket.on('disconnect', (reason) {
       AppLogger.w('⚠️ Socket desconectado (reason: $reason)');
       isSocketReadyController.add(false);
       connectionStatusController.add(WebSocketConnectionStatus.disconnected);
       _heartbeatManager?.stop();
 
-      // ✅ PROATIVO: Renova token imediatamente em vez de esperar backoff do socket.io
-      // Exceção: não reconecta se foi disconnect intencional (client namespace disconnect)
+      // ✅ GUARD: Não tenta reconectar se já estamos no meio de uma reconexão
+      // Isso evita o loop: disconnect → renewal → initialize → disconnect → renewal...
+      if (_isReconnecting || _isRenewingToken) {
+        AppLogger.d(
+          '🛡️ [DISCONNECT] Ignorando reconexão proativa (isReconnecting=$_isReconnecting, isRenewingToken=$_isRenewingToken)',
+        );
+        return;
+      }
+
       final reasonStr = reason?.toString() ?? '';
       final isIntentional = reasonStr.contains('client namespace disconnect') ||
           reasonStr.contains('io client disconnect');
@@ -195,7 +202,6 @@ class RealtimeRepository {
           '🔄 [DISCONNECT] Reconexão proativa: buscando novo connection_token...',
           tag: 'REALTIME',
         );
-        // Pequeno delay para evitar loop se servidor estiver fora do ar
         Future.delayed(const Duration(milliseconds: 500), () {
           _renewConnectionTokenAndReconnect();
         });
@@ -206,6 +212,7 @@ class RealtimeRepository {
       AppLogger.d('✅ Socket.IO: Conectado com sucesso!');
       connectionStatusController.add(WebSocketConnectionStatus.connected);
       _reconnectAttempts = 0;
+      _tokenRenewalAttempts = 0; // ✅ FIX: Reset backoff para próxima reconexão ser rápida
 
       // ✅ DELTA SYNC: Tenta delta sync antes do full reload (se é reconexão)
       if (_isReconnecting && _currentStoreUuid != null) {
@@ -287,7 +294,15 @@ class RealtimeRepository {
       isSocketReadyController.add(false);
       connectionStatusController.add(WebSocketConnectionStatus.reconnecting);
 
-      // ✅ NOVO: Detecta erro de token inválido e renova automaticamente
+      // ✅ GUARD: Não dispara renewal duplicada se já está reconectando
+      if (_isReconnecting || _isRenewingToken) {
+        AppLogger.d(
+          '🛡️ [CONNECT_ERROR] Ignorando renewal (já em andamento)',
+        );
+        return;
+      }
+
+      // ✅ Detecta erro de token inválido e renova automaticamente
       final errorString = error.toString().toLowerCase();
       if (errorString.contains('invalid') ||
           errorString.contains('expired') ||
