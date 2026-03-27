@@ -299,9 +299,13 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
         return;
       }
 
-      setState(() {
-        _currentStep = 2;
-      });
+      if (_onlyForStore) {
+        _submitFeedback();
+      } else {
+        setState(() {
+          _currentStep = 2;
+        });
+      }
     } else {
       if (_deliveryRating == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -311,6 +315,17 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
         );
         return;
       }
+      
+      if (_deliveryRating < 4 && _deliverySelectedTags.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por favor, selecione pelo menos um ponto de melhoria.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       _submitFeedback();
     }
   }
@@ -344,13 +359,12 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
 
       // 2. Enviar avaliação DA ENTREGA (se houver e não for apenas loja)
       if (!_onlyForStore && _deliveryRating > 0) {
-        final deliveryComment = _deliveryCommentController.text.trim();
         final deliveryResult = await orderRepo.submitDeliveryReview(
           orderPublicId: widget.order.publicId,
           likedDelivery: _deliveryRating >= 4,
           negativeTags:
               _deliveryRating < 4 ? _deliverySelectedTags.toList() : null,
-          comment: deliveryComment.isEmpty ? null : deliveryComment,
+          comment: null,
         );
 
         if (deliveryResult.isLeft) {
@@ -400,10 +414,7 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                 ? DeliveryRating(
                   likedDelivery: _deliveryRating >= 4,
                   negativeTags: _deliverySelectedTags.toList(),
-                  comment:
-                      _deliveryCommentController.text.trim().isEmpty
-                          ? null
-                          : _deliveryCommentController.text.trim(),
+                  comment: null,
                 )
                 : null,
       );
@@ -800,27 +811,6 @@ class _OrderEvaluationPageState extends State<OrderEvaluationPage> {
                       );
                     })
                     .toList(),
-          ),
-          const SizedBox(height: 24),
-          TextField(
-            controller: _deliveryCommentController,
-            maxLines: 3,
-            maxLength: 500,
-            decoration: InputDecoration(
-              hintText: 'Comentário (opcional)',
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-              filled: true,
-              fillColor: const Color(0xFFF7F7F7),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.all(16),
-              counterStyle: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 11,
-              ),
-            ),
           ),
         ] else ...[
           const SizedBox(height: 16),

@@ -67,7 +67,7 @@ class _SkeletonShimmerState extends State<SkeletonShimmer>
                 // 1. Banner
                 _shimmerBox(
                   width: double.infinity,
-                  height: 200,
+                  height: 140,
                   borderRadius: 0,
                 ),
 
@@ -85,7 +85,7 @@ class _SkeletonShimmerState extends State<SkeletonShimmer>
 
                 // 3. Info Card
                 Padding(
-                  padding: const EdgeInsets.only(top: 150, left: 16, right: 16),
+                  padding: const EdgeInsets.only(top: 90, left: 16, right: 16),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -160,7 +160,7 @@ class _SkeletonShimmerState extends State<SkeletonShimmer>
 
                 // 4. Logo Shimmer (Circle)
                 Positioned(
-                  top: 110,
+                  top: 50,
                   child: Container(
                     width: 80,
                     height: 80,

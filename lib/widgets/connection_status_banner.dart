@@ -55,64 +55,18 @@ class _ConnectionStatusBannerState extends State<ConnectionStatusBanner> {
             status == WebSocketConnectionStatus.reconnecting ||
             status == WebSocketConnectionStatus.connecting;
 
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+        return SizedBox(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          decoration: BoxDecoration(
-            color:
-                isReconnecting ? Colors.orange.shade700 : Colors.red.shade700,
-            boxShadow: [
-              BoxShadow(
-                color: (isReconnecting
-                        ? Colors.orange.shade700
-                        : Colors.red.shade700)
-                    .withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isReconnecting) ...[
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Reconectando...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ] else ...[
-                  const Icon(Icons.wifi_off, color: Colors.white, size: 16),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Sem conexão com o servidor',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          height: 3,
+          child: isReconnecting
+              ? const LinearProgressIndicator(
+                  backgroundColor: Colors.transparent,
+                )
+              : LinearProgressIndicator(
+                  value: 1.0,
+                  backgroundColor: Colors.transparent,
+                  color: Colors.red.shade600,
+                ),
         );
       },
     );

@@ -65,6 +65,7 @@ class _OrderDetailContent extends StatefulWidget {
 class _OrderDetailContentState extends State<_OrderDetailContent> {
   late Order _currentOrder;
   late String _currentStatus;
+  bool _hasJustConfirmed = false;
 
   void _syncOrder(Order order) {
     _currentOrder = order;
@@ -98,7 +99,12 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         final updatedOrder =
             state.orders.where((o) => o.id == _currentOrder.id).firstOrNull;
         if (updatedOrder == null || !mounted) return;
-        setState(() => _syncOrder(updatedOrder));
+        setState(() {
+           _syncOrder(updatedOrder);
+           if (_isConcluded && _hasJustConfirmed) {
+             // Let it be, keep _hasJustConfirmed true so it doesn't bounce UI
+           }
+        });
       },
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -142,15 +148,21 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           child: Column(
             children: [
               _buildStoreHeader(context),
-              _buildStatusBanner(),
-              if (_currentStatus.toUpperCase() == 'DISPATCHED')
+              
+              if (!_hasJustConfirmed) 
+                _buildStatusBanner(),
+                
+              if (_hasJustConfirmed)
+                _buildJustConfirmedWidget(context)
+              else if (_currentStatus.toUpperCase() == 'DISPATCHED')
                 _buildConfirmArrivalCard(context),
+                
               _buildProductList(),
               _buildValuesSummary(),
-              if (_isConcluded) _buildAddToBagButton(context),
+              if (_isConcluded && !_hasJustConfirmed) _buildAddToBagButton(context),
               _buildPaymentSection(),
               _buildAddressSection(),
-              if (widget.showRating || _isConcluded)
+              if ((widget.showRating || _isConcluded) && !_hasJustConfirmed)
                 _buildReviewSection(context),
               _buildCancelOrderButton(context),
               const SizedBox(height: 100),
@@ -253,7 +265,38 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       );
     }
 
-    // Para todos os outros casos (em andamento, concluído ou cancelado pelo lojista),
+    if (_currentOrder.isConcluded) {
+      final timeStr = DateFormat('HH:mm').format(
+        (_currentOrder.closedAt ?? _currentOrder.updatedAt).toLocal()
+      );
+      
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2FAF5), // Pale background almost white/green
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 16), // Green check
+            const SizedBox(width: 8),
+            Text(
+              'Pedido concluído às $timeStr',
+              style: const TextStyle(
+                color: Color(0xFF3F3E3E), // Dark text as in image
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Para todos os outros casos (em andamento, ou cancelado pelo lojista),
     // usa o widget de progresso replicado do Admin
     return OrderStatusProgressBar(order: _currentOrder);
   }
@@ -462,7 +505,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         combinedText = 'Borda $cleanBorda';
       }
       lineWidgets.add(
-        _buildVariantRow(context, '1', combinedText, price: 0),
+        _buildVariantRow(context, '1', combinedText),
       );
     }
 
@@ -477,7 +520,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           context,
           '1',
           '$fractionText$name',
-          price: 0,
         ),
       );
     }
@@ -489,7 +531,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           context,
           other.quantity.toString(),
           other.name,
-          price: other.totalPrice ~/ other.quantity,
         ),
       );
     }
@@ -508,9 +549,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   Widget _buildVariantRow(
     BuildContext context,
     String quantity,
-    String text, {
-    int price = 0,
-  }) {
+    String text,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -543,19 +583,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               ),
             ),
           ),
-          if (price > 0) ...[
-            const SizedBox(width: 8),
-            Text(
-              NumberFormat.simpleCurrency(
-                locale: 'pt_BR',
-              ).format(price / 100.0),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF717171).withOpacity(0.8),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -916,11 +943,16 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                     // Futuramente: await context.read<OrdersCubit>().confirmDelivery(widget.order.id);
 
                     setState(() {
-                      _currentStatus = 'CONCLUDED';
+                      _hasJustConfirmed = true;
                     });
 
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Entrega confirmada!')),
+                      const SnackBar(
+                        content: Text('Pedido recebido com sucesso', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        backgroundColor: Color(0xFF2E7D32),
+                        behavior: SnackBarBehavior.floating,
+                        margin: EdgeInsets.all(16),
+                      ),
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -956,6 +988,59 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildJustConfirmedWidget(BuildContext context) {
+    return Column(
+      children: [
+        // Green success widget
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, color: Color(0xFF2E7D32), size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Seu pedido foi entregue', 
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3F3E3E))
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Pedido entregue às: ${DateFormat('HH:mm').format(DateTime.now())}', 
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF717171))
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF717171)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Ajuda com o pedido', 
+                style: TextStyle(color: Color(0xFFEA1D2C), fontWeight: FontWeight.bold, fontSize: 14)
+              ),
+            ]
+          )
+        ),
+        // Stars implementation
+        _buildReviewSection(context),
+      ],
     );
   }
 
@@ -1265,7 +1350,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildCancelOrderButton(BuildContext context) {
-    if (_currentOrder.orderStatus.toUpperCase() != 'PENDING') {
+    if (_currentStatus.toUpperCase() != 'PENDING') {
       return const SizedBox.shrink();
     }
 
@@ -1337,7 +1422,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
                 cubit.cancelOrder(
                   orderId,
-                  reason: 'Cancelado pelo cliente pelo Totem',
+                  reason: 'Cancelado pelo cliente',
                 );
 
                 messenger.showSnackBar(

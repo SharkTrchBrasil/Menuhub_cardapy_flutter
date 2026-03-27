@@ -129,7 +129,7 @@ class PremiumStoreHeader extends StatelessWidget {
             child: Opacity(
               opacity: isClosed ? 0.5 : 1.0,
               child: Container(
-                height: 200,
+                height: 140,
                 width: double.infinity,
                 decoration: BoxDecoration(
                   image: DecorationImage(
@@ -163,8 +163,8 @@ class PremiumStoreHeader extends StatelessWidget {
           // 3. Card de Informações (Sobreposto)
           Padding(
             padding: const EdgeInsets.only(
-              top: 150,
-            ), // Aumentado o overlap (Banner 200 - 150 = 50px de overlap)
+              top: 90,
+            ), // Aumentado o overlap (Banner 140 - 90 = 50px de overlap)
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Container(
@@ -362,7 +362,7 @@ class PremiumStoreHeader extends StatelessWidget {
 
           // 4. LOGO FLUTUANTE (Tamanho aumentado para 80)
           Positioned(
-            top: 110, // Centralizada na borda (Card em 150 - (Logo 80 / 2))
+            top: 50, // Centralizada na borda (Card em 90 - (Logo 80 / 2))
             child: Container(
               width: 80,
               height: 80,
