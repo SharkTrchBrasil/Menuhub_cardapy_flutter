@@ -108,7 +108,9 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
                     if ((currentStatus == 'CANCELLED' ||
                             currentStatus == 'CANCELED') &&
                         widget.order.details.cancellation?.reason != null &&
-                        !widget.order.details.cancellation!.reason.toLowerCase().contains('cancelado pelo cliente pelo totem'))
+                        !widget.order.details.cancellation!.reason
+                            .toLowerCase()
+                            .contains('cancelado pelo cliente pelo totem'))
                       TextSpan(
                         text: '\n${widget.order.details.cancellation!.reason}',
                         style: TextStyle(
@@ -140,8 +142,10 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
           const SizedBox(height: 12),
           Row(
             children: List.generate(displayStatuses.length, (index) {
-              final isCancelled = currentStatus == 'CANCELLED' || currentStatus == 'CANCELED';
-              final isPast = isCancelled ||
+              final isCancelled =
+                  currentStatus == 'CANCELLED' || currentStatus == 'CANCELED';
+              final isPast =
+                  isCancelled ||
                   index < currentStatusIndex ||
                   (currentStatusIndex == displayStatuses.length - 1 &&
                       index < displayStatuses.length);
@@ -198,7 +202,7 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
       case 'READY':
         return Colors.purple;
       case 'DISPATCHED':
-      case 'ON_ROUTE':
+      case 'OUT_FOR_DELIVERY':
         return Colors.cyan;
       case 'CONCLUDED':
       case 'FINALIZED':

@@ -429,17 +429,7 @@ class _PixPaymentPageState extends State<PixPaymentPage> with SingleTickerProvid
                   ),
                 ),
                 
-                const SizedBox(height: 12),
-                
-                // Texto informativo
-                Text(
-                  'O lojista será notificado quando o pagamento for identificado',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
+
               ],
             ),
           ),

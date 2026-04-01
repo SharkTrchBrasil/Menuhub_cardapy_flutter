@@ -960,7 +960,6 @@ String _getStatusText(String status) {
     case 'ready':
       return 'Pronto para entrega';
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return 'Saiu para entrega';
     default:
@@ -979,7 +978,6 @@ String _getStatusLabel(String status) {
     case 'ready':
       return 'Pronto para entrega';
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return 'Em entrega';
     case 'delivered':
@@ -1069,7 +1067,6 @@ double _getProgressValue(String status) {
       return 0.5;
     case 'ready':
       return 0.7;
-    case 'on_route':
     case 'out_for_delivery':
       return 0.85;
     case 'delivered':

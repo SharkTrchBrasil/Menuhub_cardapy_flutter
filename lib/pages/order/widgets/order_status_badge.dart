@@ -19,7 +19,7 @@ class OrderStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusInfo = _getStatusInfo(status);
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -64,7 +64,9 @@ class OrderStatusBadge extends StatelessWidget {
                     statusInfo['submessage'] as String,
                     style: TextStyle(
                       fontSize: 13,
-                      color: (statusInfo['textColor'] as Color).withValues(alpha: 0.8),
+                      color: (statusInfo['textColor'] as Color).withValues(
+                        alpha: 0.8,
+                      ),
                     ),
                   ),
                 ],
@@ -115,7 +117,6 @@ class OrderStatusBadge extends StatelessWidget {
           'submessage': 'Aguardando entregador ou retirada.',
         };
       case 'dispatched':
-      case 'on_route':
       case 'out_for_delivery':
         return {
           'icon': Icons.delivery_dining,
@@ -134,9 +135,10 @@ class OrderStatusBadge extends StatelessWidget {
           'bgColor': Colors.green.shade50,
           'textColor': Colors.green.shade900,
           'message': 'Pedido entregue com sucesso!',
-          'submessage': completedAt != null 
-              ? 'Entregue às ${_formatTime(completedAt!)}'
-              : null,
+          'submessage':
+              completedAt != null
+                  ? 'Entregue às ${_formatTime(completedAt!)}'
+                  : null,
         };
       case 'canceled':
       case 'cancelled':
@@ -145,7 +147,8 @@ class OrderStatusBadge extends StatelessWidget {
           'iconBgColor': Colors.grey.shade600,
           'bgColor': Colors.grey.shade100,
           'textColor': Colors.grey.shade800,
-          'message': 'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita.',
+          'message':
+              'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita.',
           'submessage': 'Que tal fazer um novo pedido?',
         };
       default:

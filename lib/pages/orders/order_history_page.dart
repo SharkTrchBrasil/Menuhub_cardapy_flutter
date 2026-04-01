@@ -610,9 +610,7 @@ class _HistoryOrderCard extends StatelessWidget {
   void _openOrderDetails(BuildContext context, Order order) {
     showResponsiveSidePanel(
       context,
-      OrderDetailPage(
-        order: order,
-      ),
+      OrderDetailPage(order: order),
       useFullScreenOnDesktop: false,
     );
   }
@@ -629,7 +627,6 @@ String _getStatusLabel(String status) {
     case 'ready':
       return 'Pronto para entrega';
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return 'Em entrega';
     case 'delivered':
@@ -655,7 +652,6 @@ Color _getStatusColor(String status) {
     case 'ready':
       return Colors.cyan;
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return Colors.indigo;
     case 'delivered':
@@ -680,7 +676,6 @@ IconData _getStatusIcon(String status) {
     case 'concluded':
       return Icons.check_circle;
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return Icons.delivery_dining;
     case 'preparing':
@@ -707,7 +702,6 @@ double _getProgressValue(String status) {
     case 'ready':
       return 0.75;
     case 'dispatched':
-    case 'on_route':
     case 'out_for_delivery':
       return 0.90;
     case 'delivered':

@@ -427,6 +427,15 @@ class _HomeBodyMobileState extends State<HomeBodyMobile> {
                         if (productsInCategory.isEmpty)
                           return const SizedBox.shrink();
 
+                        // ✅ Ordena os produtos de acordo com o displayOrder da categoria
+                        productsInCategory.sort((a, b) {
+                          final linkA = category.productLinks.firstWhereOrNull((l) => l.productId == a.id);
+                          final linkB = category.productLinks.firstWhereOrNull((l) => l.productId == b.id);
+                          final orderA = linkA?.displayOrder ?? 9999;
+                          final orderB = linkB?.displayOrder ?? 9999;
+                          return orderA.compareTo(orderB);
+                        });
+
                         // ✅ Lógica para categorias customizáveis (Pizzas) - mostra tamanhos primeiro
                         if (category.isCustomizable) {
                           final sizeGroup = category.optionGroups

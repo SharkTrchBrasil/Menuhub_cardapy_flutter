@@ -1301,9 +1301,8 @@ class Order {
       case 'READY':
         return 'Pronto';
       case 'DISPATCHED':
+      case 'OUT_FOR_DELIVERY':
         return 'Saiu para entrega';
-      case 'ON_ROUTE':
-        return 'A caminho';
       case 'CONCLUDED':
         return 'Concluído';
       case 'CANCELLED':

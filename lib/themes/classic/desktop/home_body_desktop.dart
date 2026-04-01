@@ -257,6 +257,15 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
 
     if (categoryProducts.isEmpty) return [];
 
+    // ✅ Ordena os produtos de acordo com o displayOrder da categoria
+    categoryProducts.sort((a, b) {
+      final linkA = category.productLinks.firstWhereOrNull((l) => l.productId == a.id);
+      final linkB = category.productLinks.firstWhereOrNull((l) => l.productId == b.id);
+      final orderA = linkA?.displayOrder ?? 9999;
+      final orderB = linkB?.displayOrder ?? 9999;
+      return orderA.compareTo(orderB);
+    });
+
     // Lógica para categorias customizáveis (Pizzas)
     if (category.isCustomizable) {
       final sizeGroup = category.optionGroups.firstWhereOrNull(
