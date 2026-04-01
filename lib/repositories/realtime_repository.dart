@@ -23,6 +23,7 @@ import 'package:totem/models/coupon.dart';
 import 'package:totem/models/delivery_fee_rule.dart';
 import 'package:totem/models/variant.dart';
 import 'package:totem/models/variant_option.dart';
+import 'package:totem/models/product_category_link.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:totem/core/utils/app_logger.dart';
@@ -672,6 +673,10 @@ class RealtimeRepository {
       MapEntry('variant_option_deleted', (data) {
         _handleGranularVariantOptionEvent(data, 'deleted');
       }),
+      // --- ✅ AUDIT FIX: REORDER GRANULAR (~200 bytes vs ~50KB) ---
+      MapEntry('items_reordered', (data) {
+        _handleItemsReordered(data);
+      }),
       // --- ENDEREÇOS ---
       MapEntry('address_created', (data) {
         try {
@@ -1243,6 +1248,12 @@ class RealtimeRepository {
                 }
 
                 currentCategories[existingIndex] = updatedCategory;
+
+                // ✅ REORDER: Re-ordena categorias por priority para refletir reordenação
+                currentCategories.sort(
+                  (a, b) => a.priority.compareTo(b.priority),
+                );
+
                 // ✅ REFACTOR: Publica em categoriesController
                 _debouncedCategoryEmit(currentCategories);
                 AppLogger.d(
@@ -1328,6 +1339,97 @@ class RealtimeRepository {
       AppLogger.e('❌ [GRANULAR] Erro ao processar evento de categoria: $e');
       AppLogger.e('📍 StackTrace: $stackTrace');
     }
+  }
+
+  /// ✅ AUDIT FIX: Handler granular de reordenação
+  /// Recebe {scope, container_id, order_map} e atualiza priority/displayOrder localmente
+  /// Payload ~200 bytes — NÃO recarrega catálogo de 1000 produtos
+  void _handleItemsReordered(dynamic data) {
+    try {
+      final Map<String, dynamic> payload = _deepConvertToJson(data);
+      final scope = payload['scope'] as String?;
+      final containerId = payload['container_id'];
+      final rawOrderMap = payload['order_map'];
+
+      if (scope == null || rawOrderMap is! Map) return;
+
+      final orderMap = <String, int>{};
+      for (final entry in rawOrderMap.entries) {
+        final key = entry.key?.toString();
+        final value = entry.value;
+        if (key != null && value is num) {
+          orderMap[key] = value.toInt();
+        }
+      }
+
+      switch (scope) {
+        case 'categories':
+          _applyReorderCategoriesTotem(orderMap);
+          break;
+        case 'products':
+          _applyReorderProductsTotem(containerId?.toString(), orderMap);
+          break;
+        case 'addon_options':
+          // Opções de complemento — o Totem re-renderiza ao abrir produto
+          // Não precisa de update local imediato
+          break;
+      }
+    } catch (e) {
+      AppLogger.e('❌ [REORDER] Erro ao processar items_reordered: $e');
+    }
+  }
+
+  void _applyReorderCategoriesTotem(Map<String, int> orderMap) {
+    if (!categoriesController.hasValue) return;
+
+    final categories = List<models.Category>.from(categoriesController.value);
+
+    for (int i = 0; i < categories.length; i++) {
+      final catId = categories[i].id?.toString();
+      if (catId != null && orderMap.containsKey(catId)) {
+        categories[i] = categories[i].copyWith(priority: orderMap[catId]!);
+      }
+    }
+
+    categories.sort((a, b) => a.priority.compareTo(b.priority));
+    categoriesController.add(categories);
+
+    AppLogger.d(
+      '🔀 [REORDER] ${orderMap.length} categorias reordenadas via evento granular',
+    );
+  }
+
+  void _applyReorderProductsTotem(
+    String? categoryId,
+    Map<String, int> orderMap,
+  ) {
+    if (categoryId == null || !categoriesController.hasValue) return;
+
+    final categories = List<models.Category>.from(categoriesController.value);
+    final catIndex = categories.indexWhere(
+      (c) => c.id?.toString() == categoryId,
+    );
+    if (catIndex == -1) return;
+
+    final category = categories[catIndex];
+    final updatedLinks = List<ProductCategoryLink>.from(category.productLinks);
+
+    for (int i = 0; i < updatedLinks.length; i++) {
+      final productId = updatedLinks[i].productId?.toString();
+      if (productId != null && orderMap.containsKey(productId)) {
+        updatedLinks[i] = updatedLinks[i].copyWith(
+          displayOrder: orderMap[productId]!,
+        );
+      }
+    }
+
+    updatedLinks.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    categories[catIndex] = category.copyWith(productLinks: updatedLinks);
+    categoriesController.add(categories);
+
+    AppLogger.d(
+      '🔀 [REORDER] ${orderMap.length} produtos reordenados na categoria $categoryId via evento granular',
+    );
   }
 
   /// ✅ Reconstroi o mapa productOptionGroups (necessário para Pizzas no Totem)
