@@ -8,6 +8,8 @@ import 'package:totem/repositories/customer_repository.dart';
 import 'package:totem/pages/address/cubits/address_cubit.dart';
 import 'package:totem/pages/address/cubits/delivery_fee_cubit.dart';
 import 'package:totem/core/utils/app_logger.dart';
+import 'package:totem/cubit/orders_cubit.dart';
+import 'package:totem/core/di.dart';
 import 'package:totem/core/exceptions/app_exception.dart';
 import '../../models/create_order_payload.dart';
 import '../../models/delivery_type.dart';
@@ -358,6 +360,11 @@ class CheckoutCubit extends Cubit<CheckoutState> {
         'Pedido criado com sucesso: #${order.id}',
         tag: 'CHECKOUT',
       );
+
+      // ✅ CRITICAL: Adiciona pedido ao OrdersCubit imediatamente
+      // Antes: dependia exclusivamente do evento order_updated via Socket.IO (race condition)
+      // Agora: garante que o pedido aparece na lista de pedidos instantaneamente
+      getIt<OrdersCubit>().addOrder(order);
 
       emit(state.copyWith(status: CheckoutStatus.success, finalOrder: order));
     } on CartException catch (e) {

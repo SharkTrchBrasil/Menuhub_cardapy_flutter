@@ -87,11 +87,19 @@ class CartBottomBar extends StatelessWidget {
             // ✅ CORREÇÃO: hasCoupon considera desconto direto OU cupom de frete grátis
             final hasCoupon = cart.discount > 0 || hasFreeDeliveryCoupon;
 
-            // ✅ Label do texto
-            final labelText =
-                isFreeDelivery
-                    ? 'Total com entrega grátis'
-                    : 'Total com entrega';
+            // ✅ Label do texto — context-aware baseado no estado real do frete
+            final bool isDeliveryFeeKnown = feeState is DeliveryFeeLoaded;
+            final bool isPickup = feeState.deliveryType == DeliveryType.pickup;
+            final String labelText;
+            if (isFreeDelivery) {
+              labelText = 'Total com entrega grátis';
+            } else if (isPickup && isDeliveryFeeKnown) {
+              labelText = 'Total para retirada';
+            } else if (!isDeliveryFeeKnown) {
+              labelText = 'Subtotal';
+            } else {
+              labelText = 'Total com entrega';
+            }
 
             return Container(
               color: Colors.white,

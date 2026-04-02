@@ -1010,7 +1010,19 @@ class Order {
     this.customer,
     this.storeRating,
     this.deliveryRating,
+    this.acceptedAt,
+    this.preparationStartedAt,
+    this.readyAt,
+    this.dispatchedAt,
+    this.deliveredAt,
   });
+
+  // Lifecycle Timestamps
+  final DateTime? acceptedAt;
+  final DateTime? preparationStartedAt;
+  final DateTime? readyAt;
+  final DateTime? dispatchedAt;
+  final DateTime? deliveredAt;
 
   Order copyWith({
     String? id,
@@ -1033,6 +1045,11 @@ class Order {
     Customer? customer,
     StoreRating? storeRating,
     DeliveryRating? deliveryRating,
+    DateTime? acceptedAt,
+    DateTime? preparationStartedAt,
+    DateTime? readyAt,
+    DateTime? dispatchedAt,
+    DateTime? deliveredAt,
   }) {
     return Order(
       id: id ?? this.id,
@@ -1055,6 +1072,11 @@ class Order {
       customer: customer ?? this.customer,
       storeRating: storeRating ?? this.storeRating,
       deliveryRating: deliveryRating ?? this.deliveryRating,
+      acceptedAt: acceptedAt ?? this.acceptedAt,
+      preparationStartedAt: preparationStartedAt ?? this.preparationStartedAt,
+      readyAt: readyAt ?? this.readyAt,
+      dispatchedAt: dispatchedAt ?? this.dispatchedAt,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
     );
   }
 
@@ -1281,6 +1303,36 @@ class Order {
           asMap(json['deliveryRating']).isNotEmpty
               ? DeliveryRating.fromJson(asMap(json['deliveryRating']))
               : null,
+      acceptedAt:
+          json['acceptedAt'] != null
+              ? DateTime.tryParse(json['acceptedAt'].toString())
+              : (json['accepted_at'] != null
+                  ? DateTime.tryParse(json['accepted_at'].toString())
+                  : null),
+      preparationStartedAt:
+          json['preparationStartedAt'] != null
+              ? DateTime.tryParse(json['preparationStartedAt'].toString())
+              : (json['preparation_started_at'] != null
+                  ? DateTime.tryParse(json['preparation_started_at'].toString())
+                  : null),
+      readyAt:
+          json['readyAt'] != null
+              ? DateTime.tryParse(json['readyAt'].toString())
+              : (json['ready_at'] != null
+                  ? DateTime.tryParse(json['ready_at'].toString())
+                  : null),
+      dispatchedAt:
+          json['dispatchedAt'] != null
+              ? DateTime.tryParse(json['dispatchedAt'].toString())
+              : (json['dispatched_at'] != null
+                  ? DateTime.tryParse(json['dispatched_at'].toString())
+                  : null),
+      deliveredAt:
+          json['deliveredAt'] != null
+              ? DateTime.tryParse(json['deliveredAt'].toString())
+              : (json['delivered_at'] != null
+                  ? DateTime.tryParse(json['delivered_at'].toString())
+                  : null),
     );
   }
 
@@ -1300,14 +1352,41 @@ class Order {
         return 'Preparando';
       case 'READY':
         return 'Pronto';
+      case 'DRIVER_ON_WAY':
+        return 'Entregador a caminho';
+      case 'DRIVER_ARRIVED':
+        return 'Entregador chegou na loja';
       case 'DISPATCHED':
       case 'OUT_FOR_DELIVERY':
         return 'Saiu para entrega';
+      case 'ARRIVING':
+        return 'Chegando';
+      case 'DRIVER_AT_CUSTOMER':
+        return 'Entregador no local';
+      case 'DELIVERED':
+        return 'Entregue';
+      case 'FINALIZED':
       case 'CONCLUDED':
         return 'Concluído';
       case 'CANCELLED':
       case 'CANCELED':
         return 'Cancelado';
+      case 'CANCELLATION_REQUESTED':
+        return 'Cancelamento solicitado';
+      case 'CUSTOMER_NOT_FOUND':
+        return 'Cliente não encontrado';
+      case 'DELIVERY_REFUSED':
+        return 'Entrega recusada';
+      case 'ADDRESS_NOT_FOUND':
+        return 'Endereço não encontrado';
+      case 'ADDRESS_INACCESSIBLE':
+        return 'Endereço inacessível';
+      case 'DELIVERY_FAILED':
+        return 'Entrega falhou';
+      case 'DRIVER_RETURNING':
+        return 'Entregador retornando';
+      case 'ORDER_RETURNED':
+        return 'Pedido devolvido';
       default:
         return lastStatus;
     }
@@ -1319,8 +1398,20 @@ class Order {
   bool get isCancelled =>
       lastStatus.toUpperCase() == 'CANCELLED' ||
       lastStatus.toUpperCase() == 'CANCELED';
-  bool get isConcluded => lastStatus.toUpperCase() == 'CONCLUDED';
-  bool get isActive => !isCancelled && !isConcluded;
+  bool get isConcluded {
+    final s = lastStatus.toUpperCase();
+    return s == 'CONCLUDED' || s == 'FINALIZED' || s == 'DELIVERED';
+  }
+
+  bool get isTerminal {
+    final s = lastStatus.toUpperCase();
+    return isCancelled ||
+        isConcluded ||
+        s == 'ORDER_RETURNED' ||
+        s == 'DELIVERY_FAILED';
+  }
+
+  bool get isActive => !isTerminal;
 
   String? get deliveryCode {
     final code = verificationCodes.firstWhere(
@@ -1399,6 +1490,15 @@ class Order {
 
   // Alias for changeAmount
   double? get changeAmount => changeFor;
+
+  // Lifecycle Local DateTimes
+  DateTime get createdAtLocal => createdAt.toLocal();
+  DateTime get updatedAtLocal => updatedAt.toLocal();
+  DateTime? get acceptedAtLocal => acceptedAt?.toLocal();
+  DateTime? get preparationStartedAtLocal => preparationStartedAt?.toLocal();
+  DateTime? get readyAtLocal => readyAt?.toLocal();
+  DateTime? get dispatchedAtLocal => dispatchedAt?.toLocal();
+  DateTime? get deliveredAtLocal => deliveredAt?.toLocal();
 }
 
 // ==========================================

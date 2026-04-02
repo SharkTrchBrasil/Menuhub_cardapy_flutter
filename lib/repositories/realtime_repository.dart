@@ -611,17 +611,76 @@ class RealtimeRepository {
       MapEntry('order_updated', (data) {
         try {
           final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          AppLogger.i(
+            '🔔 [ORDER_RT] order_updated recebido (keys: ${payload.keys.take(5)})',
+            tag: 'REALTIME',
+          );
           final Order order = Order.fromJson(payload);
+          AppLogger.i(
+            '🔔 [ORDER_RT] Pedido ${order.shortId} status=${order.lastStatus} customer=${order.customer?.id}',
+            tag: 'REALTIME',
+          );
           final currentCustomer = getIt<AuthCubit>().state.customer;
           if (currentCustomer != null && order.customer?.id != null) {
             final currentId = currentCustomer.id.toString();
             final orderId = order.customer!.id.toString();
-            if (currentId != orderId) return;
+            if (currentId != orderId) {
+              AppLogger.d(
+                '⏭️ [ORDER_RT] Ignorando pedido de outro customer ($orderId != $currentId)',
+                tag: 'REALTIME',
+              );
+              return;
+            }
           }
           orderController.add(order);
           getIt<OrdersCubit>().onRealtimeOrderUpdate(order);
+          AppLogger.i(
+            '✅ [ORDER_RT] Pedido ${order.shortId} atualizado em tempo real → status=${order.lastStatus}',
+            tag: 'REALTIME',
+          );
+        } catch (e, stack) {
+          AppLogger.e('❌ Erro ao processar order_updated: $e\n$stack');
+        }
+      }),
+      // --- DELIVERY EVENTS ---
+      MapEntry('delivery_person_arriving', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final orderId = payload['order_id']?.toString();
+          final distanceMeters = payload['distance_meters'] ?? 0;
+          final message = payload['message'] ?? 'Entregador chegando!';
+          AppLogger.i(
+            '🚴 [DELIVERY_RT] delivery_person_arriving: pedido=$orderId distância=${distanceMeters}m',
+            tag: 'REALTIME',
+          );
+          // Atualiza status do pedido para ARRIVING se ainda não estiver
+          final ordersCubit = getIt<OrdersCubit>();
+          final currentOrders = ordersCubit.state.orders;
+          final orderIndex = currentOrders.indexWhere(
+            (o) =>
+                o.id == orderId || o.shortId == payload['order_sequential_id'],
+          );
+          if (orderIndex != -1) {
+            AppLogger.i(
+              '✅ [DELIVERY_RT] Entregador a ${distanceMeters}m do destino para pedido $orderId',
+              tag: 'REALTIME',
+            );
+          }
         } catch (e) {
-          AppLogger.e('❌ Erro ao processar order_updated: $e');
+          AppLogger.e('❌ Erro ao processar delivery_person_arriving: $e');
+        }
+      }),
+      MapEntry('delivery_delayed', (data) {
+        try {
+          final Map<String, dynamic> payload = _convertToStringDynamicMap(data);
+          final orderId = payload['order_id']?.toString();
+          final delayMinutes = payload['delay_minutes'] ?? 0;
+          AppLogger.i(
+            '⏰ [DELIVERY_RT] delivery_delayed: pedido=$orderId atraso=${delayMinutes}min',
+            tag: 'REALTIME',
+          );
+        } catch (e) {
+          AppLogger.e('❌ Erro ao processar delivery_delayed: $e');
         }
       }),
       // --- PRODUTOS GRANULARES ---

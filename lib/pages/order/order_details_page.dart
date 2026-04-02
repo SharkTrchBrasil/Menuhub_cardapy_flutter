@@ -114,7 +114,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           leading: IconButton(
             icon: const Icon(
               Icons.arrow_back_ios,
-              color: Color(0xFFEA1D2C),
+              color: Color(0xFF717171),
               size: 20,
             ),
             onPressed: () => context.pop(),
@@ -130,18 +130,19 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           ),
           centerTitle: true,
           actions: [
-            TextButton(
-              onPressed: () {
-                // TODO: Implementar ajuda
-              },
-              child: const Text(
-                'Ajuda',
-                style: TextStyle(
-                  color: Color(0xFFEA1D2C),
-                  fontWeight: FontWeight.bold,
+            if (!_isConcluded && !_currentOrder.isCancelled)
+              TextButton(
+                onPressed: () {
+                  context.push('/order/${_currentOrder.shortId}/help', extra: _currentOrder);
+                },
+                child: const Text(
+                  'Ajuda',
+                  style: TextStyle(
+                    color: Color(0xFF717171),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         body: SingleChildScrollView(
@@ -164,7 +165,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
               _buildAddressSection(),
               if ((widget.showRating || _isConcluded) && !_hasJustConfirmed)
                 _buildReviewSection(context),
-              _buildCancelOrderButton(context),
               const SizedBox(height: 100),
             ],
           ),
@@ -235,70 +235,79 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildStatusBanner() {
-    // Se cancelado pelo sistema (timeout), mostra mensagem amigável atual
-    if (_currentOrder.isSystemCancelled) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.cancel, color: Colors.black87, size: 20),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'A loja não confirmou seu pedido e ele foi cancelado. Nenhuma cobrança será feita. Que tal fazer um novo pedido?',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF3F3E3E),
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_currentOrder.isConcluded) {
-      final timeStr = DateFormat('HH:mm').format(
+    final dateFormat = DateFormat('HH:mm');
+    final timeStr = dateFormat.format(
         (_currentOrder.closedAt ?? _currentOrder.updatedAt).toLocal()
-      );
-      
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2FAF5), // Pale background almost white/green
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 16), // Green check
-            const SizedBox(width: 8),
-            Text(
-              'Pedido concluído às $timeStr',
-              style: const TextStyle(
-                color: Color(0xFF3F3E3E), // Dark text as in image
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+    );
+
+    // 1. CANCELADO PELO SISTEMA (TIMEOUT)
+    if (_currentOrder.isSystemCancelled) {
+      return _buildStatusCapsule(
+        icon: Icons.cancel,
+        iconColor: Colors.black,
+        backgroundColor: const Color(0xFFF2F2F2),
+        text: 'A loja não confirmou seu pedido e ele foi cancelado. Que tal fazer um novo pedido?',
       );
     }
 
-    // Para todos os outros casos (em andamento, ou cancelado pelo lojista),
-    // usa o widget de progresso replicado do Admin
-    return OrderStatusProgressBar(order: _currentOrder);
+    // 2. CANCELADO GERAL (COM MOTIVO OU HORÁRIO)
+    if (_currentOrder.lastStatus.toUpperCase() == 'CANCELED' || _currentOrder.isCancelled) {
+      return _buildStatusCapsule(
+        icon: Icons.cancel,
+        iconColor: Colors.black,
+        backgroundColor: const Color(0xFFF2F2F2),
+        text: 'Infelizmente, seu pedido precisou ser cancelado às $timeStr.',
+      );
+    }
+
+    // 3. CONCLUÍDO
+    if (_currentOrder.isConcluded) {
+      return _buildStatusCapsule(
+        icon: Icons.check_circle,
+        iconColor: const Color(0xFF2E7D32),
+        backgroundColor: const Color(0xFFF2FAF5),
+        text: 'Pedido concluído às $timeStr',
+      );
+    }
+
+    // 4. EM ANDAMENTO / REALIZADO
+    final isPending = _currentOrder.lastStatus.toUpperCase() == 'PENDING';
+    return _buildStatusCapsule(
+      icon: isPending ? Icons.check_circle : Icons.circle,
+      iconColor: const Color(0xFF2E7D32),
+      iconSize: isPending ? 14 : 8,
+      backgroundColor: const Color(0xFFF2FAF5),
+      text: isPending ? 'Pedido realizado' : 'Pedido em andamento',
+    );
+  }
+
+  Widget _buildStatusCapsule({
+    required IconData icon,
+    required Color iconColor,
+    required Color backgroundColor,
+    required String text,
+    double iconSize = 16,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      alignment: Alignment.center, // Centros contents
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Color(0xFF3F3E3E),
+          fontWeight: FontWeight.w500,
+          fontSize: 13,
+          height: 1.2,
+        ),
+      ),
+    );
   }
 
   Widget _buildProductList() {
@@ -317,43 +326,88 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Imagem com badge de quantidade
-          Stack(
-            children: [
-              _buildProductImage(item.logoUrl),
-              Positioned(
-                bottom: 2,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEA1D2C),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '${item.quantity}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+          // Imagem
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: CachedNetworkImage(
+              imageUrl: (item.logoUrl != null && item.logoUrl!.isNotEmpty)
+                  ? _formatImageUrl(item.logoUrl!)
+                  : 'https://placehold.co/72/e0e0e0/a0a0a0?text=Sem+Foto',
+              height: 72,
+              width: 72,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(
+                height: 72,
+                width: 72,
+                color: Colors.grey[300],
+                child: const Icon(Icons.image_not_supported),
               ),
-            ],
+            ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           // Informações do produto
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF3F3E3E),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (item.description != null &&
+                              item.description!.trim().isNotEmpty &&
+                              !item.description!.toLowerCase().contains('categoria:') &&
+                              !item.description!.toLowerCase().contains('tamanho')) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              item.description!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                                color: const Color(0xFF3F3E3E).withOpacity(0.7),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Text(
+                            NumberFormat.simpleCurrency(
+                              locale: 'pt_BR',
+                            ).format(item.priceInReais),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF3F3E3E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Controle de quantidade estático estilo cart
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
                       child: Text(
-                        item.name.toUpperCase(),
+                        '${item.quantity}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -361,50 +415,24 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                         ),
                       ),
                     ),
-                    Text(
-                      NumberFormat.simpleCurrency(
-                        locale: 'pt_BR',
-                      ).format(item.priceInReais),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF3F3E3E),
-                      ),
-                    ),
                   ],
                 ),
-                if (item.description != null &&
-                    item.description!.trim().isNotEmpty &&
-                    !item.description!.toLowerCase().contains('categoria:') &&
-                    !item.description!.toLowerCase().contains('tamanho')) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    item.description!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF717171),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
 
                 // Sub-itens formatados como no carrinho
                 if (item.subItems.isNotEmpty) _buildVariantsSection(item),
 
                 // Observações
-                if (item.hasNotes)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      "Obs: ${item.notes!.trim()}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF717171),
-                        fontStyle: FontStyle.italic,
-                      ),
+                if (item.hasNotes) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    "Obs: ${item.notes!.trim()}",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -462,7 +490,6 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
         }
       }
 
-      // Sabores
       if (isFlavorGroup) {
         flavorOptions.add(sub);
       } else {
@@ -472,28 +499,15 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
 
     final lineWidgets = <Widget>[];
 
-    // 1. Massa + Borda
     if (massaText != null || bordaText != null) {
       String cleanMassa = massaText ?? '';
       String cleanBorda = bordaText ?? '';
 
-      while (RegExp(
-        r'^[Mm]assa\s+',
-        caseSensitive: false,
-      ).hasMatch(cleanMassa)) {
-        cleanMassa = cleanMassa.replaceFirst(
-          RegExp(r'^[Mm]assa\s+', caseSensitive: false),
-          '',
-        );
+      while (RegExp(r'^[Mm]assa\s+', caseSensitive: false).hasMatch(cleanMassa)) {
+        cleanMassa = cleanMassa.replaceFirst(RegExp(r'^[Mm]assa\s+', caseSensitive: false), '');
       }
-      while (RegExp(
-        r'^[Bb]orda\s+',
-        caseSensitive: false,
-      ).hasMatch(cleanBorda)) {
-        cleanBorda = cleanBorda.replaceFirst(
-          RegExp(r'^[Bb]orda\s+', caseSensitive: false),
-          '',
-        );
+      while (RegExp(r'^[Bb]orda\s+', caseSensitive: false).hasMatch(cleanBorda)) {
+        cleanBorda = cleanBorda.replaceFirst(RegExp(r'^[Bb]orda\s+', caseSensitive: false), '');
       }
 
       String combinedText = '';
@@ -504,35 +518,19 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
       } else {
         combinedText = 'Borda $cleanBorda';
       }
-      lineWidgets.add(
-        _buildVariantRow(context, '1', combinedText),
-      );
+      lineWidgets.add(_buildVariantRow(context, '1', combinedText));
     }
 
-    // 2. Sabores
     final flavorCount = flavorOptions.length;
     final fractionText = flavorCount > 1 ? '1/$flavorCount ' : '';
     for (final flavor in flavorOptions) {
       String name = flavor.name;
       name = name.replaceAll(RegExp(r'^1/\d+\s*'), '').trim();
-      lineWidgets.add(
-        _buildVariantRow(
-          context,
-          '1',
-          '$fractionText$name',
-        ),
-      );
+      lineWidgets.add(_buildVariantRow(context, '1', '$fractionText$name'));
     }
 
-    // 3. Outros
     for (final other in otherOptions) {
-      lineWidgets.add(
-        _buildVariantRow(
-          context,
-          other.quantity.toString(),
-          other.name,
-        ),
-      );
+      lineWidgets.add(_buildVariantRow(context, other.quantity.toString(), other.name, price: other.unitPrice));
     }
 
     if (lineWidgets.isEmpty) return const SizedBox.shrink();
@@ -549,8 +547,9 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   Widget _buildVariantRow(
     BuildContext context,
     String quantity,
-    String text,
-  ) {
+    String text, {
+    int price = 0,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -559,16 +558,16 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
             decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F2),
+              color: Colors.grey.shade100,
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: Colors.grey.shade300),
             ),
             child: Text(
               quantity,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF717171),
+                color: const Color(0xFF3F3E3E).withOpacity(0.8),
               ),
             ),
           ),
@@ -576,13 +575,24 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF717171),
+                color: const Color(0xFF3F3E3E).withOpacity(0.75),
                 height: 1.2,
               ),
             ),
           ),
+          if (price > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              NumberFormat.simpleCurrency(locale: 'pt_BR').format(price / 100.0),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF3F3E3E).withOpacity(0.6),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -793,7 +803,7 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
                         color: Color(0xFF3F3E3E),
                       ),
                     ),
-                    if (_currentOrder.needsChange)
+                    if (_currentOrder.needsChange && _currentOrder.changeFor != null)
                       Text(
                         'Troco para ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(_currentOrder.changeFor)}',
                         style: const TextStyle(
@@ -1318,131 +1328,8 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
     );
   }
 
-  Widget _buildProductImage(String? url) {
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child:
-            url != null && url.isNotEmpty
-                ? CachedNetworkImage(
-                  imageUrl: _formatImageUrl(url),
-                  fit: BoxFit.cover,
-                  width: 64,
-                  height: 64,
-                  errorWidget:
-                      (_, __, ___) =>
-                          const Icon(Icons.restaurant, color: Colors.grey),
-                )
-                : const Icon(Icons.restaurant, color: Colors.grey),
-      ),
-    );
-  }
-
   String _formatImageUrl(String url) {
     if (url.startsWith('http')) return url;
     return 'https://menuhub-dev.s3.us-east-1.amazonaws.com/$url';
-  }
-
-  Widget _buildCancelOrderButton(BuildContext context) {
-    if (_currentStatus.toUpperCase() != 'PENDING') {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Column(
-        children: [
-          const Divider(height: 32),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => _confirmCancel(context),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF717171)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'CANCELAR PEDIDO',
-                style: TextStyle(
-                  color: Color(0xFF717171),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Você pode cancelar enquanto o pedido não for aceito.',
-            style: TextStyle(fontSize: 11, color: Color(0xFF717171)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmCancel(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Cancelar Pedido?',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: const Text(
-            'Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(
-                'MANTER PEDIDO',
-                style: TextStyle(color: Colors.black87),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                // ✅ Captura referências ANTES de fechar o dialog
-                final messenger = ScaffoldMessenger.of(context);
-                final cubit = context.read<OrdersCubit>();
-                final orderId = int.tryParse(_currentOrder.id.toString()) ?? 0;
-
-                Navigator.pop(dialogContext);
-
-                cubit.cancelOrder(
-                  orderId,
-                  reason: 'Cancelado pelo cliente',
-                );
-
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Cancelando pedido...'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
-              child: const Text(
-                'SIM, CANCELAR',
-                style: TextStyle(
-                  color: Color(0xFFEA1D2C),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

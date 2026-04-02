@@ -86,14 +86,15 @@ class TimezoneService {
     DateTime utc,
     String storeTimezone, {
     String format = 'dd/MM/yyyy HH:mm',
+    String locale = 'pt_BR',
   }) {
     try {
       final location = tz.getLocation(storeTimezone);
       final storeTime = tz.TZDateTime.from(utc.toUtc(), location);
-      return DateFormat(format).format(storeTime);
+      return DateFormat(format, locale).format(storeTime);
     } catch (e) {
       print('⚠️ Erro ao formatar timezone: $e');
-      return DateFormat(format).format(utc);
+      return DateFormat(format, locale).format(utc);
     }
   }
 

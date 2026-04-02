@@ -133,18 +133,22 @@ class UnifiedCartBottomBar extends StatelessWidget {
                 final isGreenStatus = hasCouponApplied;
                 final hasCouponIcon = hasCouponApplied;
 
-                // ✅ Texto dinâmico baseado no contexto
+                // ✅ Determina se o frete está realmente incluído no total
+                final bool isDeliveryFeeKnown = feeState is DeliveryFeeLoaded;
+                final bool isPickup =
+                    feeState.deliveryType == DeliveryType.pickup;
+
+                // ✅ Texto dinâmico baseado no contexto real do frete
+                // Prioridade: frete grátis (cupom define fee=0) > pickup > fee calculado > subtotal
                 String labelText;
-                if (variant == CartBottomBarVariant.home) {
-                  labelText =
-                      isFreeDelivery
-                          ? 'Total com entrega grátis'
-                          : 'Total com entrega';
+                if (isFreeDelivery) {
+                  labelText = 'Total com entrega grátis';
+                } else if (isPickup && isDeliveryFeeKnown) {
+                  labelText = 'Total para retirada';
+                } else if (!isDeliveryFeeKnown) {
+                  labelText = 'Subtotal';
                 } else {
-                  labelText =
-                      isFreeDelivery
-                          ? 'Total com entrega grátis'
-                          : 'Total com entrega';
+                  labelText = 'Total com entrega';
                 }
 
                 // ✅ Texto do botão baseado na variante

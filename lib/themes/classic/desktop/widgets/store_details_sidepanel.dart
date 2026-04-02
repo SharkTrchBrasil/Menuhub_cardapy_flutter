@@ -27,7 +27,9 @@ class StoreDetailsSidePanel extends StatefulWidget {
           position: Tween<Offset>(
             begin: const Offset(1, 0),
             end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
           child: child,
         );
       },
@@ -120,11 +122,15 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
           if (store.description != null && store.description!.isNotEmpty) ...[
             Text(
               store.description!,
-              style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5),
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 24),
           ],
-          
+
           // Endereço
           const Text(
             'Endereço',
@@ -151,9 +157,9 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
                 style: const TextStyle(fontSize: 14, color: Colors.black87),
               ),
           ],
-          
+
           const SizedBox(height: 24),
-          
+
           // Outras informações
           const Text(
             'Outras informações',
@@ -162,9 +168,9 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
           const SizedBox(height: 12),
           if (store.phone.isNotEmpty)
             _buildInfoRow(Icons.phone, 'Telefone', store.phone),
-          
+
           const SizedBox(height: 32),
-          
+
           // Aviso
           Container(
             padding: const EdgeInsets.all(16),
@@ -185,8 +191,16 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
 
   Widget _buildScheduleTab() {
     final hours = widget.store.hours;
-    final daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-    
+    final daysOfWeek = [
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+      'Domingo',
+    ];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -200,17 +214,19 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
           ...List.generate(7, (index) {
             final dayHours = hours.where((h) => h.dayOfWeek == index).toList();
             final dayName = daysOfWeek[index];
-            
+
             if (dayHours.isEmpty) {
               return _buildDayRow(dayName, 'Fechado', isClosed: true);
             }
-            
-            final hoursText = dayHours.map((h) {
-              final open = _formatTimeOfDay(h.openingTime);
-              final close = _formatTimeOfDay(h.closingTime);
-              return '$open - $close';
-            }).join(', ');
-            
+
+            final hoursText = dayHours
+                .map((h) {
+                  final open = _formatTimeOfDay(h.openingTime);
+                  final close = _formatTimeOfDay(h.closingTime);
+                  return '$open - $close';
+                })
+                .join(', ');
+
             return _buildDayRow(dayName, hoursText);
           }),
         ],
@@ -220,7 +236,7 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
 
   Widget _buildPaymentTab() {
     final paymentGroups = widget.store.paymentMethodGroups;
-    
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -259,9 +275,17 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
 
   Widget _buildDayRow(String day, String hours, {bool isClosed = false}) {
     final today = DateTime.now().weekday - 1; // 0 = Segunda
-    final dayIndex = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'].indexOf(day);
+    final dayIndex = [
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+      'Domingo',
+    ].indexOf(day);
     final isToday = dayIndex == today;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
@@ -274,7 +298,8 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
               day,
               style: TextStyle(
                 fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                color: isToday ? Theme.of(context).primaryColor : Colors.black87,
+                color:
+                    isToday ? Theme.of(context).primaryColor : Colors.black87,
               ),
             ),
           ),
@@ -291,6 +316,15 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
   }
 
   Widget _buildPaymentGroup(dynamic group) {
+    // ✅ CORREÇÃO: Filtra apenas flags ativas — oculta grupo PAI se todas inativas
+    final List activeMethods =
+        (group.methods as List?)
+            ?.where((method) => method.activation?.isActive == true)
+            .toList() ??
+        [];
+
+    if (activeMethods.isEmpty) return const SizedBox.shrink();
+
     // Traduz os nomes técnicos para nomes amigáveis
     final groupLabels = {
       'credit_cards': 'Crédito',
@@ -299,9 +333,10 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
       'cash_and_vouchers': 'Dinheiro e Vouchers',
       'pix': 'PIX',
     };
-    
-    final displayName = group.title ?? groupLabels[group.name] ?? group.name ?? 'Outros';
-    
+
+    final displayName =
+        group.title ?? groupLabels[group.name] ?? group.name ?? 'Outros';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -315,12 +350,13 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: (group.methods as List?)?.map<Widget>((method) {
-            return Chip(
-              label: Text(method.name ?? ''),
-              backgroundColor: Colors.grey.shade100,
-            );
-          }).toList() ?? [],
+          children:
+              activeMethods.map<Widget>((method) {
+                return Chip(
+                  label: Text(method.name ?? ''),
+                  backgroundColor: Colors.grey.shade100,
+                );
+              }).toList(),
         ),
       ],
     );
@@ -333,4 +369,3 @@ class _StoreDetailsSidePanelState extends State<StoreDetailsSidePanel>
     return '$hour:$minute';
   }
 }
-

@@ -44,7 +44,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
   double? _latitude;
   double? _longitude;
   bool _isGettingLocation = false;
-  
+
   // ✅ NOVO: Dados do endereço vindos do mapa (não editáveis)
   String? _mapStreet;
   String? _mapNeighborhood;
@@ -63,22 +63,30 @@ class _EditAddressPageState extends State<EditAddressPage> {
 
     // ✅ ATUALIZADO: Número, complemento, referência e bairro (quando necessário) são editáveis
     _numberController = TextEditingController(text: _currentAddress.number);
-    _complementController = TextEditingController(text: _currentAddress.complement);
-    _referenceController = TextEditingController(text: _currentAddress.reference);
-    _neighborhoodTextController = TextEditingController(text: _currentAddress.neighborhood);
+    _complementController = TextEditingController(
+      text: _currentAddress.complement,
+    );
+    _referenceController = TextEditingController(
+      text: _currentAddress.reference,
+    );
+    _neighborhoodTextController = TextEditingController(
+      text: _currentAddress.neighborhood,
+    );
 
     _selectedLabel = _currentAddress.label;
-    _noComplement = _currentAddress.complement == null || _currentAddress.complement!.isEmpty;
+    _noComplement =
+        _currentAddress.complement == null ||
+        _currentAddress.complement!.isEmpty;
     _latitude = _currentAddress.latitude;
     _longitude = _currentAddress.longitude;
-    
+
     // ✅ NOVO: Preenche dados do mapa se já tiver endereço (modo edição)
     if (widget.addressToEdit != null) {
       _mapStreet = _currentAddress.street;
       _mapNeighborhood = _currentAddress.neighborhood;
       _mapCity = _currentAddress.city;
       _mapState = ''; // Estado pode não estar no modelo
-      
+
       // Se tiver coordenadas, pode fazer reverse geocoding para atualizar dados do mapa
       if (_latitude != null && _longitude != null) {
         // Faz reverse geocoding em background para atualizar dados do mapa
@@ -101,13 +109,19 @@ class _EditAddressPageState extends State<EditAddressPage> {
     if (widget.addressToEdit != null && store != null) {
       if (_currentAddress.cityId != null) {
         try {
-          _selectedCity = store.cities.firstWhere((c) => c.id == _currentAddress.cityId);
+          _selectedCity = store.cities.firstWhere(
+            (c) => c.id == _currentAddress.cityId,
+          );
         } catch (e) {
-          print("Aviso: Cidade do endereço salvo não encontrado nas regras da loja. $e");
+          print(
+            "Aviso: Cidade do endereço salvo não encontrado nas regras da loja. $e",
+          );
           _selectedCity = null;
         }
       }
-    } else if (widget.addressToEdit == null && store != null && store.cities.length == 1) {
+    } else if (widget.addressToEdit == null &&
+        store != null &&
+        store.cities.length == 1) {
       _selectedCity = store.cities.first;
     }
   }
@@ -161,196 +175,235 @@ class _EditAddressPageState extends State<EditAddressPage> {
         // ✅ NOVO: Garante que o conteúdo respeite as bordas arredondadas do Dialog
         borderRadius: BorderRadius.circular(20),
         child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              
-              // ✅ NOVO: Exibe endereço completo do mapa no topo
-              if (_mapStreet != null && _mapStreet!.isNotEmpty)
-                _buildAddressDisplay(context),
-              
-              // ✅ NOVO: Botão para confirmar localização no mapa (se não tiver endereço)
-              if (_mapStreet == null || _mapStreet!.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: OutlinedButton.icon(
-                    icon: _isGettingLocation
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.map),
-                    label: Text(_isGettingLocation ? 'Obtendo endereço...' : 'Confirmar localização no mapa'),
-                    onPressed: _isGettingLocation ? null : _getCurrentLocation,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+
+                // ✅ NOVO: Exibe endereço completo do mapa no topo
+                if (_mapStreet != null && _mapStreet!.isNotEmpty)
+                  _buildAddressDisplay(context),
+
+                // ✅ NOVO: Botão para confirmar localização no mapa (se não tiver endereço)
+                if (_mapStreet == null || _mapStreet!.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: OutlinedButton.icon(
+                      icon:
+                          _isGettingLocation
+                              ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : const Icon(Icons.map),
+                      label: Text(
+                        _isGettingLocation
+                            ? 'Obtendo endereço...'
+                            : 'Confirmar localização no mapa',
+                      ),
+                      onPressed:
+                          _isGettingLocation ? null : _getCurrentLocation,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.only(
+                          left: 8,
+                          right: 24,
+                          top: 12,
+                          bottom: 12,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              
-              const SizedBox(height: 24),
-              _buildSectionTitle(context, 'Detalhes do endereço'),
-              const SizedBox(height: 16),
 
-              // ✅ NOVO: Campo de bairro (apenas se o mapa NÃO encontrou)
-              // Quando o mapa encontra, o bairro aparece apenas no header
-              if (_mapNeighborhood == null || _mapNeighborhood!.isEmpty)
-                Column(
+                const SizedBox(height: 24),
+                _buildSectionTitle(context, 'Detalhes do endereço'),
+                const SizedBox(height: 16),
+
+                // ✅ NOVO: Campo de bairro (apenas se o mapa NÃO encontrou)
+                // Quando o mapa encontra, o bairro aparece apenas no header
+                if (_mapNeighborhood == null || _mapNeighborhood!.isEmpty)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bairro',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colors.onSurface.withOpacity(0.9),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _neighborhoodTextController,
+                        validator: (value) {
+                          // ✅ CRÍTICO: Obrigatório se o mapa não encontrou o bairro
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Informar o bairro';
+                          }
+                          return null;
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Digite o bairro',
+                          filled: true,
+                          fillColor: colors.surfaceVariant.withOpacity(0.3),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            // ✅ Borda vermelha quando obrigatório
+                            borderSide: const BorderSide(
+                              color: Colors.red,
+                              width: 1,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            // ✅ Borda vermelha ao focar
+                            borderSide: const BorderSide(
+                              color: Colors.red,
+                              width: 2,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Colors.red,
+                              width: 1,
+                            ),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Colors.red,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                        ),
+                      ),
+                      // ✅ Mensagem de erro abaixo do campo
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, left: 4),
+                        child: Text(
+                          'Informar o bairro',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Bairro',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: colors.onSurface.withOpacity(0.9),
+                    Expanded(
+                      flex: 2,
+                      child: CleanTextField(
+                        controller: _numberController,
+                        title: 'Número',
+                        hint: '123',
+                        keyboardType: TextInputType.number,
+                        validator:
+                            (v) =>
+                                (v == null || v.isEmpty) ? 'Obrigatório' : null,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _neighborhoodTextController,
-                      validator: (value) {
-                        // ✅ CRÍTICO: Obrigatório se o mapa não encontrou o bairro
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Informar o bairro';
-                        }
-                        return null;
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Digite o bairro',
-                        filled: true,
-                        fillColor: colors.surfaceVariant.withOpacity(0.3),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          // ✅ Borda vermelha quando obrigatório
-                          borderSide: const BorderSide(
-                            color: Colors.red,
-                            width: 1,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          // ✅ Borda vermelha ao focar
-                          borderSide: const BorderSide(
-                            color: Colors.red,
-                            width: 2,
-                          ),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Colors.red, width: 1),
-                        ),
-                        focusedErrorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Colors.red, width: 2),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: CleanTextField(
+                        controller: _complementController,
+                        title: 'Complemento',
+                        hint: 'Apartamento/Bloco/Casa',
+                        enabled: !_noComplement,
+                        validator: (value) {
+                          if (!_noComplement &&
+                              (value == null || value.isEmpty)) {
+                            return 'Obrigatório';
+                          }
+                          return null;
+                        },
                       ),
                     ),
-                    // ✅ Mensagem de erro abaixo do campo
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, left: 4),
-                      child: Text(
-                        'Informar o bairro',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.red,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                   ],
                 ),
-
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: CleanTextField(
-                      controller: _numberController,
-                      title: 'Número',
-                      hint: '123',
-                      keyboardType: TextInputType.number,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
-                    ),
+                // Usando CheckboxListTile para um visual mais limpo
+                CheckboxListTile(
+                  value: _noComplement,
+                  onChanged: (bool? value) {
+                    setState(() {
+                      _noComplement = value ?? false;
+                      if (_noComplement) _complementController.clear();
+                      // Revalida o campo de complemento ao marcar/desmarcar
+                      _formKey.currentState?.validate();
+                    });
+                  },
+                  title: Text(
+                    'Sem complemento',
+                    style: theme.textTheme.bodyMedium,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 3,
-                    child: CleanTextField(
-                      controller: _complementController,
-                      title: 'Complemento',
-                      hint: 'Apartamento/Bloco/Casa',
-                      enabled: !_noComplement,
-                      validator: (value) {
-                        if (!_noComplement && (value == null || value.isEmpty)) {
-                          return 'Obrigatório';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              // Usando CheckboxListTile para um visual mais limpo
-              CheckboxListTile(
-                value: _noComplement,
-                onChanged: (bool? value) {
-                  setState(() {
-                    _noComplement = value ?? false;
-                    if (_noComplement) _complementController.clear();
-                    // Revalida o campo de complemento ao marcar/desmarcar
-                    _formKey.currentState?.validate();
-                  });
-                },
-                title: Text('Sem complemento', style: theme.textTheme.bodyMedium),
-                controlAffinity: ListTileControlAffinity.leading, // Checkbox na esquerda
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-              ),
-              const SizedBox(height: 16),
-
-              CleanTextField(
-                controller: _referenceController,
-                title: 'Ponto de referência (opcional)',
-                hint: 'Próximo ao mercado X',
-              ),
-              const SizedBox(height: 24),
-
-              _buildSectionTitle(context, 'Marcar como'),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildLabelButton(context, icon: Icons.home_outlined, label: 'Casa'),
-                  _buildLabelButton(context, icon: Icons.work_outline, label: 'Trabalho'),
-                  _buildLabelButton(context, icon: Icons.favorite_border, label: 'Favorito'),
-                ],
-              ),
-              const SizedBox(height: 32), // Espaço antes do botão
-
-              // ✅ BOTÃO MOVIDO PARA CÁ
-              // Ele agora é o último item da lista e vai rolar junto com o resto.
-              Padding(
-                // Adiciona um padding na parte inferior para não colar no fim da tela
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: DsPrimaryButton(
-                  onPressed: _handleSave,
-                  label: isNewAddress ? 'Salvar endereço' : 'Atualizar endereço',
+                  controlAffinity:
+                      ListTileControlAffinity.leading, // Checkbox na esquerda
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
-              ),
+                const SizedBox(height: 16),
 
-            ],
+                CleanTextField(
+                  controller: _referenceController,
+                  title: 'Ponto de referência (opcional)',
+                  hint: 'Próximo ao mercado X',
+                ),
+                const SizedBox(height: 24),
+
+                _buildSectionTitle(context, 'Marcar como'),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildLabelButton(
+                      context,
+                      icon: Icons.home_outlined,
+                      label: 'Casa',
+                    ),
+                    _buildLabelButton(
+                      context,
+                      icon: Icons.work_outline,
+                      label: 'Trabalho',
+                    ),
+                    _buildLabelButton(
+                      context,
+                      icon: Icons.favorite_border,
+                      label: 'Favorito',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32), // Espaço antes do botão
+                // ✅ BOTÃO MOVIDO PARA CÁ
+                // Ele agora é o último item da lista e vai rolar junto com o resto.
+                Padding(
+                  // Adiciona um padding na parte inferior para não colar no fim da tela
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: DsPrimaryButton(
+                    onPressed: _handleSave,
+                    label:
+                        isNewAddress ? 'Salvar endereço' : 'Atualizar endereço',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        ),
       ),
-
     );
   }
 
@@ -358,11 +411,13 @@ class _EditAddressPageState extends State<EditAddressPage> {
   Widget _buildAddressDisplay(BuildContext context) {
     final theme = Theme.of(context);
     final addressLine = _mapStreet ?? '';
-    final cityLine = _mapNeighborhood != null && _mapNeighborhood!.isNotEmpty
-        ? '$_mapNeighborhood, $_mapCity'
-        : _mapCity ?? '';
-    final stateLine = _mapState != null && _mapState!.isNotEmpty ? ' - $_mapState' : '';
-    
+    final cityLine =
+        _mapNeighborhood != null && _mapNeighborhood!.isNotEmpty
+            ? '$_mapNeighborhood, $_mapCity'
+            : _mapCity ?? '';
+    final stateLine =
+        _mapState != null && _mapState!.isNotEmpty ? ' - $_mapState' : '';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
@@ -376,7 +431,11 @@ class _EditAddressPageState extends State<EditAddressPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.location_on, color: theme.colorScheme.primary, size: 20),
+              Icon(
+                Icons.location_on,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -419,7 +478,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
   Future<void> _openMap(BuildContext context) async {
     final store = context.read<StoreCubit>().state.store;
     if (store == null) return;
-    
+
     final result = await context.push<Map<String, dynamic>>(
       '/address-map',
       extra: {
@@ -429,7 +488,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
         'store': store,
       },
     );
-    
+
     if (result != null && mounted) {
       // ✅ CRÍTICO: Atualiza endereço quando o usuário escolhe nova localização no mapa
       setState(() {
@@ -439,25 +498,28 @@ class _EditAddressPageState extends State<EditAddressPage> {
         _mapNeighborhood = result['formData']['neighborhood'] as String?;
         _mapCity = result['formData']['city'] as String?;
         _mapState = result['formData']['state'] as String?;
-        
+
         // Atualiza campos editáveis
         if (result['formData']['number'] != null) {
-          _numberController.text = result['formData']['number'] as String? ?? '';
+          _numberController.text =
+              result['formData']['number'] as String? ?? '';
         }
         if (result['formData']['complement'] != null) {
-          _complementController.text = result['formData']['complement'] as String? ?? '';
+          _complementController.text =
+              result['formData']['complement'] as String? ?? '';
         }
         if (result['formData']['reference'] != null) {
-          _referenceController.text = result['formData']['reference'] as String? ?? '';
+          _referenceController.text =
+              result['formData']['reference'] as String? ?? '';
         }
-        
+
         // ✅ CRÍTICO: Atualiza bairro - se não encontrou, limpa para mostrar o campo
         if (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) {
           _neighborhoodTextController.text = _mapNeighborhood!;
         } else {
           _neighborhoodTextController.clear();
         }
-        
+
         // Atualiza cidade selecionada
         final cityName = result['formData']['city'] as String?;
         if (cityName != null && cityName.isNotEmpty) {
@@ -476,13 +538,17 @@ class _EditAddressPageState extends State<EditAddressPage> {
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.bold,
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
     );
   }
 
-  Widget _buildLabelButton(BuildContext context, {required IconData icon, required String label}) {
+  Widget _buildLabelButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+  }) {
     final theme = Theme.of(context);
     final isSelected = _selectedLabel == label;
 
@@ -490,29 +556,40 @@ class _EditAddressPageState extends State<EditAddressPage> {
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 20, color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.primary),
+          Icon(
+            icon,
+            size: 20,
+            color:
+                isSelected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.primary,
+          ),
           const SizedBox(width: 8),
           Text(label),
         ],
       ),
       selected: isSelected,
-      onSelected: (selected) => setState(() => _selectedLabel = selected ? label : ''),
+      onSelected:
+          (selected) => setState(() => _selectedLabel = selected ? label : ''),
       backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.2),
       selectedColor: theme.colorScheme.primary,
       labelStyle: theme.textTheme.bodyMedium?.copyWith(
-        color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+        color:
+            isSelected
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
         fontWeight: FontWeight.w600,
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
         side: BorderSide(
-          color: isSelected ? theme.colorScheme.primary : Colors.transparent,
+          color: isSelected ? theme.colorScheme.primary : Colors.grey.shade300,
+          width: 1,
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     );
   }
-
 
   void _handleSave() {
     if (!_formKey.currentState!.validate()) return;
@@ -529,7 +606,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
     if (_mapStreet == null || _mapStreet!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('É necessário confirmar a localização no mapa primeiro.'),
+          content: Text(
+            'É necessário confirmar a localização no mapa primeiro.',
+          ),
           backgroundColor: Colors.orange,
           duration: Duration(seconds: 3),
         ),
@@ -543,14 +622,18 @@ class _EditAddressPageState extends State<EditAddressPage> {
       street: _mapStreet!,
       number: _numberController.text.trim(),
       complement: _noComplement ? '' : _complementController.text.trim(),
-      reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
+      reference:
+          _referenceController.text.trim().isEmpty
+              ? null
+              : _referenceController.text.trim(),
       city: _mapCity ?? (_selectedCity?.name ?? ''),
       cityId: _selectedCity?.id,
 
       // ✅ CRÍTICO: Usa bairro do mapa se encontrou, senão usa o que o cliente digitou
-      neighborhood: (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty) 
-          ? _mapNeighborhood! 
-          : _neighborhoodTextController.text.trim(),
+      neighborhood:
+          (_mapNeighborhood != null && _mapNeighborhood!.isNotEmpty)
+              ? _mapNeighborhood!
+              : _neighborhoodTextController.text.trim(),
       neighborhoodId: null, // ✅ ATUALIZADO: Não usa mais neighborhood_id
       isFavorite: _selectedLabel.isNotEmpty,
       latitude: () => _latitude,
@@ -578,7 +661,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Não foi possível obter sua localização. Permita o acesso à localização nas configurações.'),
+            content: Text(
+              'Não foi possível obter sua localização. Permita o acesso à localização nas configurações.',
+            ),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           ),
@@ -590,12 +675,13 @@ class _EditAddressPageState extends State<EditAddressPage> {
   /// ✅ NOVO: Faz reverse geocoding para preencher endereço do mapa (incluindo bairro)
   Future<void> _reverseGeocodeAddress(double latitude, double longitude) async {
     setState(() => _isGettingLocation = true);
-    
+
     try {
-      final addressData = await ReverseGeocodingService.getAddressFromCoordinates(
-        latitude: latitude,
-        longitude: longitude,
-      );
+      final addressData =
+          await ReverseGeocodingService.getAddressFromCoordinates(
+            latitude: latitude,
+            longitude: longitude,
+          );
 
       if (addressData != null && mounted) {
         final store = context.read<StoreCubit>().state.store;
@@ -607,10 +693,11 @@ class _EditAddressPageState extends State<EditAddressPage> {
         setState(() {
           // ✅ CRÍTICO: Preenche dados do mapa (não editáveis)
           _mapStreet = addressData['street'] as String? ?? '';
-          
+
           // ✅ CRÍTICO: Atualiza bairro - se não encontrar, deixa null para mostrar o campo
           final neighborhoodFromMap = addressData['neighborhood'] as String?;
-          if (neighborhoodFromMap != null && neighborhoodFromMap.trim().isNotEmpty) {
+          if (neighborhoodFromMap != null &&
+              neighborhoodFromMap.trim().isNotEmpty) {
             _mapNeighborhood = neighborhoodFromMap.trim();
             _neighborhoodTextController.text = _mapNeighborhood!;
           } else {
@@ -618,17 +705,20 @@ class _EditAddressPageState extends State<EditAddressPage> {
             _mapNeighborhood = null;
             _neighborhoodTextController.clear();
           }
-          
+
           _mapCity = addressData['city'] as String? ?? '';
           _mapState = addressData['state'] as String? ?? '';
 
           // Preenche número se estiver vazio (pode vir do geocoding)
-          if (_numberController.text.trim().isEmpty && addressData['number'] != null) {
+          if (_numberController.text.trim().isEmpty &&
+              addressData['number'] != null) {
             _numberController.text = addressData['number'] as String;
           }
 
           // Preenche cidade selecionada se não tiver
-          if (_selectedCity == null && _mapCity != null && _mapCity!.isNotEmpty) {
+          if (_selectedCity == null &&
+              _mapCity != null &&
+              _mapCity!.isNotEmpty) {
             final matchingCity = store.cities.firstWhereOrNull(
               (c) => c.name.toLowerCase() == _mapCity!.toLowerCase(),
             );
@@ -636,7 +726,7 @@ class _EditAddressPageState extends State<EditAddressPage> {
               _selectedCity = matchingCity;
             }
           }
-          
+
           _isGettingLocation = false;
         });
 
@@ -654,7 +744,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Não foi possível obter o endereço. Tente novamente.'),
+              content: Text(
+                'Não foi possível obter o endereço. Tente novamente.',
+              ),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
@@ -667,7 +759,9 @@ class _EditAddressPageState extends State<EditAddressPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erro ao obter endereço. Verifique sua conexão e tente novamente.'),
+            content: Text(
+              'Erro ao obter endereço. Verifique sua conexão e tente novamente.',
+            ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 3),
           ),

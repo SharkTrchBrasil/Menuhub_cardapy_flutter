@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/services/persistent_order_notification_service.dart';
 import 'package:totem/services/urgent_notification_service.dart';
 import 'package:totem/themes/ds_theme_switcher.dart';
 
@@ -26,7 +25,7 @@ class MainTabPage extends StatefulWidget {
 class _MainTabPageState extends State<MainTabPage> {
   late final MainTabController _tabController;
   int _selectedIndex = 0;
-  
+
   // Usa IndexedStack para manter estado de todas as tabs
   late final List<Widget> _tabs;
 
@@ -35,7 +34,7 @@ class _MainTabPageState extends State<MainTabPage> {
     super.initState();
     _tabController = MainTabController();
     _tabController.addListener(_onTabChanged);
-    
+
     // ✅ CORREÇÃO: 3 tabs: Home, Pedidos, Perfil (removido Notificações e Cardápio)
     _tabs = [
       const HomeTabPageAdaptive(key: PageStorageKey('home_tab')),
@@ -65,7 +64,7 @@ class _MainTabPageState extends State<MainTabPage> {
     // ✅ Sempre chama changeTab, mesmo se for a mesma tab
     // Isso garante sincronização do estado após operações como clearCart
     _tabController.changeTab(index);
-    
+
     // ✅ Força atualização imediata do estado local
     if (mounted) {
       setState(() {
@@ -83,62 +82,16 @@ class _MainTabPageState extends State<MainTabPage> {
     // Mobile: usa tabs com IndexedStack
     // Desktop: não deve usar este widget (usa rotas)
     return MultiBlocProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: _tabController),
-      ],
+      providers: [ChangeNotifierProvider.value(value: _tabController)],
       child: Builder(
         builder: (context) {
-          // ✅ NOVO: Define contexto para o serviço de notificações urgentes
           WidgetsBinding.instance.addPostFrameCallback((_) {
             UrgentNotificationService().setContext(context);
-            // ✅ NOVO: Define contexto para notificação persistente de pedido
-            PersistentOrderNotificationService().setContext(context);
           });
-          
-          return BlocListener<OrdersCubit, OrdersState>(
-            listenWhen: (previous, current) {
-              // ✅ Monitora quando há mudanças nos pedidos ativos
-              final prevActive = previous.activeOrders;
-              final currActive = current.activeOrders;
-              
-              // Detecta mudança se:
-              // 1. Quantidade de pedidos ativos mudou
-              // 2. Status de algum pedido ativo mudou
-              if (prevActive.length != currActive.length) return true;
-              
-              for (int i = 0; i < currActive.length; i++) {
-                if (i >= prevActive.length) return true;
-                if (prevActive[i].id != currActive[i].id ||
-                    prevActive[i].lastStatus != currActive[i].lastStatus) {
-                  return true;
-                }
-              }
-              
-              return false;
-            },
-            listener: (context, state) {
-              // ✅ Mostra/esconde notificação baseado em pedidos ativos
-              final activeOrders = state.activeOrders;
-              final notificationService = PersistentOrderNotificationService();
-              
-              if (activeOrders.isEmpty) {
-                // Não há pedidos ativos, esconde notificação
-                notificationService.hideNotification();
-              } else {
-                // Há pedido(s) ativo(s), mostra notificação do mais recente
-                final mostRecentOrder = activeOrders.first;
-                notificationService.showNotification(mostRecentOrder);
-              }
-            },
-            child: Scaffold(
-              body: IndexedStack(
-                index: _selectedIndex,
-                children: _tabs,
-              ),
-              // ✅ CORREÇÃO: Usa bottomNavigationBar nativo do Scaffold
-              // Isso garante que as tabs fiquem sempre na parte inferior da tela
-              bottomNavigationBar: _buildBottomNavigationBar(context, theme),
-            ),
+
+          return Scaffold(
+            body: IndexedStack(index: _selectedIndex, children: _tabs),
+            bottomNavigationBar: _buildBottomNavigationBar(context, theme),
           );
         },
       ),
@@ -221,17 +174,10 @@ class _MainTabPageState extends State<MainTabPage> {
               children: [
                 Icon(
                   isSelected ? activeIcon : icon,
-                  color: isSelected
-                      ? theme.primaryColor
-                      : Colors.grey.shade600,
+                  color: isSelected ? theme.primaryColor : Colors.grey.shade600,
                   size: 24,
                 ),
-                if (badge != null)
-                  Positioned(
-                    right: -8,
-                    top: -4,
-                    child: badge,
-                  ),
+                if (badge != null) Positioned(right: -8, top: -4, child: badge),
               ],
             ),
             const SizedBox(height: 3),
@@ -241,9 +187,7 @@ class _MainTabPageState extends State<MainTabPage> {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? theme.primaryColor
-                      : Colors.grey.shade600,
+                  color: isSelected ? theme.primaryColor : Colors.grey.shade600,
                 ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
@@ -255,7 +199,6 @@ class _MainTabPageState extends State<MainTabPage> {
       ),
     );
   }
-
 
   Widget _buildDesktopNavigation(BuildContext context, theme) {
     return Positioned(
@@ -330,13 +273,15 @@ class _MainTabPageState extends State<MainTabPage> {
           height: 60,
           margin: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: isSelected
-                ? theme.primaryColor.withOpacity(0.1)
-                : Colors.transparent,
+            color:
+                isSelected
+                    ? theme.primaryColor.withOpacity(0.1)
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: isSelected
-                ? Border.all(color: theme.primaryColor, width: 2)
-                : null,
+            border:
+                isSelected
+                    ? Border.all(color: theme.primaryColor, width: 2)
+                    : null,
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -344,17 +289,10 @@ class _MainTabPageState extends State<MainTabPage> {
             children: [
               Icon(
                 isSelected ? activeIcon : icon,
-                color: isSelected
-                    ? theme.primaryColor
-                    : Colors.grey.shade600,
+                color: isSelected ? theme.primaryColor : Colors.grey.shade600,
                 size: 28,
               ),
-              if (badge != null)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: badge,
-                ),
+              if (badge != null) Positioned(right: 4, top: 4, child: badge),
             ],
           ),
         ),
@@ -362,4 +300,3 @@ class _MainTabPageState extends State<MainTabPage> {
     );
   }
 }
-

@@ -47,17 +47,20 @@ class _PaymentMethodSelectionListState
             )
             .toList();
 
+    // ✅ CORREÇÃO: Filtra métodos ONLINE individualmente, não o grupo inteiro.
+    // Antes: se o grupo "Crédito" tinha 1 método ONLINE (ex: Stripe), o grupo
+    // inteiro era excluído — perdendo flags offline como Visa, Mastercard, Elo.
     final offline = <PaymentMethodGroup>[];
 
     for (final group in activeGroups) {
-      final hasOnline = group.methods.any(
-        (m) =>
-            m.method_type == 'ONLINE' ||
-            (m.activation?.details?['is_online'] == true),
-      );
+      final offlineMethods =
+          group.methods.where((m) {
+            return m.method_type != 'ONLINE' &&
+                (m.activation?.details?['is_online'] != true);
+          }).toList();
 
-      if (!hasOnline) {
-        offline.add(group);
+      if (offlineMethods.isNotEmpty) {
+        offline.add(group.copyWith(methods: offlineMethods));
       }
     }
 

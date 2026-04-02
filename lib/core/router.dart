@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
-import 'package:totem/core/responsive_builder.dart';
 import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/cubit/orders_cubit.dart';
@@ -38,12 +37,14 @@ import '../pages/profile/edit_profile_page.dart';
 import '../pages/orders/order_history_page.dart';
 import '../pages/order/order_details_page.dart';
 import '../pages/order/order_evaluation_page.dart';
+import '../pages/order/order_help_page.dart';
+import '../pages/order/order_help_topic_page.dart';
 import '../pages/orders/order_review_page.dart';
+import '../pages/delivery_persons/delivery_persons_page.dart';
+import '../pages/address/address_onboarding_page.dart';
 import '../pages/auth/email_auth_page.dart';
 import '../pages/auth/reset_password_page.dart';
 import '../pages/search/search_page.dart';
-import '../pages/delivery_persons/delivery_persons_page.dart';
-import '../pages/address/address_onboarding_page.dart';
 import '../pages/address/cubits/address_cubit.dart';
 import '../cubit/auth_cubit.dart';
 import '../repositories/realtime_repository.dart';
@@ -763,6 +764,32 @@ GoRouter createGoRouter() {
                       final order = state.extra as Order?;
                       if (order == null) return const SizedBox();
                       return OrderEvaluationPage(order: order);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'help',
+                    builder: (context, state) {
+                      final order = state.extra as Order?;
+                      if (order == null) return const SizedBox();
+                      return OrderHelpPage(order: order);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'help/topic',
+                    builder: (context, state) {
+                      final extra = state.extra as Map<String, dynamic>?;
+                      if (extra == null || !extra.containsKey('order')) {
+                        return const Scaffold(body: Center(child: Text('Dados inválidos')));
+                      }
+                      
+                      return OrderHelpTopicPage(
+                        order: extra['order'],
+                        topicTitle: extra['topicTitle'] ?? '',
+                        description: extra['description'] ?? '',
+                        actionType: extra['actionType'],
+                        buttonText: extra['buttonText'] ?? 'OK',
+                        icon: extra['icon'] ?? Icons.info_outline,
+                      );
                     },
                   ),
                 ],

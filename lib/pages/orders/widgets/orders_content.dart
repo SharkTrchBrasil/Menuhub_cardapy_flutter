@@ -1,18 +1,12 @@
-// lib/pages/orders/widgets/orders_content.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:totem/helpers/order_reorder_helper.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/cubit/orders_cubit.dart';
 import 'package:totem/cubit/auth_cubit.dart';
-import 'package:totem/pages/cart/cart_cubit.dart';
-import 'package:totem/services/store_status_service.dart';
-import 'package:totem/widgets/store_closed_widgets.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:totem/cubit/store_cubit.dart';
-import 'package:totem/cubit/catalog_cubit.dart';
 import 'package:totem/pages/orders/widgets/wave_progress_indicator.dart';
 
 /// Orders Content Widget
@@ -51,20 +45,14 @@ class OrdersContent extends StatelessWidget {
           padding: EdgeInsets.all(isDesktop ? 24 : 16),
           children: [
             // Seção "Em andamento"
-            _buildSectionTitle('Em andamento'),
-            const SizedBox(height: 12),
-            if (activeOrders.isNotEmpty)
+            if (activeOrders.isNotEmpty) ...[
+              _buildSectionTitle('Em andamento'),
+              const SizedBox(height: 12),
               ...activeOrders.map(
                 (order) => _ActiveOrderCard(order: order, isDesktop: isDesktop),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24, top: 8),
-                child: Text(
-                  'Sem pedidos recentes por aqui',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                ),
               ),
+              const SizedBox(height: 24),
+            ],
 
             // Seção "Histórico"
             if (historyOrders.isNotEmpty) ...[
@@ -103,7 +91,7 @@ class OrdersContent extends StatelessWidget {
       final dateKey = TimezoneService.formatStoreDateTime(
         order.createdAt,
         timezone,
-        format: 'EEE, dd/MM/yyyy',
+        format: 'EEEE, dd/MM/yyyy',
       );
       grouped.putIfAbsent(dateKey, () => []);
       grouped[dateKey]!.add(order);
@@ -114,13 +102,14 @@ class OrdersContent extends StatelessWidget {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Text(
         title,
         style: TextStyle(
-          fontSize: isDesktop ? 24 : 22,
-          fontWeight: FontWeight.bold,
-          color: const Color(0xFF3F3E3E),
+          fontSize: isDesktop ? 17 : 15,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF717171),
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -385,101 +374,64 @@ class _ActiveOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => context.push('/order/${order.id}', extra: order),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
         elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header com avatar e info da loja
-              Row(
-                children: [
-                  _buildStoreAvatar(order.merchant.logo),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          order.merchant.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+        shadowColor: Colors.black12,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.push('/order/${order.id}', extra: order),
+          splashColor: Colors.black.withOpacity(0.05),
+          highlightColor: Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header com avatar e info da loja
+                Row(
+                  children: [
+                    _buildStoreAvatar(order.merchant.logo),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            order.merchant.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Entrega não rastreável',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade500,
+                          const SizedBox(height: 2),
+                          Text(
+                            order.statusLabel,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Previsão de entrega
-              _buildDeliveryInfo(),
-
-              const SizedBox(height: 16),
-
-              // Barra de progresso (Verde conforme o print)
-              _buildProgressBar(),
-
-              const SizedBox(height: 16),
-
-              // Botões de ação
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        // Lógica de ajuda
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFEA1D2C),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text(
-                        'Ajuda',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                        ],
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: TextButton(
-                      onPressed:
-                          () =>
-                              context.push('/order/${order.id}', extra: order),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFEA1D2C),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text(
-                        'Acompanhar',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Previsão de entrega
+                _buildDeliveryInfo(),
+
+                const SizedBox(height: 16),
+
+                // Barra de progresso (Verde conforme o print)
+                _buildProgressBar(),
+              ],
+            ),
           ),
         ),
       ),
@@ -549,348 +501,267 @@ class _HistoryOrderCard extends StatelessWidget {
         order.orderStatus.toLowerCase() == 'finalized' ||
         order.orderStatus.toLowerCase() == 'concluded';
 
-    return InkWell(
-      onTap: () => context.push('/order/${order.id}', extra: order),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.grey.shade200),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: Foto da loja + Nome + Status
-              Row(
-                children: [
-                  _buildStoreAvatar(order.merchant.logo),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          order.merchant.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF3F3E3E),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              _getStatusLabel(order.orderStatus),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _getStatusColor(order.orderStatus),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              _getStatusIcon(order.orderStatus),
-                              size: 14,
-                              color: isCanceled ? Colors.grey : Colors.green,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Corpo: Itens e fotos empilhadas à direita
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Lista de itens
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ...order.items
-                            .take(3)
-                            .map((item) => _buildProductItem(item)),
-                        if (order.items.length > 3)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '+ ${order.items.length - 3} itens',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[600],
-                              ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.push('/order/${order.id}', extra: order),
+          splashColor: Colors.black.withOpacity(0.05),
+          highlightColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Foto da loja + Nome + Status
+                Row(
+                  children: [
+                    _buildStoreAvatar(order.merchant.logo),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            order.merchant.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3F3E3E),
                             ),
                           ),
-                      ],
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                _getStatusLabel(order.orderStatus),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _getStatusColor(order.orderStatus),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                _getStatusIcon(order.orderStatus),
+                                size: 14,
+                                color: isCanceled ? Colors.grey : Colors.green,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
+                ),
 
-                  // Fotos empilhadas (estilo iFood)
-                  Builder(
-                    builder: (context) {
-                      // Pega os 3 primeiros itens, independente de terem imagem ou não
-                      final itemsToShow = order.items.take(3).toList();
-                      if (itemsToShow.isEmpty) return const SizedBox();
+                const SizedBox(height: 16),
 
-                      return SizedBox(
-                        width: 80,
-                        height: 48,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          alignment: Alignment.centerRight,
-                          children:
-                              itemsToShow.reversed.toList().asMap().entries.map((
-                                entry,
-                              ) {
-                                final item = entry.value;
-                                final imgUrl = _formatImageUrl(item.logoUrl);
-                                final hasImage = imgUrl.isNotEmpty;
+                // Corpo: Itens e fotos empilhadas à direita
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Lista de itens
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...order.items
+                              .take(3)
+                              .map((item) => _buildProductItem(item)),
+                          if (order.items.length > 3)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                '+ ${order.items.length - 3} itens',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
 
-                                return Positioned(
-                                  right: entry.key * 15.0,
-                                  child: Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.white,
-                                      border: Border.all(
+                    // Fotos empilhadas (estilo iFood)
+                    Builder(
+                      builder: (context) {
+                        // Pega os 3 primeiros itens, independente de terem imagem ou não
+                        final itemsToShow = order.items.take(3).toList();
+                        if (itemsToShow.isEmpty) return const SizedBox();
+
+                        return SizedBox(
+                          width: 80,
+                          height: 48,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.centerRight,
+                            children:
+                                itemsToShow.reversed.toList().asMap().entries.map((
+                                  entry,
+                                ) {
+                                  final item = entry.value;
+                                  final imgUrl = _formatImageUrl(item.logoUrl);
+                                  final hasImage = imgUrl.isNotEmpty;
+
+                                  return Positioned(
+                                    right: entry.key * 15.0,
+                                    child: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
                                         color: Colors.white,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.12),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
                                         ),
-                                      ],
-                                    ),
-                                    child: ClipOval(
-                                      child:
-                                          hasImage
-                                              ? CachedNetworkImage(
-                                                imageUrl: imgUrl,
-                                                fit: BoxFit.cover,
-                                                placeholder:
-                                                    (context, url) => Container(
-                                                      color: Colors.grey[100],
-                                                      child: const Center(
-                                                        child: SizedBox(
-                                                          width: 14,
-                                                          height: 14,
-                                                          child:
-                                                              CircularProgressIndicator(
-                                                                strokeWidth: 2,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                errorWidget:
-                                                    (context, url, error) =>
-                                                        Container(
-                                                          color:
-                                                              Colors.grey[100],
-                                                          child: const Icon(
-                                                            Icons.fastfood,
-                                                            size: 18,
-                                                            color: Colors.grey,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.12,
+                                            ),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child:
+                                            hasImage
+                                                ? CachedNetworkImage(
+                                                  imageUrl: imgUrl,
+                                                  fit: BoxFit.cover,
+                                                  placeholder:
+                                                      (
+                                                        context,
+                                                        url,
+                                                      ) => Container(
+                                                        color: Colors.grey[100],
+                                                        child: const Center(
+                                                          child: SizedBox(
+                                                            width: 14,
+                                                            height: 14,
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                  strokeWidth:
+                                                                      2,
+                                                                ),
                                                           ),
                                                         ),
-                                              )
-                                              : Container(
-                                                color: Colors.grey[100],
-                                                child: const Icon(
-                                                  Icons.fastfood,
-                                                  size: 18,
-                                                  color: Colors.grey,
+                                                      ),
+                                                  errorWidget:
+                                                      (
+                                                        context,
+                                                        url,
+                                                        error,
+                                                      ) => Container(
+                                                        color: Colors.grey[100],
+                                                        child: const Icon(
+                                                          Icons.fastfood,
+                                                          size: 18,
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                )
+                                                : Container(
+                                                  color: Colors.grey[100],
+                                                  child: const Icon(
+                                                    Icons.fastfood,
+                                                    size: 18,
+                                                    color: Colors.grey,
+                                                  ),
                                                 ),
-                                              ),
+                                      ),
                                     ),
+                                  );
+                                }).toList(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Avaliação (apenas se concluído)
+                if (isDelivered) ...[
+                  const SizedBox(height: 12),
+                  Builder(
+                    builder: (context) {
+                      final bool isRated =
+                          order.details.reviewed || order.storeRating != null;
+                      final int ratedStars = order.storeRating?.stars ?? 0;
+
+                      return InkWell(
+                        onTap: () {
+                          if (!isRated) {
+                            context.push(
+                              '/order/${order.id}/evaluate',
+                              extra: order,
+                            );
+                          } else {
+                            context.push('/order/${order.id}', extra: order);
+                          }
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: List.generate(
+                                5,
+                                (index) => Icon(
+                                  Icons.star,
+                                  size: 18,
+                                  color:
+                                      isRated
+                                          ? (index < ratedStars
+                                              ? const Color(0xFFFDCB3F)
+                                              : Colors.grey.shade300)
+                                          : Colors.grey.shade300,
+                                ),
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  isRated
+                                      ? 'Avaliação enviada'
+                                      : 'Avalie seu pedido',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
                                   ),
-                                );
-                              }).toList(),
+                                ),
+                                if (!isRated)
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    size: 16,
+                                    color: Colors.black,
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
                       );
                     },
                   ),
                 ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Avaliação (apenas se concluído)
-              if (isDelivered) ...[
-                const SizedBox(height: 12),
-                Builder(
-                  builder: (context) {
-                    final bool isRated =
-                        order.details.reviewed || order.storeRating != null;
-                    final int ratedStars = order.storeRating?.stars ?? 0;
-
-                    return InkWell(
-                      onTap: () {
-                        if (!isRated) {
-                          context.push(
-                            '/order/${order.id}/evaluate',
-                            extra: order,
-                          );
-                        } else {
-                          context.push('/order/${order.id}', extra: order);
-                        }
-                      },
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: List.generate(
-                              5,
-                              (index) => Icon(
-                                Icons.star,
-                                size: 18,
-                                color:
-                                    isRated
-                                        ? (index < ratedStars
-                                            ? const Color(0xFFFDCB3F)
-                                            : Colors.grey.shade300)
-                                        : Colors.grey.shade300,
-                              ),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Text(
-                                isRated
-                                    ? 'Avaliação enviada'
-                                    : 'Avalie seu pedido',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              if (!isRated)
-                                const Icon(
-                                  Icons.chevron_right,
-                                  size: 16,
-                                  color: Colors.black,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
               ],
-
-              const SizedBox(height: 12),
-              const Divider(height: 1, thickness: 0.5, color: Colors.grey),
-
-              // Botões de ação
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        // Lógica de ajuda
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text(
-                        'Ajuda',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        if (isDelivered) {
-                          _addToCart(context);
-                        } else {
-                          context.push('/order/${order.id}', extra: order);
-                        }
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        isDelivered ? 'Adicione à sacola' : 'Ver detalhes',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _addToCart(BuildContext context) async {
-    final storeCubit = context.read<StoreCubit>();
-    final catalogCubit = context.read<CatalogCubit>();
-    final cartCubit = context.read<CartCubit>();
-    final store = storeCubit.state.store;
-
-    // 1. Valida status da loja
-    final status = StoreStatusService.validateStoreStatus(store);
-    if (!status.canReceiveOrders) {
-      if (context.mounted) {
-        StoreClosedHelper.showModal(context, nextOpenTime: status.message);
-      }
-      return;
-    }
-
-    try {
-      final payloads = OrderReorderHelper.buildPayloads(
-        order: order,
-        products: catalogCubit.state.products ?? const [],
-        categories: catalogCubit.state.categories ?? const [],
-      );
-
-      for (final payload in payloads) {
-        await cartCubit.updateItem(payload);
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Itens adicionados à sacola!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao adicionar itens: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }
 
@@ -1060,17 +931,34 @@ Widget _buildProductItem(BagItem item) {
 double _getProgressValue(String status) {
   switch (status.toLowerCase()) {
     case 'pending':
-      return 0.15;
+      return 0.1;
     case 'confirmed':
-      return 0.3;
+      return 0.2;
     case 'preparing':
-      return 0.5;
+      return 0.35;
     case 'ready':
-      return 0.7;
+      return 0.5;
+    case 'driver_on_way':
+      return 0.55;
+    case 'driver_arrived':
+      return 0.6;
     case 'out_for_delivery':
-      return 0.85;
+    case 'dispatched':
+      return 0.7;
+    case 'arriving':
+      return 0.8;
+    case 'driver_at_customer':
+      return 0.9;
     case 'delivered':
+    case 'finalized':
+    case 'concluded':
       return 1.0;
+    case 'canceled':
+    case 'cancelled':
+    case 'cancellation_requested':
+    case 'delivery_failed':
+    case 'order_returned':
+      return 0.0;
     default:
       return 0.0;
   }

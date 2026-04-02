@@ -5,10 +5,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:totem/models/order.dart';
 import 'package:totem/pages/orders/order_detail_page.dart';
-import 'package:totem/pages/orders/widgets/orders_content.dart';
 import 'package:totem/pages/profile/profile_cubit.dart';
 import 'package:totem/cubit/store_cubit.dart';
 import 'package:totem/core/helpers/side_panel.dart';
@@ -73,7 +71,9 @@ class _OrderHistoryContent extends StatelessWidget {
                         ![
                           'delivered',
                           'finalized',
+                          'concluded',
                           'canceled',
+                          'cancelled',
                         ].contains(o.orderStatus.toLowerCase()),
                   )
                   .toList();
@@ -83,16 +83,18 @@ class _OrderHistoryContent extends StatelessWidget {
                     (o) => [
                       'delivered',
                       'finalized',
+                      'concluded',
                       'canceled',
+                      'cancelled',
                     ].contains(o.orderStatus.toLowerCase()),
                   )
                   .toList();
 
           return CustomScrollView(
             slivers: [
-              // ✅ Seção "Em andamento"
-              _buildSectionTitle('Em andamento'),
-              if (inProgressOrders.isNotEmpty)
+              // ✅ Seção "Em andamento" - Só mostra se houver pedidos
+              if (inProgressOrders.isNotEmpty) ...[
+                _buildSectionTitle('Em andamento'),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -105,20 +107,8 @@ class _OrderHistoryContent extends StatelessWidget {
                               .toList(),
                     ),
                   ),
-                )
-              else
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Text(
-                      'Sem pedidos recentes por aqui',
-                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                    ),
-                  ),
                 ),
+              ],
 
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
@@ -191,13 +181,14 @@ class _OrderHistoryContent extends StatelessWidget {
   SliverToBoxAdapter _buildSectionTitle(String title) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
         child: Text(
           title,
           style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3F3E3E),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF717171),
+            letterSpacing: 0.5,
           ),
         ),
       ),
@@ -269,116 +260,90 @@ class _InProgressOrderCard extends StatelessWidget {
     final estimatedMin = now.add(const Duration(minutes: 15));
     final estimatedMax = now.add(const Duration(minutes: 25));
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Logo + nome + status
-          Row(
-            children: [
-              _buildStoreLogo(store?.image?.url),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openOrderDetails(context, order),
+          splashColor: Colors.black.withOpacity(0.05),
+          highlightColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Logo + nome + status
+                Row(
                   children: [
-                    Text(
-                      store?.name ?? 'Loja',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _getStatusLabel(order.orderStatus),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _getStatusColor(order.orderStatus),
+                    _buildStoreLogo(store?.image?.url),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            store?.name ?? 'Loja',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _getStatusLabel(order.orderStatus),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _getStatusColor(order.orderStatus),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
 
-          const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
-          // Barra de progresso
-          Row(
-            children: [
-              Text(
-                'Previsão de entrega: ',
-                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-              ),
-              Text(
-                '${estimatedMin.hour}:${estimatedMin.minute.toString().padLeft(2, '0')} - ${estimatedMax.hour}:${estimatedMax.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: _getProgressValue(order.orderStatus),
-            backgroundColor: Colors.grey[200],
-            valueColor: AlwaysStoppedAnimation(Theme.of(context).primaryColor),
-            borderRadius: BorderRadius.circular(4),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Botões
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () {
-                    _showHelpDialog(context);
-                  },
-                  child: Text(
-                    'Ajuda',
-                    style: TextStyle(
-                      color: Theme.of(context).primaryColor,
-                      fontWeight: FontWeight.w600,
+                // Barra de progresso e previsão
+                Row(
+                  children: [
+                    Text(
+                      'Previsão: ',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
+                    Text(
+                      '${estimatedMin.hour}:${estimatedMin.minute.toString().padLeft(2, '0')} - ${estimatedMax.hour}:${estimatedMax.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _getProgressValue(order.orderStatus),
+                    backgroundColor: Colors.grey[100],
+                    valueColor:
+                        AlwaysStoppedAnimation(Theme.of(context).primaryColor),
+                    minHeight: 6,
                   ),
                 ),
-              ),
-              Expanded(
-                child: TextButton(
-                  onPressed: () => _openOrderDetails(context, order),
-                  child: Text(
-                    'Acompanhar',
-                    style: TextStyle(
-                      color: Theme.of(context).primaryColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -425,160 +390,136 @@ class _HistoryOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.read<StoreCubit>().state.store;
-    final isCanceled = order.orderStatus.toLowerCase() == 'canceled';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Logo + nome + status
-          Row(
-            children: [
-              _buildStoreLogo(store?.image?.url),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openOrderDetails(context, order),
+          splashColor: Colors.black.withOpacity(0.05),
+          highlightColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Logo + nome + status
+                Row(
                   children: [
-                    Text(
-                      store?.name ?? 'Loja',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Text(
-                          _getStatusLabel(order.orderStatus),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _getStatusColor(order.orderStatus),
+                    _buildStoreLogo(store?.image?.url),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            store?.name ?? 'Loja',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          _getStatusIcon(order.orderStatus),
-                          size: 14,
-                          color: _getStatusColor(order.orderStatus),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                _getStatusLabel(order.orderStatus),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _getStatusColor(order.orderStatus),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                _getStatusIcon(order.orderStatus),
+                                size: 14,
+                                color: _getStatusColor(order.orderStatus),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
 
-          const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-          // Itens
-          ...order.items
-              .take(2)
-              .map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${item.quantity}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          item.name,
-                          style: const TextStyle(fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Imagem do produto
-                      if (item.imageUrl != null)
-                        Container(
-                          width: 40,
-                          height: 40,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: CachedNetworkImage(
-                              imageUrl: item.imageUrl!,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => const SizedBox(),
+                // Itens
+                ...order.items
+                    .take(2)
+                    .map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${item.quantity}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.name,
+                                style: const TextStyle(fontSize: 14),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Imagem do produto
+                            if (item.imageUrl != null)
+                              Container(
+                                width: 40,
+                                height: 40,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: CachedNetworkImage(
+                                    imageUrl: item.imageUrl!,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => const SizedBox(),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                    ],
-                  ),
-                ),
-              ),
+                      ),
+                    ),
 
-          if (order.items.length > 2)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '+${order.items.length - 2} itens',
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
+                if (order.items.length > 2)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '+${order.items.length - 2} itens',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    ),
+                  ),
+              ],
             ),
-
-          const SizedBox(height: 12),
-
-          // Botões
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () {
-                    _showHelpDialog(context);
-                  },
-                  child: Text(
-                    'Ajuda',
-                    style: TextStyle(
-                      color: Theme.of(context).primaryColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: TextButton(
-                  onPressed: () => _openOrderDetails(context, order),
-                  child: Text(
-                    'Ver detalhes',
-                    style: TextStyle(
-                      color: Theme.of(context).primaryColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -632,10 +573,10 @@ String _getStatusLabel(String status) {
     case 'delivered':
     case 'finalized':
     case 'concluded':
-      return 'Finalizado';
+      return 'Pedido concluído';
     case 'canceled':
     case 'cancelled':
-      return 'Cancelado';
+      return 'Pedido cancelado';
     default:
       return status;
   }
@@ -714,42 +655,4 @@ double _getProgressValue(String status) {
     default:
       return 0.15;
   }
-}
-
-void _showHelpDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    builder:
-        (context) => AlertDialog(
-          title: const Text('Ajuda - Histórico de Pedidos'),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Seções:', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('• Em andamento: Pedidos em preparo ou entrega'),
-              Text('• Histórico: Pedidos finalizados ou cancelados'),
-              SizedBox(height: 16),
-              Text(
-                'Precisa de ajuda?',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text('• Fale com a loja: (11) 9999-9999'),
-              Text('• E-mail: suporte@menuhub.com.br'),
-              SizedBox(height: 16),
-              Text('Dicas:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('• Clique em um pedido para ver detalhes'),
-              Text('• Use os filtros para organizar por status'),
-              Text('• Arraste para atualizar a lista'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fechar'),
-            ),
-          ],
-        ),
-  );
 }

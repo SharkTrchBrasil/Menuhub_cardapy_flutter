@@ -491,107 +491,83 @@ class _PaymentMethodSummary extends StatelessWidget {
           deliveryType,
         );
 
-        return Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F7), // Cinza claro de fundo
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ✅ Conteúdo do Pagamento em Card Branco
-              InkWell(
-                onTap: () async {
-                  final cartState = context.read<CartCubit>().state;
-                  final feeState = context.read<DeliveryFeeCubit>().state;
+        // ✅ Card de pagamento alinhado com os demais
+        return InkWell(
+          onTap: () async {
+            final cartState = context.read<CartCubit>().state;
+            final feeState = context.read<DeliveryFeeCubit>().state;
 
-                  double deliveryFee = 0.0;
-                  if (feeState is DeliveryFeeLoaded &&
-                      feeState.deliveryType == DeliveryType.delivery) {
-                    deliveryFee = feeState.deliveryFee;
-                  }
+            double deliveryFee = 0.0;
+            if (feeState is DeliveryFeeLoaded &&
+                feeState.deliveryType == DeliveryType.delivery) {
+              deliveryFee = feeState.deliveryFee;
+            }
 
-                  final orderTotal =
-                      (cartState.cart.total / 100.0) + deliveryFee;
+            final orderTotal = (cartState.cart.total / 100.0) + deliveryFee;
 
-                  final selected = await Navigator.push<PlatformPaymentMethod>(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (_) => PaymentMethodSelectionList(
-                            paymentGroups: availablePaymentGroups,
-                            initialSelectedMethod: method,
-                            orderTotal: orderTotal,
-                            store: store,
-                          ),
+            final selected = await Navigator.push<PlatformPaymentMethod>(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (_) => PaymentMethodSelectionList(
+                      paymentGroups: availablePaymentGroups,
+                      initialSelectedMethod: method,
+                      orderTotal: orderTotal,
+                      store: store,
                     ),
-                  );
-                  if (selected != null) {
-                    context.read<CheckoutCubit>().updatePaymentMethod(selected);
-                  }
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                  child: Row(
+              ),
+            );
+            if (selected != null) {
+              context.read<CheckoutCubit>().updatePaymentMethod(selected);
+            }
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200, width: 1),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                _buildPaymentIcon(method.iconKey),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildPaymentIcon(method.iconKey),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              method.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Color(0xFF3E3E3E),
-                              ),
-                            ),
-                            if (isCash)
-                              GestureDetector(
-                                onTap: onShowChangeSheet,
-                                child: Text(
-                                  state.changeFor == null ||
-                                          state.changeFor == 0
-                                      ? 'Sem troco'
-                                      : 'Troco para ${UtilBrasilFields.obterReal(state.changeFor!)}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Theme.of(context).primaryColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                          ],
+                      Text(
+                        method.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF3E3E3E),
                         ),
                       ),
-                      const Icon(
-                        Icons.keyboard_arrow_right,
-                        color: Colors.black87,
-                        size: 20,
-                      ),
+                      if (isCash)
+                        GestureDetector(
+                          onTap: onShowChangeSheet,
+                          child: Text(
+                            state.changeFor == null || state.changeFor == 0
+                                ? 'Sem troco'
+                                : 'Troco para ${UtilBrasilFields.obterReal(state.changeFor!)}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context).primaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const Icon(
+                  Icons.keyboard_arrow_right,
+                  color: Colors.black87,
+                  size: 20,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -740,6 +716,18 @@ class _ChangeNeededBottomSheetState extends State<_ChangeNeededBottomSheet> {
               prefixText: 'R\$ ',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: Theme.of(context).primaryColor,
+                  width: 2,
+                ),
               ),
               errorText: _errorMessage,
             ),

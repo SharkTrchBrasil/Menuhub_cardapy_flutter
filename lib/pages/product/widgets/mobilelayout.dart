@@ -16,6 +16,7 @@ import 'package:totem/pages/product/widgets/variant_header_widget.dart';
 import 'package:totem/pages/product/widgets/variant_widget.dart';
 import 'package:totem/themes/ds_theme.dart';
 import 'package:totem/cubit/store_cubit.dart'; // ✅ NOVO: Para obter store
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
 // ✅ NOVOS IMPORTS
 import 'package:totem/core/enums/foodtags.dart';
@@ -215,163 +216,247 @@ class _MobileProductPageState extends State<MobileProductPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ MENUHUB STYLE: Imagem clicável (abre fullscreen)
-                GestureDetector(
-                  onTap: () => _openImageFullscreen(context, product),
-                  child: SizedBox(
-                    height: imageHeight,
-                    width: media.width,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // Imagem do produto
-                        Hero(
-                          tag: 'product_image_${product.product.id}',
-                          child: CachedNetworkImage(
-                            imageUrl: product.product.imageUrl ?? '',
-                            fit: BoxFit.cover,
-                            placeholder:
-                                (context, url) =>
-                                    Container(color: Colors.grey.shade200),
-                            errorWidget:
-                                (context, url, error) => Container(
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(
-                                    Icons.image_not_supported,
-                                    size: 48,
+                // ✅ MENUHUB STYLE: Carrossel de imagens (ou imagem única)
+                Builder(
+                  builder: (context) {
+                    // Monta lista de URLs: imagem principal + galeria (sem duplicatas)
+                    final allImageUrls = <String>[];
+                    final mainUrl = product.product.imageUrl;
+                    if (mainUrl != null && mainUrl.isNotEmpty) {
+                      allImageUrls.add(mainUrl);
+                    }
+                    for (final img in product.product.images) {
+                      if (img.url.isNotEmpty &&
+                          !allImageUrls.contains(img.url)) {
+                        allImageUrls.add(img.url);
+                      }
+                    }
+                    final hasMultipleImages = allImageUrls.length > 1;
+                    final pageController = PageController();
+
+                    return GestureDetector(
+                      onTap:
+                          () => _openImageFullscreen(
+                            context,
+                            product,
+                            allImageUrls,
+                          ),
+                      child: SizedBox(
+                        height: imageHeight,
+                        width: media.width,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Carrossel ou imagem única
+                            if (hasMultipleImages)
+                              PageView.builder(
+                                controller: pageController,
+                                itemCount: allImageUrls.length,
+                                itemBuilder: (context, index) {
+                                  return CachedNetworkImage(
+                                    imageUrl: allImageUrls[index],
+                                    fit: BoxFit.cover,
+                                    placeholder:
+                                        (context, url) => Container(
+                                          color: Colors.grey.shade200,
+                                        ),
+                                    errorWidget:
+                                        (context, url, error) => Container(
+                                          color: Colors.grey.shade200,
+                                          child: const Icon(
+                                            Icons.image_not_supported,
+                                            size: 48,
+                                          ),
+                                        ),
+                                  );
+                                },
+                              )
+                            else
+                              Hero(
+                                tag: 'product_image_${product.product.id}',
+                                child: CachedNetworkImage(
+                                  imageUrl:
+                                      allImageUrls.isNotEmpty
+                                          ? allImageUrls.first
+                                          : '',
+                                  fit: BoxFit.cover,
+                                  placeholder:
+                                      (context, url) => Container(
+                                        color: Colors.grey.shade200,
+                                      ),
+                                  errorWidget:
+                                      (context, url, error) => Container(
+                                        color: Colors.grey.shade200,
+                                        child: const Icon(
+                                          Icons.image_not_supported,
+                                          size: 48,
+                                        ),
+                                      ),
+                                ),
+                              ),
+                            // Indicador de bolinhas (só se >1 imagem)
+                            if (hasMultipleImages)
+                              Positioned(
+                                bottom: 12,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: SmoothPageIndicator(
+                                    controller: pageController,
+                                    count: allImageUrls.length,
+                                    effect: WormEffect(
+                                      dotHeight: 8,
+                                      dotWidth: 8,
+                                      activeDotColor: Colors.white,
+                                      dotColor: Colors.white.withOpacity(0.4),
+                                    ),
                                   ),
                                 ),
-                          ),
-                        ),
-                        // ✅ MENUHUB STYLE: Card flutuante com info da loja
-                        // ✅ Card flutuante com info da loja (clicável para voltar)
-                        if (store != null)
-                          Positioned(
-                            bottom: 32,
-                            left: 16,
-                            child: GestureDetector(
-                              onTap: () {
-                                final uri = GoRouterState.of(context).uri;
-                                final fromCart =
-                                    uri.queryParameters['fromCart'] == 'true';
-                                context.go(
-                                  (fromCart || widget.productState.isEditMode)
-                                      ? '/cart'
-                                      : '/',
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.12),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
+                              ),
+                            // ✅ MENUHUB STYLE: Card flutuante com info da loja
+                            // ✅ Card flutuante com info da loja (clicável para voltar)
+                            if (store != null)
+                              Positioned(
+                                bottom: 32,
+                                left: 16,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    final uri = GoRouterState.of(context).uri;
+                                    final fromCart =
+                                        uri.queryParameters['fromCart'] ==
+                                        'true';
+                                    context.go(
+                                      (fromCart ||
+                                              widget.productState.isEditMode)
+                                          ? '/cart'
+                                          : '/',
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
                                     ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Logo da loja
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: CachedNetworkImage(
-                                        imageUrl: store.image?.url ?? '',
-                                        width: 28,
-                                        height: 28,
-                                        fit: BoxFit.cover,
-                                        placeholder:
-                                            (context, url) => Container(
-                                              width: 28,
-                                              height: 28,
-                                              color: Colors.grey.shade200,
-                                            ),
-                                        errorWidget:
-                                            (context, url, error) => Container(
-                                              width: 28,
-                                              height: 28,
-                                              color: widget.theme.primaryColor
-                                                  .withOpacity(0.1),
-                                              child: Icon(
-                                                Icons.store,
-                                                size: 16,
-                                                color:
-                                                    widget.theme.primaryColor,
-                                              ),
-                                            ),
-                                      ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.12),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    // Nome da loja + tempo + frete
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              store.name,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Icon(
-                                              Icons.verified,
-                                              size: 14,
-                                              color: Colors.blue.shade600,
-                                            ),
-                                          ],
+                                        // Logo da loja
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: CachedNetworkImage(
+                                            imageUrl: store.image?.url ?? '',
+                                            width: 28,
+                                            height: 28,
+                                            fit: BoxFit.cover,
+                                            placeholder:
+                                                (context, url) => Container(
+                                                  width: 28,
+                                                  height: 28,
+                                                  color: Colors.grey.shade200,
+                                                ),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    Container(
+                                                      width: 28,
+                                                      height: 28,
+                                                      color: widget
+                                                          .theme
+                                                          .primaryColor
+                                                          .withOpacity(0.1),
+                                                      child: Icon(
+                                                        Icons.store,
+                                                        size: 16,
+                                                        color:
+                                                            widget
+                                                                .theme
+                                                                .primaryColor,
+                                                      ),
+                                                    ),
+                                          ),
                                         ),
-                                        Row(
+                                        const SizedBox(width: 8),
+                                        // Nome da loja + tempo + frete
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Text(
-                                              store.getDeliveryTimeRange(),
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade600,
-                                              ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  store.name,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.black87,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Icon(
+                                                  Icons.verified,
+                                                  size: 14,
+                                                  color: Colors.blue.shade600,
+                                                ),
+                                              ],
                                             ),
-                                            Text(
-                                              ' • ',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade500,
-                                              ),
-                                            ),
-                                            Text(
-                                              _getDeliveryFeeText(store),
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
-                                                color:
-                                                    _isFreeDelivery(store)
-                                                        ? Colors.green.shade600
-                                                        : Colors.grey.shade600,
-                                              ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  store.getDeliveryTimeRange(),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  ' • ',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey.shade500,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _getDeliveryFeeText(store),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                    color:
+                                                        _isFreeDelivery(store)
+                                                            ? Colors
+                                                                .green
+                                                                .shade600
+                                                            : Colors
+                                                                .grey
+                                                                .shade600,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
                                       ],
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 // ✅ Conteúdo principal (sem overlap/bordas arredondadas como no Menuhub)
                 Container(
@@ -434,15 +519,19 @@ class _MobileProductPageState extends State<MobileProductPage> {
     );
   }
 
-  // ✅ NOVO: Abre imagem em fullscreen (igual Menuhub imagem 2)
-  void _openImageFullscreen(BuildContext context, CartProduct product) {
+  // ✅ Abre imagem(s) em fullscreen com carrossel se múltiplas
+  void _openImageFullscreen(
+    BuildContext context,
+    CartProduct product,
+    List<String> allImageUrls,
+  ) {
     Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.black,
         pageBuilder: (context, animation, secondaryAnimation) {
           return _FullscreenImageViewer(
-            imageUrl: product.product.imageUrl ?? '',
+            imageUrls: allImageUrls,
             productName: product.product.name,
             productDescription: product.product.description,
             heroTag: 'product_image_${product.product.id}',
@@ -897,56 +986,155 @@ class _MobileProductPageState extends State<MobileProductPage> {
   }
 }
 
-/// ✅ MENUHUB STYLE: Visualizador de imagem em fullscreen
-/// Fundo preto, imagem centralizada, X no canto, nome/descrição embaixo
-class _FullscreenImageViewer extends StatelessWidget {
-  final String imageUrl;
+/// ✅ Visualizador de imagem(s) em fullscreen com carrossel
+class _FullscreenImageViewer extends StatefulWidget {
+  final List<String> imageUrls;
   final String productName;
   final String? productDescription;
   final String heroTag;
 
   const _FullscreenImageViewer({
-    required this.imageUrl,
+    required this.imageUrls,
     required this.productName,
     this.productDescription,
     required this.heroTag,
   });
 
   @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final hasMultiple = widget.imageUrls.length > 1;
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Imagem centralizada
+          // Imagem(s) centralizada(s)
           Center(
-            child: Hero(
-              tag: heroTag,
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.contain,
-                  placeholder:
-                      (context, url) => const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+            child:
+                hasMultiple
+                    ? PageView.builder(
+                      controller: _pageController,
+                      itemCount: widget.imageUrls.length,
+                      onPageChanged:
+                          (index) => setState(() => _currentPage = index),
+                      itemBuilder: (context, index) {
+                        return InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 4.0,
+                          child: CachedNetworkImage(
+                            imageUrl: widget.imageUrls[index],
+                            fit: BoxFit.contain,
+                            placeholder:
+                                (context, url) => const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                            errorWidget:
+                                (context, url, error) => const Icon(
+                                  Icons.image_not_supported,
+                                  size: 64,
+                                  color: Colors.grey,
+                                ),
+                          ),
+                        );
+                      },
+                    )
+                    : Hero(
+                      tag: widget.heroTag,
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 4.0,
+                        child: CachedNetworkImage(
+                          imageUrl:
+                              widget.imageUrls.isNotEmpty
+                                  ? widget.imageUrls.first
+                                  : '',
+                          fit: BoxFit.contain,
+                          placeholder:
+                              (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                ),
+                              ),
+                          errorWidget:
+                              (context, url, error) => const Icon(
+                                Icons.image_not_supported,
+                                size: 64,
+                                color: Colors.grey,
+                              ),
+                        ),
                       ),
-                  errorWidget:
-                      (context, url, error) => const Icon(
-                        Icons.image_not_supported,
-                        size: 64,
-                        color: Colors.grey,
-                      ),
+                    ),
+          ),
+
+          // Indicador de bolinhas (só se >1 imagem)
+          if (hasMultiple)
+            Positioned(
+              bottom: bottomPadding + 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: SmoothPageIndicator(
+                  controller: _pageController,
+                  count: widget.imageUrls.length,
+                  effect: WormEffect(
+                    dotHeight: 8,
+                    dotWidth: 8,
+                    activeDotColor: Colors.white,
+                    dotColor: Colors.white.withOpacity(0.4),
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // Botão X para fechar (canto superior direito)
+          // Contador de páginas (ex: 1/3)
+          if (hasMultiple)
+            Positioned(
+              top: topPadding + 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_currentPage + 1}/${widget.imageUrls.length}',
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                ),
+              ),
+            ),
+
+          // Botão X para fechar
           Positioned(
             top: topPadding + 16,
             right: 16,
@@ -973,18 +1161,18 @@ class _FullscreenImageViewer extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  productName,
+                  widget.productName,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                if (productDescription != null &&
-                    productDescription!.isNotEmpty) ...[
+                if (widget.productDescription != null &&
+                    widget.productDescription!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    productDescription!,
+                    widget.productDescription!,
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade400,

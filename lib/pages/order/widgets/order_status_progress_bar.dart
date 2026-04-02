@@ -55,24 +55,35 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
       currentStatusIndex = -1; // Permanecerá -1
     } else if (currentStatus == 'CONCLUDED' || currentStatus == 'FINALIZED') {
       currentStatusIndex = displayStatuses.length - 1;
+    } else if (currentStatus == 'DELIVERED') {
+      currentStatusIndex = displayStatuses.length - 1;
     } else if (currentStatus == 'CONFIRMED') {
       currentStatusIndex = displayStatuses.indexOf('PREPARING');
+    } else if (const [
+      'OUT_FOR_DELIVERY',
+      'ARRIVING',
+      'DRIVER_AT_CUSTOMER',
+      'DRIVER_ON_WAY',
+      'DRIVER_ARRIVED',
+    ].contains(currentStatus)) {
+      currentStatusIndex = displayStatuses.indexOf('DISPATCHED');
+      if (currentStatusIndex == -1) {
+        currentStatusIndex = displayStatuses.indexOf('READY');
+      }
     } else {
       currentStatusIndex = displayStatuses.indexOf(currentStatus);
     }
 
-    // Se não encontrou, talvez seja um status intermediário ou especial
+    // Se não encontrou, fallback por substring
     if (currentStatusIndex == -1 &&
         currentStatus != 'CANCELLED' &&
         currentStatus != 'CANCELED') {
-      // Fallback
       if (currentStatus.contains('PREPAR'))
         currentStatusIndex = displayStatuses.indexOf('PREPARING');
       else if (currentStatus.contains('READY'))
         currentStatusIndex = displayStatuses.indexOf('READY');
-      else if (currentStatus.contains('DISPATCH'))
-        currentStatusIndex = displayStatuses.indexOf('DISPATCHED');
-      else if (currentStatus.contains('ROUTE'))
+      else if (currentStatus.contains('DISPATCH') ||
+          currentStatus.contains('DELIVERY'))
         currentStatusIndex = displayStatuses.indexOf('DISPATCHED');
     }
 
@@ -203,13 +214,27 @@ class _OrderStatusProgressBarState extends State<OrderStatusProgressBar>
         return Colors.purple;
       case 'DISPATCHED':
       case 'OUT_FOR_DELIVERY':
+      case 'DRIVER_ON_WAY':
+      case 'DRIVER_ARRIVED':
+      case 'ARRIVING':
+      case 'DRIVER_AT_CUSTOMER':
         return Colors.cyan;
+      case 'DELIVERED':
       case 'CONCLUDED':
       case 'FINALIZED':
         return Colors.green;
       case 'CANCELLED':
       case 'CANCELED':
+      case 'CANCELLATION_REQUESTED':
+      case 'DELIVERY_FAILED':
+      case 'ORDER_RETURNED':
         return Colors.red;
+      case 'CUSTOMER_NOT_FOUND':
+      case 'DELIVERY_REFUSED':
+      case 'ADDRESS_NOT_FOUND':
+      case 'ADDRESS_INACCESSIBLE':
+      case 'DRIVER_RETURNING':
+        return Colors.orange.shade700;
       default:
         return Colors.grey;
     }

@@ -7,6 +7,7 @@ import 'package:dio/dio.dart'; // ✅ NOVO: Para chamar API de compartilhamento
 import 'package:share_plus/share_plus.dart'; // ✅ NOVO: Compartilhamento
 import 'package:totem/core/di.dart'; // ✅ NOVO: Para obter Dio
 import 'package:totem/core/extensions.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:totem/models/cart_product.dart';
 import 'package:totem/pages/cart/cart_cubit.dart';
 import 'package:totem/pages/product/product_page_cubit.dart';
@@ -116,31 +117,12 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ✅ Imagem à esquerda - 40% da largura
+            // ✅ Imagem/Carrossel à esquerda - 40% da largura
             Expanded(
               flex: 4,
               child: Container(
                 constraints: const BoxConstraints(minWidth: 300),
-                child: CachedNetworkImage(
-                  imageUrl: product.product.imageUrl ?? '',
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder:
-                      (context, url) => Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(child: CircularProgressIndicator()),
-                      ),
-                  errorWidget:
-                      (context, url, error) => Container(
-                        color: Colors.grey.shade200,
-                        child: const Icon(
-                          Icons.image_not_supported,
-                          size: 50,
-                          color: Colors.grey,
-                        ),
-                      ),
-                ),
+                child: _DesktopImageCarousel(product: product),
               ),
             ),
             // ✅ Conteúdo à direita - 60% da largura
@@ -805,5 +787,149 @@ class _DesktopProductCardState extends State<DesktopProductCard> {
         }
       }
     }
+  }
+}
+
+/// ✅ Carrossel de imagens para o desktop layout
+class _DesktopImageCarousel extends StatefulWidget {
+  final CartProduct product;
+  const _DesktopImageCarousel({required this.product});
+
+  @override
+  State<_DesktopImageCarousel> createState() => _DesktopImageCarouselState();
+}
+
+class _DesktopImageCarouselState extends State<_DesktopImageCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = widget.product.product;
+
+    // Monta lista de URLs: imagem principal + galeria (sem duplicatas)
+    final allImageUrls = <String>[];
+    final mainUrl = product.imageUrl;
+    if (mainUrl != null && mainUrl.isNotEmpty) {
+      allImageUrls.add(mainUrl);
+    }
+    for (final img in product.images) {
+      if (img.url.isNotEmpty && !allImageUrls.contains(img.url)) {
+        allImageUrls.add(img.url);
+      }
+    }
+
+    final hasMultiple = allImageUrls.length > 1;
+
+    if (allImageUrls.isEmpty) {
+      return Container(
+        color: Colors.grey.shade200,
+        child: const Center(
+          child: Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+        ),
+      );
+    }
+
+    if (!hasMultiple) {
+      return CachedNetworkImage(
+        imageUrl: allImageUrls.first,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder:
+            (context, url) => Container(
+              color: Colors.grey.shade200,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        errorWidget:
+            (context, url, error) => Container(
+              color: Colors.grey.shade200,
+              child: const Icon(
+                Icons.image_not_supported,
+                size: 50,
+                color: Colors.grey,
+              ),
+            ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          controller: _pageController,
+          itemCount: allImageUrls.length,
+          onPageChanged: (index) => setState(() => _currentPage = index),
+          itemBuilder: (context, index) {
+            return CachedNetworkImage(
+              imageUrl: allImageUrls[index],
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              placeholder:
+                  (context, url) => Container(
+                    color: Colors.grey.shade200,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+              errorWidget:
+                  (context, url, error) => Container(
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.image_not_supported,
+                      size: 50,
+                      color: Colors.grey,
+                    ),
+                  ),
+            );
+          },
+        ),
+        // Indicador de bolinhas
+        Positioned(
+          bottom: 16,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: SmoothPageIndicator(
+              controller: _pageController,
+              count: allImageUrls.length,
+              effect: WormEffect(
+                dotHeight: 8,
+                dotWidth: 8,
+                activeDotColor: Colors.white,
+                dotColor: Colors.white.withOpacity(0.4),
+              ),
+            ),
+          ),
+        ),
+        // Contador (1/3)
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '${_currentPage + 1}/${allImageUrls.length}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
