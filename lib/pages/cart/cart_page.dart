@@ -19,19 +19,51 @@ import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../models/update_cart_payload.dart';
 import '../../widgets/store_header_card.dart';
+import '../address/cubits/address_cubit.dart';
 import '../address/cubits/delivery_fee_cubit.dart';
 import '../../services/product_recommendation_service.dart';
 
 import 'cart_state.dart';
 
-class CartPage extends StatelessWidget {
+class CartPage extends StatefulWidget {
   const CartPage({super.key});
 
+  @override
+  State<CartPage> createState() => _CartPageState();
+}
+
+class _CartPageState extends State<CartPage> {
   final Set<String> bebidaCategoryNames = const {
     'Bebidas',
     'Refrigerantes',
     'Sucos',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _triggerFeeCalculationIfNeeded();
+    });
+  }
+
+  void _triggerFeeCalculationIfNeeded() {
+    final addressState = context.read<AddressCubit>().state;
+    final store = context.read<StoreCubit>().state.store;
+    final cartSubtotal = context.read<CartCubit>().state.cart.subtotal / 100.0;
+    final feeState = context.read<DeliveryFeeCubit>().state;
+
+    // Se já tem endereço selecionado e o frete ainda não foi calculado, calcula
+    if (store != null &&
+        addressState.selectedAddress != null &&
+        feeState is! DeliveryFeeLoaded) {
+      context.read<DeliveryFeeCubit>().calculate(
+        address: addressState.selectedAddress,
+        store: store,
+        cartSubtotal: cartSubtotal,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -259,4 +291,3 @@ class CartPage extends StatelessWidget {
     );
   }
 }
-

@@ -53,6 +53,22 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
 
   // ✅ LÓGICA DE ATUALIZAÇÃO DE TIPO CORRIGIDA E MAIS ROBUSTA
   void updateDeliveryType(DeliveryType newType) {
+    // ✅ FIX: Se mudar para pickup, sempre emite fee=0 (retirada é grátis)
+    if (newType == DeliveryType.pickup) {
+      invalidateCache();
+      emit(
+        const DeliveryFeeLoaded(
+          deliveryFee: 0,
+          isFree: true,
+          deliveryType: DeliveryType.pickup,
+        ),
+      );
+      return;
+    }
+
+    // Se voltar para delivery, invalida cache para forçar recálculo
+    invalidateCache();
+
     // Se o estado atual já foi calculado (Loaded), cria uma nova cópia com o novo tipo.
     if (state is DeliveryFeeLoaded) {
       final loadedState = state as DeliveryFeeLoaded;
@@ -76,12 +92,24 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
     final calculationKey =
         '${address?.id}_${address?.latitude}_${address?.longitude}_${cartSubtotal.toInt()}_${state.deliveryType}';
 
+    // ✅ FIX: Cálculos silenciosos (precalculate de OUTROS endereços) não devem
+    // sobrescrever o cache do endereço selecionado. Usam lógica separada.
+    if (isSilent) {
+      // Silent: não toca no cache principal, apenas executa e chama onResult
+      await _calculateSilent(
+        address: address,
+        store: store,
+        cartSubtotal: cartSubtotal,
+        onResult: onResult,
+      );
+      return;
+    }
+
     // ✅ MELHORIA: Só ignora se for EXATAMENTE a mesma chave de cálculo
     if (_isCalculating && _lastCalculationKey == calculationKey) {
       AppLogger.d(
         '⏭️ [DELIVERY_FEE] Cálculo já em andamento para esta chave, ignorando',
       );
-      // Adiciona um listener temporário para chamar o callback quando acabar, se necessário
       return;
     }
 
@@ -498,6 +526,132 @@ class DeliveryFeeCubit extends Cubit<DeliveryFeeState> {
         ),
       );
     }
+  }
+
+  /// ✅ FIX BUG 2: Calcula frete de forma silenciosa SEM afetar o cache principal.
+  /// Usado por _precalculateAllFees para pré-calcular frete de TODOS os endereços
+  /// sem invalidar o cache do endereço selecionado.
+  Future<void> _calculateSilent({
+    required CustomerAddress? address,
+    required Store store,
+    required double cartSubtotal,
+    void Function(double? fee, String? error)? onResult,
+  }) async {
+    final currentDeliveryType = state.deliveryType;
+
+    if (currentDeliveryType == DeliveryType.pickup) {
+      onResult?.call(0, null);
+      return;
+    }
+
+    if (address == null) {
+      onResult?.call(null, 'Endereço nulo');
+      return;
+    }
+
+    final requiresCoordinates = store.deliveryFeeRules.any(
+      (r) =>
+          r.isActive &&
+          (r.ruleType == 'per_km' ||
+              r.ruleType == 'radius' ||
+              r.ruleType == 'progressive_radius' ||
+              r.ruleType == 'simple_radius'),
+    );
+
+    if (requiresCoordinates &&
+        (address.latitude == null || address.longitude == null)) {
+      onResult?.call(null, 'Coordenadas necessárias');
+      return;
+    }
+
+    // Tenta calcular via WebSocket/HTTP
+    if (address.latitude != null && address.longitude != null ||
+        address.id != null) {
+      try {
+        final subtotalInCents = (cartSubtotal * 100).toInt();
+        Map<String, dynamic>? result;
+
+        try {
+          result = await _realtimeRepository?.calculateDeliveryFee(
+            addressId: address.id,
+            latitude: address.latitude,
+            longitude: address.longitude,
+            subtotal: subtotalInCents,
+          );
+        } catch (_) {
+          try {
+            result = await _repository?.calculateDeliveryFee(
+              addressId: address.id,
+              latitude: address.latitude,
+              longitude: address.longitude,
+              subtotal: subtotalInCents,
+            );
+          } catch (_) {}
+        }
+
+        if (result != null) {
+          if (result['error'] != null) {
+            onResult?.call(null, result['error'] as String?);
+            return;
+          }
+
+          final feeValue = result['fee'];
+          double? fee;
+          if (feeValue is int) {
+            fee = feeValue / 100.0;
+          } else if (feeValue is double) {
+            fee = feeValue;
+          } else if (feeValue is num) {
+            fee = feeValue.toDouble() / 100.0;
+          } else {
+            fee = 0.0;
+          }
+
+          if (fee < 0) fee = 0.0;
+
+          final eligibleForFree =
+              result['eligible_for_free_delivery'] as bool? ?? false;
+          if (eligibleForFree) fee = 0.0;
+
+          onResult?.call(fee, null);
+          return;
+        }
+      } catch (e) {
+        // Tenta cálculo local como fallback
+        final localResult = _calculateFeeLocally(
+          store: store,
+          address: address,
+          cartSubtotal: cartSubtotal,
+          deliveryType: currentDeliveryType,
+        );
+
+        if (localResult != null) {
+          onResult?.call(localResult['fee'], null);
+          return;
+        }
+      }
+    }
+
+    // Fallback legado (sem regras novas)
+    final hasNewRules = store.deliveryFeeRules.any((r) => r.isActive);
+    if (!hasNewRules) {
+      final baseFee = _calculateBaseFee(address, store);
+      if (baseFee == double.infinity) {
+        onResult?.call(null, 'Fora da área');
+        return;
+      }
+
+      final freeThreshold = store.getFreeDeliveryThresholdForDelivery() ?? 0;
+      if (freeThreshold > 0 && cartSubtotal >= freeThreshold) {
+        onResult?.call(0, null);
+        return;
+      }
+
+      onResult?.call(baseFee, null);
+      return;
+    }
+
+    onResult?.call(null, 'Não foi possível calcular o frete');
   }
 
   // A função de cálculo base permanece a mesma.

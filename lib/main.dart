@@ -565,16 +565,44 @@ class MyApp extends StatelessWidget {
             listener: (context, addressState) {
               if (addressState.selectedAddress != null &&
                   addressState.status == AddressStatus.success) {
-                // Pega o store atual
                 final storeState = context.read<StoreCubit>().state;
                 if (storeState.store != null) {
-                  // Calcula frete com subtotal 0 (apenas para mostrar estimativa inicial)
+                  // ✅ FIX: Usa subtotal real do carrinho para cálculo correto de frete grátis
+                  final cartState = context.read<CartCubit>().state;
+                  final subtotal =
+                      cartState.status == CartStatus.success
+                          ? cartState.cart.subtotal / 100.0
+                          : 0.0;
                   context.read<DeliveryFeeCubit>().calculate(
                     address: addressState.selectedAddress,
                     store: storeState.store!,
-                    cartSubtotal: 0, // Sem itens no carrinho por enquanto
+                    cartSubtotal: subtotal,
                   );
                 }
+              }
+            },
+          ),
+          // ✅ FIX BUG 3: Recalcula frete quando carrinho carrega pela PRIMEIRA vez
+          // Trata race condition: endereço pode carregar antes do carrinho,
+          // resultando em cálculo com subtotal 0. Quando o carrinho chega com itens,
+          // recalcula com o subtotal real (pode afetar frete grátis por threshold).
+          BlocListener<CartCubit, CartState>(
+            listenWhen: (previous, current) {
+              // Só dispara quando subtotal vai de 0 para >0 (primeiro load)
+              return previous.cart.subtotal == 0 && current.cart.subtotal > 0;
+            },
+            listener: (context, cartState) {
+              final addressState = context.read<AddressCubit>().state;
+              final storeState = context.read<StoreCubit>().state;
+              if (addressState.selectedAddress != null &&
+                  storeState.store != null) {
+                final subtotal = cartState.cart.subtotal / 100.0;
+                // Cache key inclui subtotal — cache miss automático (0 vs real)
+                context.read<DeliveryFeeCubit>().calculate(
+                  address: addressState.selectedAddress,
+                  store: storeState.store!,
+                  cartSubtotal: subtotal,
+                );
               }
             },
           ),

@@ -57,24 +57,12 @@ class AddressCubit extends Cubit<AddressState> {
         if (newHash != _lastDeliveryRulesHash) {
           _lastDeliveryRulesHash = newHash;
           _lastStore = storeState.store;
-          // ✅ FIX BUG 2: Invalida cache do DeliveryFeeCubit antes de recalcular
+          // ✅ FIX: Apenas invalida cache e pré-calcula silenciosamente.
+          // O recálculo principal (non-silent) é feito pelo BlocListener<StoreCubit> em main.dart
+          // para evitar chamadas duplicadas à API.
           try {
             final feeCubit = getIt<DeliveryFeeCubit>();
             feeCubit.invalidateCache();
-            // ✅ FIX BUG 6: Recalcula NON-silent para o endereço selecionado
-            // Isso faz o DeliveryFeeCubit emitir novo estado → checkout rebuilda
-            if (state.selectedAddress != null) {
-              double cartSubtotal = 0;
-              try {
-                final cartCubit = getIt<CartCubit>();
-                cartSubtotal = cartCubit.state.cart.subtotal / 100.0;
-              } catch (_) {}
-              feeCubit.calculate(
-                address: state.selectedAddress,
-                store: storeState.store!,
-                cartSubtotal: cartSubtotal,
-              );
-            }
           } catch (_) {}
           _precalculateAllFees(state.addresses);
         } else {

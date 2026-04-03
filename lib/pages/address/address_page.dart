@@ -376,6 +376,11 @@ class _DeliveryOptionTile extends StatelessWidget {
   String _getFeeText(BuildContext context) {
     final state = feeState; // Apenas para facilitar a leitura
 
+    // ✅ FIX BUG 1: Retirada é SEMPRE grátis — verificar ANTES de qualquer lógica de frete
+    if (title == 'Retirar na loja') {
+      return 'Grátis';
+    }
+
     // ✅ Verifica se deve ocultar o valor do frete (hide_fee_display)
     final storeState = context.read<StoreCubit>().state;
     final store = storeState.store;
@@ -400,8 +405,7 @@ class _DeliveryOptionTile extends StatelessWidget {
     // ✅ Se tem cupom de frete grátis REAL aplicado
     if (cart.couponCode != null &&
         cart.couponCode!.isNotEmpty &&
-        (cart.isFreeDelivery || appliedCoupon?.isFreeDelivery == true) &&
-        title == 'Delivery') {
+        (cart.isFreeDelivery || appliedCoupon?.isFreeDelivery == true)) {
       return 'Grátis';
     }
 
@@ -409,7 +413,7 @@ class _DeliveryOptionTile extends StatelessWidget {
       return 'A calcular';
     }
     // ✅ NOVO: Se houver erro e for delivery, mostra "Indisponível"
-    if (state is DeliveryFeeError && title == 'Delivery') {
+    if (state is DeliveryFeeError) {
       return 'Indisponível';
     }
     if (state is DeliveryFeeLoaded) {
@@ -420,10 +424,6 @@ class _DeliveryOptionTile extends StatelessWidget {
     }
     if (state is DeliveryFeeLoading) {
       return '...';
-    }
-    // Para Retirada (Pickup), o frete é sempre grátis
-    if (title == 'Retirar na loja') {
-      return 'Grátis';
     }
     return 'A calcular';
   }
