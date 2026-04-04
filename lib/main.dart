@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:totem/models/totem_auth.dart';
 import 'package:totem/widgets/skeleton_shimmer.dart';
+import 'package:totem/widgets/mobile_frame.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:provider/provider.dart';
@@ -361,8 +362,10 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return MaterialApp(
-        home: Scaffold(body: Center(child: Text("Erro fatal: $_error"))),
+      return MobileFrame(
+        child: MaterialApp(
+          home: Scaffold(body: Center(child: Text("Erro fatal: $_error"))),
+        ),
       );
     }
 
@@ -371,9 +374,11 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
     // que o overlay, garantindo continuidade visual sem piscada)
     // ═══════════════════════════════════════════════════════════
     if (!_initialized) {
-      return const MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: SkeletonShimmer(),
+      return const MobileFrame(
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: SkeletonShimmer(),
+        ),
       );
     }
 
@@ -386,53 +391,55 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
             : null;
 
     if (authError != null) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.white,
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 80,
-                    color: Color(0xFFEA1D2C),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Loja não encontrada',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800,
+      return MobileFrame(
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 80,
+                      color: Color(0xFFEA1D2C),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    authError,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                      fontFamily: 'monospace',
+                    const SizedBox(height: 24),
+                    Text(
+                      'Loja não encontrada',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    "Store URL: ${_extractStoreUrlFromBrowser()}",
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Verifique se o endereço está correto ou entre em contato com o estabelecimento.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Text(
+                      authError,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                        fontFamily: 'monospace',
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Store URL: ${_extractStoreUrlFromBrowser()}",
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Verifique se o endereço está correto ou entre em contato com o estabelecimento.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -446,18 +453,20 @@ class _AppBootstrapperState extends State<AppBootstrapper> {
     // Zero piscada branca.
     // ═══════════════════════════════════════════════════════════
     _cachedApp ??= MyApp();
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Stack(
-        children: [
-          _cachedApp!,
-          if (_showSplashOverlay)
-            _SplashOverlay(
-              onFadeComplete: () {
-                if (mounted) setState(() => _showSplashOverlay = false);
-              },
-            ),
-        ],
+    return MobileFrame(
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Stack(
+          children: [
+            _cachedApp!,
+            if (_showSplashOverlay)
+              _SplashOverlay(
+                onFadeComplete: () {
+                  if (mounted) setState(() => _showSplashOverlay = false);
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
