@@ -304,6 +304,17 @@ class Coupon extends Equatable {
     }
   }
 
+  /// Se o cupom está expirado (end_date no passado)
+  bool get isExpired => endDate != null && endDate!.isBefore(DateTime.now());
+
+  /// Se o cupom ainda não começou (start_date no futuro)
+  bool get isNotStarted =>
+      startDate != null && startDate!.isAfter(DateTime.now());
+
+  /// Se o cupom está válido para exibição (ativo, listado, não expirado, já iniciado)
+  bool get isValidForDisplay =>
+      isActive && (isListed ?? true) && !isExpired && !isNotStarted;
+
   /// Se é cupom de frete grátis
   bool get isFreeDelivery => discountType == 'FREE_DELIVERY';
 

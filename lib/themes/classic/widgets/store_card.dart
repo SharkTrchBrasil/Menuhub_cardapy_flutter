@@ -86,8 +86,27 @@ class StoreCardData extends StatelessWidget {
     final storeStatus = StoreStatusService.validateStoreStatus(store);
     final isClosed = !storeStatus.canReceiveOrders;
 
-    // Texto de "Abre X" ou "Fecha Y"
-    final statusMsg = StoreStatusHelper(hours: store.hours).statusMessage;
+    // ✅ FIX: Mensagem contextual baseada no reason (não só horários)
+    String statusMsg;
+    if (isClosed) {
+      switch (storeStatus.reason) {
+        case 'admin_offline':
+          statusMsg = 'Aguardando ficar online';
+          break;
+        case 'outside_hours':
+          statusMsg = StoreStatusHelper(hours: store.hours).statusMessage;
+          break;
+        case 'store_closed':
+        case 'scheduled_quick_pause':
+        case 'scheduled_pause':
+          statusMsg = storeStatus.message ?? 'Fechada temporariamente';
+          break;
+        default:
+          statusMsg = storeStatus.message ?? 'Fechada';
+      }
+    } else {
+      statusMsg = '';
+    }
 
     // ✅ DADOS DE ENTREGA E PEDIDO MÍNIMO
     final minOrderVal = store.getMinOrderForDelivery();

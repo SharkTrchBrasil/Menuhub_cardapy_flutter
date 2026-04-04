@@ -16,6 +16,7 @@ import 'package:totem/themes/ds_theme_switcher.dart';
 import 'package:totem/widgets/delivery_info_widget.dart';
 import '../../../helpers/navigation_helper.dart';
 import 'package:totem/helpers/store_hours_helper.dart';
+import 'package:totem/services/store_status_service.dart';
 import '../../../models/store.dart';
 import '../../../repositories/realtime_repository.dart';
 
@@ -411,9 +412,31 @@ class _HomeBodyDesktopState extends State<HomeBodyDesktop> {
       return const SizedBox(height: 300);
     }
 
-    final statusHelper = StoreStatusHelper(hours: store.hours ?? []);
-    final isStoreOpen = statusHelper.isOpen;
-    final nextOpeningMessage = statusHelper.statusMessage;
+    // ✅ FIX: Usa StoreStatusService completo ao invés de só checar horários
+    final storeStatus = StoreStatusService.validateStoreStatus(store);
+    final isStoreOpen = storeStatus.canReceiveOrders;
+    
+    // Mensagem contextual
+    String nextOpeningMessage;
+    if (!isStoreOpen) {
+      switch (storeStatus.reason) {
+        case 'admin_offline':
+          nextOpeningMessage = 'Aguardando o estabelecimento ficar online';
+          break;
+        case 'outside_hours':
+          nextOpeningMessage = StoreStatusHelper(hours: store.hours ?? []).statusMessage;
+          break;
+        case 'store_closed':
+        case 'scheduled_quick_pause':
+        case 'scheduled_pause':
+          nextOpeningMessage = storeStatus.message ?? 'Fechada temporariamente';
+          break;
+        default:
+          nextOpeningMessage = storeStatus.message ?? 'Fechada';
+      }
+    } else {
+      nextOpeningMessage = '';
+    }
     final storeName = store.name;
     final rating = store.ratingsSummary?.averageRating ?? 0.0;
     final minOrder = store.getMinOrderForDelivery() ?? 0;

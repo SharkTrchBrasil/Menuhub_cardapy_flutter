@@ -56,6 +56,23 @@ class StoreStatusService {
     final hours = store.hours;
     final pauses = store.scheduledPauses;
 
+    // ✅ 1.5 ADMIN PRESENCE: Verifica se o Admin está conectado (trava iFood)
+    // Esta verificação tem prioridade sobre tudo: mesmo se a loja está aberta
+    // e dentro do horário, sem Admin online o Totem bloqueia.
+    final adminOnline = config?.adminOnline ?? true;
+    if (!adminOnline) {
+      return StoreStatusResult(
+        canReceiveOrders: false,
+        reason: 'admin_offline',
+        message: 'Aguardando o estabelecimento ficar online',
+        isStoreOpen: config?.isStoreOpen ?? true,
+        deliveryEnabled: config?.isDeliveryAvailable ?? false,
+        pickupEnabled: config?.isPickupAvailable ?? false,
+        tableEnabled: config?.isTableAvailable ?? false,
+        withinOpeningHours: false,
+      );
+    }
+
     // 2. Verifica se a loja está aberta manualmente
     final isStoreOpen = config?.isStoreOpen ?? true;
     if (!isStoreOpen) {
@@ -264,6 +281,8 @@ class StoreStatusService {
       case 'scheduled_quick_pause':
         return result.message ??
             'Loja pausada temporariamente. Reabrirá em breve.';
+      case 'admin_offline':
+        return 'Aguardando o estabelecimento ficar online. Tente novamente em instantes.';
       case 'ok':
         return 'Loja aberta!';
       default:

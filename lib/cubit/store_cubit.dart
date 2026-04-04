@@ -40,6 +40,8 @@ class StoreCubit extends Cubit<StoreState> {
               storeData.store_operation_config?.isStoreOpen &&
           currentStore.store_operation_config?.pausedUntil ==
               storeData.store_operation_config?.pausedUntil &&
+          currentStore.store_operation_config?.adminOnline ==
+              storeData.store_operation_config?.adminOnline &&
           currentStore.hours.length == storeData.hours.length &&
           currentStore.paymentMethodGroups.length ==
               storeData.paymentMethodGroups.length &&

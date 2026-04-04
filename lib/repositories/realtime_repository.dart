@@ -509,17 +509,45 @@ class RealtimeRepository {
           if (currentStore.id != storeId) return;
           final isOpen = payload['is_open'] as bool? ?? true;
           final pausedUntilStr = payload['paused_until'] as String?;
+          final reason = payload['reason'] as String?;
+          
+          // ✅ ADMIN PRESENCE: Lê campo admin_online (default true para BC)
+          final adminOnline = payload['admin_online'] as bool? ?? true;
+          
           DateTime? pausedUntil;
           if (pausedUntilStr != null)
             pausedUntil = DateTime.tryParse(pausedUntilStr);
           final currentConfig = currentStore.store_operation_config;
           if (currentConfig != null) {
+            // ✅ ADMIN PRESENCE: Se o reason é admin_online/admin_offline,
+            // atualiza APENAS o campo adminOnline sem mexer no isStoreOpen manual.
+            // Isso permite que a trava de admin coexista com a
+            // abertura/fechamento manual da loja.
+            final bool effectiveIsOpen;
+            final bool effectiveAdminOnline;
+            
+            if (reason == 'admin_online' || reason == 'admin_offline') {
+              // Evento de presença: mantém isStoreOpen original
+              effectiveIsOpen = currentConfig.isStoreOpen;
+              effectiveAdminOnline = adminOnline;
+            } else {
+              // Evento de status normal (manual, pause, etc)
+              effectiveIsOpen = isOpen;
+              effectiveAdminOnline = currentConfig.adminOnline;
+            }
+            
             final updatedConfig = currentConfig.copyWith(
-              isStoreOpen: isOpen,
-              pausedUntil: isOpen ? null : pausedUntil,
+              isStoreOpen: effectiveIsOpen,
+              pausedUntil: effectiveIsOpen ? null : pausedUntil,
+              adminOnline: effectiveAdminOnline,
             );
             storeController.add(
               currentStore.copyWith(store_operation_config: updatedConfig),
+            );
+            
+            AppLogger.d(
+              '🔒 [STORE_STATUS] Atualizado: isOpen=$effectiveIsOpen, '
+              'adminOnline=$effectiveAdminOnline, reason=$reason',
             );
           }
         } catch (e) {

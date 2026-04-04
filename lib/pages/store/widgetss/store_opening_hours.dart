@@ -175,6 +175,10 @@ class _StoreOpeningHoursState extends State<StoreOpeningHours> {
             statusText = 'Loja fechada';
             statusColor = Colors.red.shade700;
             break;
+          case 'admin_offline':
+            statusText = 'Aguardando ficar online';
+            statusColor = Colors.orange.shade700;
+            break;
           case 'not_operational':
             statusText = 'Indisponível';
             statusColor = Colors.grey.shade700;

@@ -77,6 +77,11 @@ class StoreStatusAlert extends StatelessWidget {
         return Icons.error_outline;
       case 'no_delivery_methods':
         return Icons.delivery_dining_outlined;
+      case 'admin_offline':
+        return Icons.wifi_off_rounded;
+      case 'scheduled_pause':
+      case 'scheduled_quick_pause':
+        return Icons.pause_circle_outline;
       default:
         return Icons.info_outline;
     }

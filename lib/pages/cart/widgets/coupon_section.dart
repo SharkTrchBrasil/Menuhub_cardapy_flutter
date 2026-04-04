@@ -26,8 +26,9 @@ class CouponSection extends StatelessWidget {
 
     return BlocBuilder<StoreCubit, StoreState>(
       builder: (context, storeState) {
-        final availableCoupons = storeState.store?.coupons
-                .where((c) => c.isActive)
+        final availableCoupons =
+            storeState.store?.coupons
+                .where((c) => c.isValidForDisplay)
                 .toList() ??
             [];
         final availableCount = availableCoupons.length;
@@ -36,12 +37,21 @@ class CouponSection extends StatelessWidget {
           return _buildNoCouponState(context, theme, availableCount);
         }
 
-        return _buildAppliedCouponState(context, theme, couponCode!, discountPreview);
+        return _buildAppliedCouponState(
+          context,
+          theme,
+          couponCode!,
+          discountPreview,
+        );
       },
     );
   }
 
-  Widget _buildNoCouponState(BuildContext context, dynamic theme, int availableCount) {
+  Widget _buildNoCouponState(
+    BuildContext context,
+    dynamic theme,
+    int availableCount,
+  ) {
     return InkWell(
       onTap: () => context.push('/add-coupon'),
       borderRadius: BorderRadius.circular(12),
@@ -61,7 +71,11 @@ class CouponSection extends StatelessWidget {
                 color: Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.local_offer, color: Colors.black87, size: 18),
+              child: const Icon(
+                Icons.local_offer,
+                color: Colors.black87,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -80,7 +94,10 @@ class CouponSection extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '$availableCount pra usar nesta loja',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ],
                 ],
@@ -100,11 +117,17 @@ class CouponSection extends StatelessWidget {
     );
   }
 
-  Widget _buildAppliedCouponState(BuildContext context, dynamic theme, String code, DiscountPreview? preview) {
+  Widget _buildAppliedCouponState(
+    BuildContext context,
+    dynamic theme,
+    String code,
+    DiscountPreview? preview,
+  ) {
     final storeState = context.read<StoreCubit>().state;
-    final appliedCoupon = storeState.store?.coupons
-        .where((c) => c.code.toUpperCase() == code.toUpperCase())
-        .firstOrNull;
+    final appliedCoupon =
+        storeState.store?.coupons
+            .where((c) => c.code.toUpperCase() == code.toUpperCase())
+            .firstOrNull;
 
     String description = _getCouponDescription(appliedCoupon, preview);
 
@@ -127,7 +150,11 @@ class CouponSection extends StatelessWidget {
                 color: Colors.green.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.local_offer, color: Colors.green.shade700, size: 18),
+              child: Icon(
+                Icons.local_offer,
+                color: Colors.green.shade700,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -16,6 +16,7 @@ import 'package:totem/services/store_status_service.dart';
 import 'package:totem/widgets/store_closed_widgets.dart';
 import 'package:totem/core/services/timezone_service.dart';
 import 'package:totem/pages/order/widgets/order_status_progress_bar.dart';
+import 'package:totem/pages/order/widgets/order_address_widget.dart';
 import 'package:totem/core/helpers/money_amount_helper.dart';
 
 /// Página de detalhes do pedido completa - Estilo iFood
@@ -1055,52 +1056,24 @@ class _OrderDetailContentState extends State<_OrderDetailContent> {
   }
 
   Widget _buildAddressSection() {
-    final address = _currentOrder.delivery.deliveryAddress;
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Endereço de entrega',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3F3E3E),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.location_on, color: Colors.black87, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${address.streetName}, ${address.streetNumber ?? "S/N"}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF3F3E3E),
-                      ),
-                    ),
-                    Text(
-                      '${address.neighborhood}, ${address.city} - ${address.state} - Casa',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF717171),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final isPickup = _currentOrder.isTakeout;
+    final store = context.read<StoreCubit>().state.store;
+
+    if (isPickup) {
+      return OrderAddressWidget(
+        isPickup: true,
+        streetName: store?.street,
+        streetNumber: store?.number,
+        neighborhood: store?.neighborhood,
+        city: store?.city,
+        complement: store?.complement,
+      );
+    }
+
+    final address = _currentOrder.delivery.address;
+    return OrderAddressWidget(
+      isPickup: false,
+      address: address,
     );
   }
 

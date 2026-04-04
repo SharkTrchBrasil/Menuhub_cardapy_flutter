@@ -22,7 +22,8 @@ class CouponListWidget extends StatelessWidget {
         }
 
         // Filtra cupons ativos e listados (para não mostrar cupons de influencer ocultos por exemplo)
-        final activeCoupons = coupons.where((c) => c.isActive && (c.isListed ?? true)).toList();
+        final activeCoupons =
+            coupons.where((c) => c.isValidForDisplay).toList();
 
         if (activeCoupons.isEmpty) {
           return const SizedBox.shrink();
@@ -60,10 +61,7 @@ class CouponListWidget extends StatelessWidget {
         curvePosition: 80,
         curveRadius: 8,
         borderRadius: 12,
-        border: BorderSide(
-          color: Colors.grey.shade200,
-          width: 0.8,
-        ),
+        border: BorderSide(color: Colors.grey.shade200, width: 0.8),
         firstChild: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
@@ -141,7 +139,7 @@ class CouponListWidget extends StatelessWidget {
   }
 
   String _getMinOrderText(Coupon coupon) {
-     if (coupon.minOrderValue != null && coupon.minOrderValue! > 0) {
+    if (coupon.minOrderValue != null && coupon.minOrderValue! > 0) {
       // Usa .toCurrency do extensions.dart (divide por 100 automaticamente)
       return 'Mínimo ${coupon.minOrderValue!.toCurrency}';
     }

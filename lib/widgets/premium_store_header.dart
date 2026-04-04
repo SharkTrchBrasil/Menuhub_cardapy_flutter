@@ -75,10 +75,37 @@ class PremiumStoreHeader extends StatelessWidget {
               : '30-45 min';
     }
 
-    // Lógica de Loja Aberta/Fechada
-    final statusHelper = StoreStatusHelper(hours: store.hours);
-    final isClosed = !statusHelper.isOpen;
-    final storeStatusMsg = statusHelper.statusMessage;
+    // Lógica de Loja Aberta/Fechada — ✅ FIX: Usa StoreStatusService completo
+    // ANTES: Usava StoreStatusHelper que SÓ checava horários, ignorando
+    // isStoreOpen (manual), pausedUntil, adminOnline, e pausas agendadas.
+    final storeStatus = StoreStatusService.validateStoreStatus(store);
+    final isClosed = !storeStatus.canReceiveOrders;
+    
+    // Mensagem contextual baseada no reason
+    String storeStatusMsg;
+    if (isClosed) {
+      switch (storeStatus.reason) {
+        case 'admin_offline':
+          storeStatusMsg = 'Aguardando o estabelecimento ficar online';
+          break;
+        case 'store_closed':
+        case 'scheduled_quick_pause':
+          storeStatusMsg = storeStatus.message ?? 'Fechada temporariamente';
+          break;
+        case 'outside_hours':
+          // Usa o StoreStatusHelper para a mensagem de próximo horário
+          final hoursHelper = StoreStatusHelper(hours: store.hours);
+          storeStatusMsg = hoursHelper.statusMessage;
+          break;
+        case 'scheduled_pause':
+          storeStatusMsg = storeStatus.message ?? 'Pausa programada';
+          break;
+        default:
+          storeStatusMsg = storeStatus.message ?? 'Fechada';
+      }
+    } else {
+      storeStatusMsg = '';
+    }
 
     final closingSoonInfo = StoreStatusService.getClosingSoonInfo(store);
 

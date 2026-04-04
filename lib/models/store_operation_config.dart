@@ -57,6 +57,11 @@ class StoreOperationConfig {
   final String? barPrinterDestination;
   final bool scheduledOrdersEnabled;
 
+  // --- ✅ ADMIN PRESENCE: Trava de segurança (estilo iFood) ---
+  // Se false, o Totem bloqueia o cardápio pois nenhum Admin está conectado.
+  // Default true para backward compatibility (backends antigos não enviam o campo).
+  final bool adminOnline;
+
   // --- ✅ NOVO: Configuração de preço para pizzas ---
   final PizzaPricingStrategy pizzaPricingStrategy;
 
@@ -91,6 +96,8 @@ class StoreOperationConfig {
     this.kitchenPrinterDestination,
     this.barPrinterDestination,
     this.scheduledOrdersEnabled = false,
+    // Admin Presence
+    this.adminOnline = true,
     // Pizza
     this.pizzaPricingStrategy = PizzaPricingStrategy.highest,
   });
@@ -146,6 +153,8 @@ class StoreOperationConfig {
       kitchenPrinterDestination: json['kitchen_printer_destination'],
       barPrinterDestination: json['bar_printer_destination'],
       scheduledOrdersEnabled: json['scheduled_orders_enabled'] ?? false,
+      // ✅ Admin Presence (default true para backward compatibility)
+      adminOnline: json['admin_online'] ?? true,
       // ✅ Pizza pricing strategy
       pizzaPricingStrategy: PizzaPricingStrategy.fromString(
         json['pizza_multi_flavor_pricing_strategy'],
@@ -183,6 +192,7 @@ class StoreOperationConfig {
     String? mainPrinterDestination,
     String? kitchenPrinterDestination,
     String? barPrinterDestination,
+    bool? adminOnline,
     bool? scheduledOrdersEnabled,
     PizzaPricingStrategy? pizzaPricingStrategy,
   }) {
@@ -216,6 +226,7 @@ class StoreOperationConfig {
           barPrinterDestination ?? this.barPrinterDestination,
       scheduledOrdersEnabled:
           scheduledOrdersEnabled ?? this.scheduledOrdersEnabled,
+      adminOnline: adminOnline ?? this.adminOnline,
       pizzaPricingStrategy: pizzaPricingStrategy ?? this.pizzaPricingStrategy,
     );
   }
